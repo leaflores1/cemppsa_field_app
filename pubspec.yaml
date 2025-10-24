@@ -1,0 +1,17 @@
+name: cemppsa_field_app
+description: App de campo CEMPPSA (offline + sync)
+environment:
+  sdk: ">=3.5.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+  path_provider: ^2.1.5
+  uuid: ^4.4.0
+  connectivity_plus: ^6.0.3
+  http: ^1.2.2
+
+dev_dependencies:
+  flutter_lints: ^3.0.0
