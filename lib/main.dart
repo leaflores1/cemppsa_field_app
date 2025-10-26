@@ -15,7 +15,6 @@ class CemppsaApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
       create: (_) => PlanillasRepository(),
-      
       child: MaterialApp(
         title: 'CEMPPSA Field',
         debugShowCheckedModeBanner: false,

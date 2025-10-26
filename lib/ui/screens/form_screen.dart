@@ -26,8 +26,8 @@ class _FormScreenState extends State<FormScreen> {
   @override
   Widget build(BuildContext context) {
     final repo = context.watch<PlanillasRepository>();
-
     final p = repo.findById(widget.planillaId);
+
     if (p == null) {
       return Scaffold(
         appBar: AppBar(title: const Text('Nueva planilla')),
@@ -36,23 +36,31 @@ class _FormScreenState extends State<FormScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: Text('Nueva lectura (${p.tipoMedicion})')),
+      appBar: AppBar(title: Text('Lecturas (${p.tipoMedicion})')),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Form(
           key: _formKey,
           child: ListView(
             children: [
+              Text('Técnico: ${p.tecnico}',
+                  style: const TextStyle(fontWeight: FontWeight.bold)),
+              Text('Fecha: ${p.fecha}'),
+              const SizedBox(height: 16),
               TextFormField(
                 controller: _instCtrl,
-                decoration: const InputDecoration(labelText: 'Instrumento'),
-                validator: (v) => (v == null || v.trim().isEmpty) ? 'Requerido' : null,
+                decoration:
+                    const InputDecoration(labelText: 'Código del instrumento'),
+                validator: (v) =>
+                    (v == null || v.trim().isEmpty) ? 'Requerido' : null,
               ),
               TextFormField(
                 controller: _lectCtrl,
-                decoration: const InputDecoration(labelText: 'Lectura'),
-                validator: (v) => (v == null || v.trim().isEmpty) ? 'Requerido' : null,
+                decoration:
+                    const InputDecoration(labelText: 'Valor de la lectura'),
                 keyboardType: TextInputType.number,
+                validator: (v) =>
+                    (v == null || v.trim().isEmpty) ? 'Requerido' : null,
               ),
               const SizedBox(height: 20),
               FilledButton.icon(
@@ -60,15 +68,18 @@ class _FormScreenState extends State<FormScreen> {
                   if (!_formKey.currentState!.validate()) return;
                   repo.addLectura(
                     widget.planillaId,
-                    Lectura(instrumento: _instCtrl.text.trim(), valor: _lectCtrl.text.trim()),
+                    Lectura(
+                      instrumento: _instCtrl.text.trim(),
+                      valor: _lectCtrl.text.trim(),
+                    ),
                   );
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Lectura guardada en borrador ✅')),
+                    const SnackBar(content: Text('Lectura guardada ✅')),
                   );
                   Navigator.pop(context);
                 },
                 icon: const Icon(Icons.save),
-                label: const Text('Guardar'),
+                label: const Text('Guardar lectura'),
               ),
             ],
           ),

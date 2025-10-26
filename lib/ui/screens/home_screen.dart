@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../repositories/planillas_repository.dart';
+import 'form_screen.dart';
 import 'planillas_hub_screen.dart';
 import 'ingest_hub_screen.dart';
-import 'form_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -12,6 +12,25 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final repo = context.watch<PlanillasRepository>();
+
+    Future<void> _crearPlanillaFlow() async {
+      final result = await showDialog<Map<String, String>>(
+        context: context,
+        builder: (_) => const _NuevaPlanillaDialog(),
+      );
+
+      if (result == null) return;
+
+      final newId = context.read<PlanillasRepository>().createDraft(
+            tipoMedicion: result['instrumento']!,
+            tecnico: result['tecnico']!,
+          );
+
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => FormScreen(planillaId: newId)),
+      );
+    }
 
     return Scaffold(
       backgroundColor: Colors.grey[50],
@@ -54,16 +73,7 @@ class HomeScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 12),
                   FilledButton.icon(
-                    onPressed: () {
-                      final newId =
-                          context.read<PlanillasRepository>().createDraft();
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => FormScreen(planillaId: newId),
-                        ),
-                      );
-                    },
+                    onPressed: _crearPlanillaFlow,
                     icon: const Icon(Icons.add),
                     label: const Text('Crear planilla'),
                   ),
@@ -86,37 +96,33 @@ class HomeScreen extends StatelessWidget {
                 runSpacing: 10,
                 children: [
                   _QuickButton(
-                    icon: Icons.upload_file, // compat
+                    icon: Icons.upload_file,
                     label: 'Exportar CSV',
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) => const IngestHubScreen()),
-                      );
-                    },
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const IngestHubScreen()),
+                    ),
                   ),
                   _QuickButton(
-                    icon: Icons.camera_alt, // compat
+                    icon: Icons.camera_alt,
                     label: 'Subir captura',
-                    onTap: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Función "Subir captura" próximamente'),
-                        ),
-                      );
-                    },
+                    onTap: () => ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content:
+                            Text('Función "Subir captura" próximamente'),
+                      ),
+                    ),
                   ),
                   _QuickButton(
-                    icon: Icons.email, // compat
+                    icon: Icons.email,
                     label: 'Enviar por mail',
-                    onTap: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Función "Enviar por mail" próximamente'),
-                        ),
-                      );
-                    },
+                    onTap: () => ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content:
+                            Text('Función "Enviar por mail" próximamente'),
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -130,23 +136,15 @@ class HomeScreen extends StatelessWidget {
           ],
         ),
       ),
-
-      // FAB extra (con la misma acción de crear)
       floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          final newId = context.read<PlanillasRepository>().createDraft();
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => FormScreen(planillaId: newId)),
-          );
-        },
+        onPressed: _crearPlanillaFlow,
         child: const Icon(Icons.add),
       ),
     );
   }
 }
 
-// ---------- UI helpers ----------
+/// ---------- Widgets auxiliares ----------
 
 class _HomeCard extends StatelessWidget {
   final String title;
@@ -183,13 +181,18 @@ class _HomeCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(title,
-                style: Theme.of(context)
-                    .textTheme
-                    .titleMedium
-                    ?.copyWith(fontWeight: FontWeight.w600)),
+            Text(
+              title,
+              style: Theme.of(context)
+                  .textTheme
+                  .titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w600),
+            ),
             const SizedBox(height: 4),
-            Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
+            Text(
+              subtitle,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
             const SizedBox(height: 12),
             child,
           ],
@@ -202,7 +205,7 @@ class _HomeCard extends StatelessWidget {
 class _StatusChip extends StatelessWidget {
   final String label;
   final int value;
-  final MaterialColor color; // usamos MaterialColor para shades
+  final MaterialColor color;
 
   const _StatusChip({
     required this.label,
@@ -227,7 +230,11 @@ class _QuickButton extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
 
-  const _QuickButton({required this.icon, required this.label, required this.onTap});
+  const _QuickButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -235,6 +242,82 @@ class _QuickButton extends StatelessWidget {
       onPressed: onTap,
       icon: Icon(icon),
       label: Text(label),
+    );
+  }
+}
+
+/// ---------- Diálogo de nueva planilla ----------
+
+class _NuevaPlanillaDialog extends StatefulWidget {
+  const _NuevaPlanillaDialog();
+
+  @override
+  State<_NuevaPlanillaDialog> createState() => _NuevaPlanillaDialogState();
+}
+
+class _NuevaPlanillaDialogState extends State<_NuevaPlanillaDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _tecnicoCtrl = TextEditingController();
+  String? _instrumento;
+
+  static const _instrumentos = [
+    'Piezómetros',
+    'Freatímetro',
+    'Acelerómetro',
+    'Aforadores',
+    'Caudalímetro',
+  ];
+
+  @override
+  void dispose() {
+    _tecnicoCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Nueva planilla'),
+      content: Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            DropdownButtonFormField<String>(
+              decoration: const InputDecoration(labelText: 'Instrumento'),
+              items: _instrumentos
+                  .map((i) => DropdownMenuItem(value: i, child: Text(i)))
+                  .toList(),
+              value: _instrumento,
+              onChanged: (v) => setState(() => _instrumento = v),
+              validator: (v) => v == null ? 'Seleccione un instrumento' : null,
+            ),
+            TextFormField(
+              controller: _tecnicoCtrl,
+              decoration:
+                  const InputDecoration(labelText: 'Nombre del técnico'),
+              validator: (v) =>
+                  (v == null || v.trim().isEmpty) ? 'Requerido' : null,
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: () {
+            if (!_formKey.currentState!.validate()) return;
+            Navigator.pop(context, {
+              'instrumento': _instrumento!,
+              'tecnico': _tecnicoCtrl.text.trim(),
+            });
+          },
+          child: const Text('Crear'),
+        ),
+      ],
     );
   }
 }

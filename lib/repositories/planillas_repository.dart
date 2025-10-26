@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
-
 import '../data/models/planilla.dart';
 import '../data/models/lectura.dart';
 
@@ -10,8 +9,8 @@ class PlanillasRepository extends ChangeNotifier {
   final List<Planilla> _items = [];
 
   PlanillasRepository() {
-    // Datos de ejemplo estables
-    for (var i = 1; i <= 6; i++) {
+    // Ejemplo inicial
+    for (var i = 1; i <= 3; i++) {
       _items.add(
         Planilla(
           id: _uuid.v4(),
@@ -29,12 +28,10 @@ class PlanillasRepository extends ChangeNotifier {
     }
   }
 
-  // -------- API unificada --------
-
-  /// Crear una planilla en BORRADOR y devolver su ID
+  // Crear una nueva planilla
   String createDraft({
-    String tipoMedicion = 'Piezómetros',
-    String tecnico = 'Técnico',
+    required String tipoMedicion,
+    required String tecnico,
   }) {
     final id = _uuid.v4();
     _items.add(
@@ -42,7 +39,7 @@ class PlanillasRepository extends ChangeNotifier {
         id: id,
         tipoMedicion: tipoMedicion,
         fecha: DateTime.now(),
-        tecnico: tecnico,
+        tecnico: tecnico.isEmpty ? 'Técnico' : tecnico,
         estado: PlanillaEstado.draft,
         lecturas: <Lectura>[],
       ),
@@ -51,19 +48,14 @@ class PlanillasRepository extends ChangeNotifier {
     return id;
   }
 
+  // Accesos
   List<Planilla> all() => List.unmodifiable(_items);
-
   List<Planilla> byEstado(PlanillaEstado estado) =>
       _items.where((p) => p.estado == estado).toList();
+  Planilla? findById(String id) =>
+      _items.where((p) => p.id == id).cast<Planilla?>().firstOrNull;
 
-  Planilla? findById(String id) {
-    try {
-      return _items.firstWhere((p) => p.id == id);
-    } catch (_) {
-      return null;
-    }
-  }
-
+  // Operaciones
   void addLectura(String planillaId, Lectura lectura) {
     final p = findById(planillaId);
     if (p == null) return;
@@ -78,14 +70,20 @@ class PlanillasRepository extends ChangeNotifier {
 
     p.estado = PlanillaEstado.sending;
     notifyListeners();
-
-    // Simula envío
     await Future<void>.delayed(const Duration(seconds: 1));
     p.estado = PlanillaEstado.sent;
     notifyListeners();
   }
 
-  // Contadores para el home
+  bool deletePlanilla(String id) {
+    final idx = _items.indexWhere((p) => p.id == id);
+    if (idx == -1) return false;
+    _items.removeAt(idx);
+    notifyListeners();
+    return true;
+  }
+
+  // Contadores
   int get countDrafts => byEstado(PlanillaEstado.draft).length;
   int get countSending => byEstado(PlanillaEstado.sending).length;
   int get countSent => byEstado(PlanillaEstado.sent).length;
