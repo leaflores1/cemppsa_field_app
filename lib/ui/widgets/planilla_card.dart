@@ -11,6 +11,10 @@ class PlanillaCard extends StatelessWidget {
   final Planilla planilla;
   const PlanillaCard({super.key, required this.planilla});
 
+  bool get _esBorrador => planilla.estado == PlanillaEstado.draft;
+  bool get _enviando => planilla.estado == PlanillaEstado.sending;
+  bool get _enviada => planilla.estado == PlanillaEstado.sent;
+
   @override
   Widget build(BuildContext context) {
     final df = DateFormat('dd/MM/yyyy HH:mm');
@@ -46,8 +50,10 @@ class PlanillaCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 4),
-          Text('Fecha: ${df.format(planilla.fecha)} — Técnico: ${planilla.tecnico}',
-              style: Theme.of(context).textTheme.bodySmall),
+          Text(
+            'Fecha: ${df.format(planilla.fecha)} — Técnico: ${planilla.tecnico}',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
 
           const SizedBox(height: 12),
 
@@ -68,67 +74,109 @@ class PlanillaCard extends StatelessWidget {
 
           const Divider(height: 20),
 
-          // Botones de acción
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              FilledButton.icon(
-                icon: const Icon(Icons.add),
-                label: const Text('Agregar lectura'),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => FormScreen(planillaId: planilla.id),
-                    ),
-                  );
-                },
-              ),
-              OutlinedButton.icon(
-                icon: const Icon(Icons.edit),
-                label: const Text('Modificar lectura'),
-                onPressed: () => _editarLecturaDialog(context),
-              ),
-              FilledButton.tonalIcon(
-                icon: const Icon(Icons.send),
-                label: const Text('Enviar'),
-                onPressed: () =>
-                    context.read<PlanillasRepository>().enviarPlanilla(planilla.id),
-              ),
-              TextButton.icon(
-                icon: const Icon(Icons.delete_forever),
-                label: const Text('Eliminar planilla'),
-                onPressed: () async {
-                  final ok = await _confirm(context,
-                      '¿Eliminar planilla?', 'Se borrará definitivamente.');
-                  if (!ok) return;
-                  // ignore: use_build_context_synchronously
-                  context.read<PlanillasRepository>().deletePlanilla(planilla.id);
-                },
-              ),
-            ],
-          ),
+          // Acciones según estado
+          _acciones(context),
         ],
       ),
     );
   }
 
   Widget _lecturaTile(BuildContext context, int index, Lectura l) {
+    // En "Enviadas"/"Enviando" no se puede eliminar lectura
+    final puedeEliminar = _esBorrador;
+
     return ListTile(
       contentPadding: EdgeInsets.zero,
       dense: true,
       leading: const Icon(Icons.analytics),
-      title: Text('${l.instrumento}'),
+      title: Text(l.instrumento),
       subtitle: Text('Valor: ${l.valor}'),
-      trailing: IconButton(
-        icon: const Icon(Icons.delete),
+      trailing: puedeEliminar
+          ? IconButton(
+              icon: const Icon(Icons.delete),
+              onPressed: () async {
+                final ok =
+                    await _confirm(context, 'Eliminar lectura', '¿Eliminar esta lectura?');
+                if (!ok) return;
+                // ignore: use_build_context_synchronously
+                context.read<PlanillasRepository>().deleteLectura(planilla.id, index);
+              },
+            )
+          : null,
+    );
+  }
+
+  Widget _acciones(BuildContext context) {
+    if (_esBorrador) {
+      return Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          FilledButton.icon(
+            icon: const Icon(Icons.add),
+            label: const Text('Agregar lectura'),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => FormScreen(planillaId: planilla.id),
+                ),
+              );
+            },
+          ),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.edit),
+            label: const Text('Modificar lectura'),
+            onPressed: () => _editarLecturaDialog(context),
+          ),
+          FilledButton.tonalIcon(
+            icon: const Icon(Icons.send),
+            label: const Text('Enviar'),
+            onPressed: () =>
+                context.read<PlanillasRepository>().enviarPlanilla(planilla.id),
+          ),
+          TextButton.icon(
+            icon: const Icon(Icons.delete_forever),
+            label: const Text('Eliminar planilla'),
+            onPressed: () async {
+              final ok = await _confirm(
+                  context, '¿Eliminar planilla?', 'Se borrará definitivamente.');
+              if (!ok) return;
+              // ignore: use_build_context_synchronously
+              context.read<PlanillasRepository>().deletePlanilla(planilla.id);
+            },
+          ),
+        ],
+      );
+    }
+
+    if (_enviando) {
+      return Row(
+        children: [
+          const SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          const SizedBox(width: 10),
+          Text('Enviando...',
+              style: Theme.of(context).textTheme.bodyMedium),
+        ],
+      );
+    }
+
+    // Enviada: solo limpiar historial (eliminar planilla)
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: TextButton.icon(
+        icon: const Icon(Icons.delete_sweep),
+        label: const Text('Eliminar planilla'),
         onPressed: () async {
-          final ok =
-              await _confirm(context, 'Eliminar lectura', '¿Eliminar esta lectura?');
+          final ok = await _confirm(
+              context, 'Eliminar planilla', 'Quitar de "Enviadas"?');
           if (!ok) return;
           // ignore: use_build_context_synchronously
-          context.read<PlanillasRepository>().deleteLectura(planilla.id, index);
+          context.read<PlanillasRepository>().deletePlanilla(planilla.id);
         },
       ),
     );
@@ -220,7 +268,7 @@ class PlanillaCard extends StatelessWidget {
       ),
     );
     return ok ?? false;
-    }
+  }
 }
 
 class _EstadoChip extends StatelessWidget {

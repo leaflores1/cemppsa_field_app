@@ -28,6 +28,8 @@ class PlanillasRepository extends ChangeNotifier {
     }
   }
 
+  bool _esEditable(Planilla p) => p.estado == PlanillaEstado.draft;
+
   // -------- Crear nueva planilla en borrador --------
   String createDraft({required String tipoMedicion, required String tecnico}) {
     final id = _uuid.v4();
@@ -59,17 +61,17 @@ class PlanillasRepository extends ChangeNotifier {
     }
   }
 
-  // -------- Operaciones sobre lecturas --------
+  // -------- Operaciones sobre lecturas (solo en borrador) --------
   void addLectura(String planillaId, Lectura lectura) {
     final p = findById(planillaId);
-    if (p == null) return;
+    if (p == null || !_esEditable(p)) return;
     p.lecturas.add(lectura);
     notifyListeners();
   }
 
   void updateLectura(String planillaId, int index, Lectura updated) {
     final p = findById(planillaId);
-    if (p == null) return;
+    if (p == null || !_esEditable(p)) return;
     if (index < 0 || index >= p.lecturas.length) return;
     p.lecturas[index] = updated;
     notifyListeners();
@@ -77,7 +79,7 @@ class PlanillasRepository extends ChangeNotifier {
 
   void deleteLectura(String planillaId, int index) {
     final p = findById(planillaId);
-    if (p == null) return;
+    if (p == null || !_esEditable(p)) return;
     if (index < 0 || index >= p.lecturas.length) return;
     p.lecturas.removeAt(index);
     notifyListeners();
@@ -87,7 +89,9 @@ class PlanillasRepository extends ChangeNotifier {
   Future<void> enviarPlanilla(String id) async {
     final p = findById(id);
     if (p == null) return;
-    if (p.estado == PlanillaEstado.sent) return;
+
+    // Solo se puede enviar desde Borrador
+    if (p.estado != PlanillaEstado.draft) return;
 
     p.estado = PlanillaEstado.sending;
     notifyListeners();
@@ -99,6 +103,7 @@ class PlanillasRepository extends ChangeNotifier {
     notifyListeners();
   }
 
+  // Eliminar planilla (permitido en cualquier estado)
   bool deletePlanilla(String id) {
     final idx = _items.indexWhere((p) => p.id == id);
     if (idx == -1) return false;

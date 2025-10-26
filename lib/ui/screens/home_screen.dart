@@ -34,10 +34,22 @@ class HomeScreen extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: Colors.grey[50],
-      appBar: AppBar(
-        title: const Text('CEMPPSA Field'),
-        centerTitle: true,
-      ),
+
+      // --- APP BAR solo con el logo centrado ---
+appBar: AppBar(
+  centerTitle: true,
+  automaticallyImplyLeading: false, // oculta la flecha atrás si no la querés
+  title: Padding(
+    padding: const EdgeInsets.only(top: 12), // ajustá este valor para bajarlo
+    child: Image.asset(
+      'assets/images/cemppsa_logo.png',
+      height: 90, // ajustá el tamaño del logo
+      fit: BoxFit.contain,
+    ),
+  ),
+),
+
+
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -109,8 +121,7 @@ class HomeScreen extends StatelessWidget {
                     label: 'Subir captura',
                     onTap: () => ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                        content:
-                            Text('Función "Subir captura" próximamente'),
+                        content: Text('Función "Subir captura" próximamente'),
                       ),
                     ),
                   ),
@@ -119,8 +130,7 @@ class HomeScreen extends StatelessWidget {
                     label: 'Enviar por mail',
                     onTap: () => ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                        content:
-                            Text('Función "Enviar por mail" próximamente'),
+                        content: Text('Función "Enviar por mail" próximamente'),
                       ),
                     ),
                   ),
@@ -136,6 +146,7 @@ class HomeScreen extends StatelessWidget {
           ],
         ),
       ),
+
       floatingActionButton: FloatingActionButton(
         onPressed: _crearPlanillaFlow,
         child: const Icon(Icons.add),
@@ -144,7 +155,7 @@ class HomeScreen extends StatelessWidget {
   }
 }
 
-/// ---------- Widgets auxiliares ----------
+// ---------- UI helpers ----------
 
 class _HomeCard extends StatelessWidget {
   final String title;
@@ -181,18 +192,13 @@ class _HomeCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              title,
-              style: Theme.of(context)
-                  .textTheme
-                  .titleMedium
-                  ?.copyWith(fontWeight: FontWeight.w600),
-            ),
+            Text(title,
+                style: Theme.of(context)
+                    .textTheme
+                    .titleMedium
+                    ?.copyWith(fontWeight: FontWeight.w600)),
             const SizedBox(height: 4),
-            Text(
-              subtitle,
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
+            Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
             const SizedBox(height: 12),
             child,
           ],
@@ -246,7 +252,7 @@ class _QuickButton extends StatelessWidget {
   }
 }
 
-/// ---------- Diálogo de nueva planilla ----------
+// ---------- Diálogo de nueva planilla ----------
 
 class _NuevaPlanillaDialog extends StatefulWidget {
   const _NuevaPlanillaDialog();
@@ -257,10 +263,10 @@ class _NuevaPlanillaDialog extends StatefulWidget {
 
 class _NuevaPlanillaDialogState extends State<_NuevaPlanillaDialog> {
   final _formKey = GlobalKey<FormState>();
-  final _tecnicoCtrl = TextEditingController();
   String? _instrumento;
+  final _tecnicoCtrl = TextEditingController();
 
-  static const _instrumentos = [
+  final _instrumentos = const [
     'Piezómetros',
     'Freatímetro',
     'Acelerómetro',
@@ -277,7 +283,7 @@ class _NuevaPlanillaDialogState extends State<_NuevaPlanillaDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Nueva planilla'),
+      title: const Text('Nueva Planilla'),
       content: Form(
         key: _formKey,
         child: Column(
@@ -290,7 +296,8 @@ class _NuevaPlanillaDialogState extends State<_NuevaPlanillaDialog> {
                   .toList(),
               value: _instrumento,
               onChanged: (v) => setState(() => _instrumento = v),
-              validator: (v) => v == null ? 'Seleccione un instrumento' : null,
+              validator: (v) =>
+                  v == null ? 'Seleccione un instrumento' : null,
             ),
             TextFormField(
               controller: _tecnicoCtrl,
