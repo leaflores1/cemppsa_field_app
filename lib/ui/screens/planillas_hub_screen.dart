@@ -12,12 +12,13 @@ class PlanillasHubScreen extends StatelessWidget {
       length: 3,
       child: Scaffold(
         appBar: AppBar(
+          leading: const BackButton(), // icono de volver explícito
           title: const Text('Mis planillas'),
           bottom: const TabBar(
             tabs: [
-              Tab(icon: Icon(Icons.edit_document), text: 'Borradores'),
-              Tab(icon: Icon(Icons.cloud_upload_outlined), text: 'Enviando'),
-              Tab(icon: Icon(Icons.check_circle_outline), text: 'Enviadas'),
+              Tab(icon: Icon(Icons.edit_note),        text: 'Borradores'), // compat
+              Tab(icon: Icon(Icons.cloud_upload),     text: 'Enviando'),   // compat
+              Tab(icon: Icon(Icons.check_circle),     text: 'Enviadas'),   // compat
             ],
           ),
         ),
@@ -27,6 +28,16 @@ class PlanillasHubScreen extends StatelessWidget {
             SendingListScreen(),
             SentListScreen(),
           ],
+        ),
+        floatingActionButton: FloatingActionButton(
+          tooltip: 'Crear planilla',
+          onPressed: () {
+            // Dejamos la creación en el Home (donde está Repo/Provider a mano),
+            // o podrías inyectar repo aquí también y navegar al formulario.
+            Navigator.pop(context); // Volvemos al Home para crear desde allí, o…
+            // … si prefieres crear aquí, avísame y te paso la versión con Provider.
+          },
+          child: const Icon(Icons.add),
         ),
       ),
     );

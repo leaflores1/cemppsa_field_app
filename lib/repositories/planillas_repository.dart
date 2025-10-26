@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
+
 import '../data/models/planilla.dart';
 import '../data/models/lectura.dart';
 
@@ -29,6 +30,27 @@ class PlanillasRepository extends ChangeNotifier {
   }
 
   // -------- API unificada --------
+
+  /// Crear una planilla en BORRADOR y devolver su ID
+  String createDraft({
+    String tipoMedicion = 'Piezómetros',
+    String tecnico = 'Técnico',
+  }) {
+    final id = _uuid.v4();
+    _items.add(
+      Planilla(
+        id: id,
+        tipoMedicion: tipoMedicion,
+        fecha: DateTime.now(),
+        tecnico: tecnico,
+        estado: PlanillaEstado.draft,
+        lecturas: <Lectura>[],
+      ),
+    );
+    notifyListeners();
+    return id;
+  }
+
   List<Planilla> all() => List.unmodifiable(_items);
 
   List<Planilla> byEstado(PlanillaEstado estado) =>

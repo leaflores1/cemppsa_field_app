@@ -7,7 +7,10 @@ class IngestHubScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Enviar desde otra fuente')),
+      appBar: AppBar(
+        leading: const BackButton(),
+        title: const Text('Enviar desde otra fuente'),
+      ),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Wrap(
@@ -19,17 +22,17 @@ class IngestHubScreen extends StatelessWidget {
                 context,
                 MaterialPageRoute(builder: (_) => const ExportCsvScreen()),
               ),
-              icon: const Icon(Icons.file_upload_outlined),
+              icon: const Icon(Icons.upload_file), // compat
               label: const Text('Exportar CSV'),
             ),
             FilledButton.tonalIcon(
               onPressed: () => _soon(context),
-              icon: const Icon(Icons.cloud_upload_outlined),
+              icon: const Icon(Icons.camera_alt), // compat
               label: const Text('Subir captura/foto'),
             ),
             FilledButton.tonalIcon(
               onPressed: () => _soon(context),
-              icon: const Icon(Icons.email_outlined),
+              icon: const Icon(Icons.email), // compat
               label: const Text('Enviar por mail'),
             ),
           ],

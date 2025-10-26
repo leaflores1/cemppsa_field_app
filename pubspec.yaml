@@ -6,6 +6,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+    uses-material-design: true
   hive: ^2.2.3
   hive_flutter: ^1.1.0
   path_provider: ^2.1.5

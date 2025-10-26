@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-
 import '../../repositories/planillas_repository.dart';
 
 class ExportCsvScreen extends StatefulWidget {
@@ -19,16 +18,23 @@ class _ExportCsvScreenState extends State<ExportCsvScreen> {
     final items = repo.all();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Exportar CSV')),
+      appBar: AppBar(
+        leading: const BackButton(),
+        title: const Text('Exportar CSV'),
+      ),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             DropdownButtonFormField<String>(
               value: _selectedId,
               decoration: const InputDecoration(labelText: 'Elegir planilla'),
               items: items
-                  .map((p) => DropdownMenuItem(value: p.id, child: Text('${p.tipoMedicion} - ${p.tecnico}')))
+                  .map((p) => DropdownMenuItem(
+                        value: p.id,
+                        child: Text('${p.tipoMedicion} - ${p.tecnico}'),
+                      ))
                   .toList(),
               onChanged: (v) => setState(() => _selectedId = v),
             ),
@@ -42,7 +48,7 @@ class _ExportCsvScreenState extends State<ExportCsvScreen> {
                       );
                     },
               icon: const Icon(Icons.download),
-              label: const Text('Generar CSV'),
+              label: const Text('Generar/Descargar CSV'),
             ),
           ],
         ),

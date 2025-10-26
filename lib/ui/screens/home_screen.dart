@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
 import '../../repositories/planillas_repository.dart';
 import 'planillas_hub_screen.dart';
 import 'ingest_hub_screen.dart';
+import 'form_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -26,24 +28,44 @@ class HomeScreen extends StatelessWidget {
               title: 'Mis planillas',
               subtitle:
                   'Accedé a tus planillas guardadas, enviadas o en progreso.',
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _StatusChip(
-                    label: 'Borradores',
-                    value: repo.countDrafts,
-                    color: Colors.grey,
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _StatusChip(
+                        label: 'Borradores',
+                        value: repo.countDrafts,
+                        color: Colors.grey,
+                      ),
+                      _StatusChip(
+                        label: 'Enviando',
+                        value: repo.countSending,
+                        color: Colors.orange,
+                      ),
+                      _StatusChip(
+                        label: 'Enviadas',
+                        value: repo.countSent,
+                        color: Colors.green,
+                      ),
+                    ],
                   ),
-                  _StatusChip(
-                    label: 'Enviando',
-                    value: repo.countSending,
-                    color: Colors.orange,
-                  ),
-                  _StatusChip(
-                    label: 'Enviadas',
-                    value: repo.countSent,
-                    color: Colors.green,
+                  const SizedBox(height: 12),
+                  FilledButton.icon(
+                    onPressed: () {
+                      final newId =
+                          context.read<PlanillasRepository>().createDraft();
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => FormScreen(planillaId: newId),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.add),
+                    label: const Text('Crear planilla'),
                   ),
                 ],
               ),
@@ -57,23 +79,25 @@ class HomeScreen extends StatelessWidget {
             const SizedBox(height: 24),
             _HomeCard(
               title: 'Enviar desde otra fuente',
-              subtitle: 'Exportá o enviá datos manualmente: CSV, fotos o email.',
+              subtitle:
+                  'Exportá o enviá datos manualmente: CSV, fotos o email.',
               child: Wrap(
                 spacing: 10,
                 runSpacing: 10,
                 children: [
                   _QuickButton(
-                    icon: Icons.file_upload_outlined,
+                    icon: Icons.upload_file, // compat
                     label: 'Exportar CSV',
                     onTap: () {
                       Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (_) => const IngestHubScreen()),
+                        MaterialPageRoute(
+                            builder: (_) => const IngestHubScreen()),
                       );
                     },
                   ),
                   _QuickButton(
-                    icon: Icons.cloud_upload_outlined,
+                    icon: Icons.camera_alt, // compat
                     label: 'Subir captura',
                     onTap: () {
                       ScaffoldMessenger.of(context).showSnackBar(
@@ -84,7 +108,7 @@ class HomeScreen extends StatelessWidget {
                     },
                   ),
                   _QuickButton(
-                    icon: Icons.email_outlined,
+                    icon: Icons.email, // compat
                     label: 'Enviar por mail',
                     onTap: () {
                       ScaffoldMessenger.of(context).showSnackBar(
@@ -105,6 +129,18 @@ class HomeScreen extends StatelessWidget {
             ),
           ],
         ),
+      ),
+
+      // FAB extra (con la misma acción de crear)
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          final newId = context.read<PlanillasRepository>().createDraft();
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => FormScreen(planillaId: newId)),
+          );
+        },
+        child: const Icon(Icons.add),
       ),
     );
   }
