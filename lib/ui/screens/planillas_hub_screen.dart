@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
-import 'drafts_grid_screen.dart';
-import 'sending_list_screen.dart';
-import 'sent_list_screen.dart';
+import 'package:provider/provider.dart';
+
+import '../../repositories/planillas_repository.dart';
+import '../../data/models/planilla.dart';
+import '../widgets/planilla_card.dart';
 
 class PlanillasHubScreen extends StatelessWidget {
   const PlanillasHubScreen({super.key});
@@ -12,34 +14,51 @@ class PlanillasHubScreen extends StatelessWidget {
       length: 3,
       child: Scaffold(
         appBar: AppBar(
-          leading: const BackButton(), // icono de volver explícito
           title: const Text('Mis planillas'),
           bottom: const TabBar(
             tabs: [
-              Tab(icon: Icon(Icons.edit_note),        text: 'Borradores'), // compat
-              Tab(icon: Icon(Icons.cloud_upload),     text: 'Enviando'),   // compat
-              Tab(icon: Icon(Icons.check_circle),     text: 'Enviadas'),   // compat
+              Tab(text: 'Borradores'),
+              Tab(text: 'Enviando'),
+              Tab(text: 'Enviadas'),
             ],
           ),
         ),
         body: const TabBarView(
           children: [
-            DraftsGridScreen(),
-            SendingListScreen(),
-            SentListScreen(),
+            _EstadoList(estado: PlanillaEstado.draft),
+            _EstadoList(estado: PlanillaEstado.sending),
+            _EstadoList(estado: PlanillaEstado.sent),
           ],
         ),
-        floatingActionButton: FloatingActionButton(
-          tooltip: 'Crear planilla',
-          onPressed: () {
-            // Dejamos la creación en el Home (donde está Repo/Provider a mano),
-            // o podrías inyectar repo aquí también y navegar al formulario.
-            Navigator.pop(context); // Volvemos al Home para crear desde allí, o…
-            // … si prefieres crear aquí, avísame y te paso la versión con Provider.
-          },
-          child: const Icon(Icons.add),
-        ),
       ),
+    );
+  }
+}
+
+class _EstadoList extends StatelessWidget {
+  final PlanillaEstado estado;
+  const _EstadoList({required this.estado});
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<PlanillasRepository>(
+      builder: (_, repo, __) {
+        final items = repo.byEstado(estado);
+        if (items.isEmpty) {
+          final vacio = switch (estado) {
+            PlanillaEstado.draft => 'No hay borradores.',
+            PlanillaEstado.sending => 'Nada enviándose ahora.',
+            PlanillaEstado.sent => 'Aún no hay planillas enviadas.',
+          };
+          return Center(child: Text(vacio));
+        }
+
+        return ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: items.length,
+          itemBuilder: (_, i) => PlanillaCard(planilla: items[i]),
+        );
+      },
     );
   }
 }

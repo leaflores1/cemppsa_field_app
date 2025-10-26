@@ -4,50 +4,55 @@ import 'package:provider/provider.dart';
 import '../../repositories/planillas_repository.dart';
 import '../../data/models/planilla.dart';
 import '../widgets/planilla_card.dart';
-import 'planilla_detail_screen.dart';
 
+/// Pantalla reutilizable para listar planillas por estado.
+/// Acepta [estado] (por defecto: draft) y un callback [onTap] opcional.
 class DraftsGridScreen extends StatelessWidget {
-  const DraftsGridScreen({super.key});
+  final PlanillaEstado estado;
+  final void Function(Planilla)? onTap;
+
+  const DraftsGridScreen({
+    super.key,
+    this.estado = PlanillaEstado.draft,
+    this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final repo = context.watch<PlanillasRepository>();
-    final items = repo.byEstado(PlanillaEstado.draft);
+    final titulo = switch (estado) {
+      PlanillaEstado.draft => 'Borradores',
+      PlanillaEstado.sending => 'Enviando',
+      PlanillaEstado.sent => 'Enviadas',
+    };
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Borradores')),
-      body: Padding(
-        padding: const EdgeInsets.all(12),
-        child: items.isEmpty
-            ? const Center(
-                child: Text('No hay planillas en estado "Borradores".'),
-              )
-            : GridView.builder(
-                itemCount: items.length,
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  mainAxisSpacing: 12,
-                  crossAxisSpacing: 12,
-                  childAspectRatio: 0.95,
-                ),
-                itemBuilder: (context, i) {
-                  final p = items[i];
-                  return PlanillaCard(
-                    planilla: p,
-                    estado: 'Borrador', // parámetro agregado correctamente
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => PlanillaDetailScreen(
-                            planillaId: p.id,
-                          ),
-                        ),
-                      );
-                    },
-                  );
-                },
-              ),
+      appBar: AppBar(title: Text(titulo)),
+      body: Consumer<PlanillasRepository>(
+        builder: (_, repo, __) {
+          final items = repo.byEstado(estado);
+
+          if (items.isEmpty) {
+            final vacio = switch (estado) {
+              PlanillaEstado.draft => 'No hay borradores.',
+              PlanillaEstado.sending => 'Nada enviándose ahora.',
+              PlanillaEstado.sent => 'Aún no hay planillas enviadas.',
+            };
+            return Center(child: Text(vacio));
+          }
+
+          // Si querés grid, podés cambiar por GridView.builder con crossAxisCount dinámico.
+          return ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: items.length,
+            itemBuilder: (_, i) {
+              final p = items[i];
+              return InkWell(
+                onTap: onTap != null ? () => onTap!(p) : null,
+                child: PlanillaCard(planilla: p),
+              );
+            },
+          );
+        },
       ),
     );
   }

@@ -9,12 +9,12 @@ class PlanillasRepository extends ChangeNotifier {
   final List<Planilla> _items = [];
 
   PlanillasRepository() {
-    // Ejemplo inicial
+    // Semilla de ejemplo
     for (var i = 1; i <= 3; i++) {
       _items.add(
         Planilla(
           id: _uuid.v4(),
-          tipoMedicion: i.isOdd ? 'Piezómetros' : 'Freatímetros',
+          tipoMedicion: i.isOdd ? 'Piezómetros' : 'Freatímetro',
           fecha: DateTime.now().subtract(Duration(days: i)),
           tecnico: 'Tec. $i',
           estado: i == 1
@@ -28,11 +28,8 @@ class PlanillasRepository extends ChangeNotifier {
     }
   }
 
-  // Crear una nueva planilla
-  String createDraft({
-    required String tipoMedicion,
-    required String tecnico,
-  }) {
+  // -------- Crear nueva planilla en borrador --------
+  String createDraft({required String tipoMedicion, required String tecnico}) {
     final id = _uuid.v4();
     _items.add(
       Planilla(
@@ -48,14 +45,21 @@ class PlanillasRepository extends ChangeNotifier {
     return id;
   }
 
-  // Accesos
+  // -------- Queries --------
   List<Planilla> all() => List.unmodifiable(_items);
+
   List<Planilla> byEstado(PlanillaEstado estado) =>
       _items.where((p) => p.estado == estado).toList();
-  Planilla? findById(String id) =>
-      _items.where((p) => p.id == id).cast<Planilla?>().firstOrNull;
 
-  // Operaciones
+  Planilla? findById(String id) {
+    try {
+      return _items.firstWhere((p) => p.id == id);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // -------- Operaciones sobre lecturas --------
   void addLectura(String planillaId, Lectura lectura) {
     final p = findById(planillaId);
     if (p == null) return;
@@ -63,6 +67,23 @@ class PlanillasRepository extends ChangeNotifier {
     notifyListeners();
   }
 
+  void updateLectura(String planillaId, int index, Lectura updated) {
+    final p = findById(planillaId);
+    if (p == null) return;
+    if (index < 0 || index >= p.lecturas.length) return;
+    p.lecturas[index] = updated;
+    notifyListeners();
+  }
+
+  void deleteLectura(String planillaId, int index) {
+    final p = findById(planillaId);
+    if (p == null) return;
+    if (index < 0 || index >= p.lecturas.length) return;
+    p.lecturas.removeAt(index);
+    notifyListeners();
+  }
+
+  // -------- Envío / Sync --------
   Future<void> enviarPlanilla(String id) async {
     final p = findById(id);
     if (p == null) return;
@@ -70,7 +91,10 @@ class PlanillasRepository extends ChangeNotifier {
 
     p.estado = PlanillaEstado.sending;
     notifyListeners();
-    await Future<void>.delayed(const Duration(seconds: 1));
+
+    // Simulación de envío (3s para que la veas en "Enviando")
+    await Future<void>.delayed(const Duration(seconds: 3));
+
     p.estado = PlanillaEstado.sent;
     notifyListeners();
   }
@@ -83,7 +107,7 @@ class PlanillasRepository extends ChangeNotifier {
     return true;
   }
 
-  // Contadores
+  // -------- Contadores para el Home --------
   int get countDrafts => byEstado(PlanillaEstado.draft).length;
   int get countSending => byEstado(PlanillaEstado.sending).length;
   int get countSent => byEstado(PlanillaEstado.sent).length;
