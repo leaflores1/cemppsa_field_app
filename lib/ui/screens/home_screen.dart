@@ -5,9 +5,11 @@ import '../../repositories/planillas_repository.dart';
 import 'form_screen.dart';
 import 'planillas_hub_screen.dart';
 import 'ingest_hub_screen.dart';
+import '../widgets/connectivity_banner.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
+  
 
   @override
   Widget build(BuildContext context) {
@@ -52,6 +54,7 @@ appBar: AppBar(
 
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
+        
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -62,6 +65,8 @@ appBar: AppBar(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  const ConnectivityBanner(),
+                  const SizedBox(height: 8),
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
@@ -99,6 +104,7 @@ appBar: AppBar(
               },
             ),
             const SizedBox(height: 24),
+            
             _HomeCard(
               title: 'Enviar desde otra fuente',
               subtitle:

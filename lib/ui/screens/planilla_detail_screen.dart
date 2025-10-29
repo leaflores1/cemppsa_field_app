@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../repositories/planillas_repository.dart';
 import '../../data/models/lectura.dart';
 import '../../data/models/planilla.dart';
+import '../../utils/csv_exporter.dart';
 
 class PlanillaDetailScreen extends StatelessWidget {
   final String planillaId;
@@ -56,11 +57,16 @@ class PlanillaDetailScreen extends StatelessWidget {
             estado: p.estado,
           ),
           const SizedBox(height: 16),
+
           Text(
             'Lecturas',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+            style: Theme.of(context)
+                .textTheme
+                .titleMedium
+                ?.copyWith(fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 8),
+
           if (p.lecturas.isEmpty)
             Container(
               padding: const EdgeInsets.all(16),
@@ -105,6 +111,7 @@ class PlanillaDetailScreen extends StatelessWidget {
                 ],
               ),
             ),
+
           const SizedBox(height: 16),
 
           // Acciones según estado
@@ -122,14 +129,16 @@ class PlanillaDetailScreen extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             FilledButton.icon(
-              onPressed: p.lecturas.isEmpty ? null : () async {
-                await repo.enviarPlanilla(p.id);
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Planilla enviada')),
-                  );
-                }
-              },
+              onPressed: p.lecturas.isEmpty
+                  ? null
+                  : () async {
+                      await repo.enviarPlanilla(p.id);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Planilla enviada')),
+                        );
+                      }
+                    },
               icon: const Icon(Icons.send),
               label: const Text('Enviar'),
             ),
@@ -137,28 +146,58 @@ class PlanillaDetailScreen extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: _boxDecoration(context),
-              child: Row(
-                children: const [
+              child: const Row(
+                children: [
                   Icon(Icons.lock_outline),
                   SizedBox(width: 8),
-                  Expanded(child: Text('Esta planilla es de solo lectura (enviada).')),
+                  Expanded(
+                    child: Text(
+                      'Esta planilla es de solo lectura (enviada).',
+                    ),
+                  ),
                 ],
               ),
             ),
+
+          // Exportar CSV (siempre visible)
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: () async {
+              final uri = await CsvExporter.exportPlanilla(p);
+              if (context.mounted) {
+                final loc = uri?.toString() ?? 'ubicación desconocida';
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('CSV exportado en: $loc')),
+                );
+              }
+            },
+            icon: const Icon(Icons.download),
+            label: const Text('Exportar CSV'),
+          ),
         ],
       ),
     );
   }
 
-  static Future<bool> _confirm(BuildContext context, String title, String msg) async {
+  static Future<bool> _confirm(
+    BuildContext context,
+    String title,
+    String msg,
+  ) async {
     final res = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
         title: Text(title),
         content: Text(msg),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Aceptar')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Aceptar'),
+          ),
         ],
       ),
     );
@@ -182,14 +221,21 @@ class _HeaderTile extends StatelessWidget {
   final String title;
   final String subtitle;
   final PlanillaEstado estado;
-  const _HeaderTile({required this.title, required this.subtitle, required this.estado});
+  const _HeaderTile({
+    required this.title,
+    required this.subtitle,
+    required this.estado,
+  });
 
   @override
   Widget build(BuildContext context) {
     final (bg, fg, label) = switch (estado) {
-      PlanillaEstado.draft => (Colors.grey.shade100, Colors.grey.shade800, 'Borrador'),
-      PlanillaEstado.sending => (Colors.orange.shade100, Colors.orange.shade800, 'Enviando'),
-      PlanillaEstado.sent => (Colors.green.shade100, Colors.green.shade800, 'Enviada'),
+      PlanillaEstado.draft =>
+        (Colors.grey.shade100, Colors.grey.shade800, 'Borrador'),
+      PlanillaEstado.sending =>
+        (Colors.orange.shade100, Colors.orange.shade800, 'Enviando'),
+      PlanillaEstado.sent =>
+        (Colors.green.shade100, Colors.green.shade800, 'Enviada'),
     };
 
     return Container(
@@ -201,11 +247,13 @@ class _HeaderTile extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title,
-                    style: Theme.of(context)
-                        .textTheme
-                        .titleLarge
-                        ?.copyWith(fontWeight: FontWeight.w700)),
+                Text(
+                  title,
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleLarge
+                      ?.copyWith(fontWeight: FontWeight.w700),
+                ),
                 const SizedBox(height: 6),
                 Text(subtitle, style: Theme.of(context).textTheme.bodyMedium),
               ],
@@ -213,9 +261,16 @@ class _HeaderTile extends StatelessWidget {
           ),
           const SizedBox(width: 12),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(999)),
-            child: Text(label, style: TextStyle(color: fg, fontWeight: FontWeight.w600)),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: bg,
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              label,
+              style: TextStyle(color: fg, fontWeight: FontWeight.w600),
+            ),
           ),
         ],
       ),
@@ -241,15 +296,24 @@ class _LecturaTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListTile(
-      title: Text(lectura.instrumento, style: const TextStyle(fontWeight: FontWeight.w600)),
+      title: Text(
+        lectura.instrumento,
+        style: const TextStyle(fontWeight: FontWeight.w600),
+      ),
       subtitle: Text('Valor: ${lectura.valor}'),
       trailing: readOnly
           ? const Icon(Icons.lock_outline)
           : Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                IconButton(onPressed: onEdit, icon: const Icon(Icons.edit_outlined)),
-                IconButton(onPressed: onDelete, icon: const Icon(Icons.delete_outline)),
+                IconButton(
+                  onPressed: onEdit,
+                  icon: const Icon(Icons.edit_outlined),
+                ),
+                IconButton(
+                  onPressed: onDelete,
+                  icon: const Icon(Icons.delete_outline),
+                ),
               ],
             ),
     );
@@ -273,7 +337,8 @@ class _LecturaDialogState extends State<_LecturaDialog> {
   @override
   void initState() {
     super.initState();
-    _instCtrl = TextEditingController(text: widget.initial?.instrumento ?? '');
+    _instCtrl =
+        TextEditingController(text: widget.initial?.instrumento ?? '');
     _valorCtrl = TextEditingController(text: widget.initial?.valor ?? '');
   }
 
@@ -297,28 +362,37 @@ class _LecturaDialogState extends State<_LecturaDialog> {
             children: [
               TextFormField(
                 controller: _instCtrl,
-                decoration: const InputDecoration(labelText: 'Instrumento'),
-                validator: (v) => (v == null || v.trim().isEmpty) ? 'Requerido' : null,
+                decoration:
+                    const InputDecoration(labelText: 'Instrumento'),
+                validator: (v) =>
+                    (v == null || v.trim().isEmpty) ? 'Requerido' : null,
               ),
               const SizedBox(height: 12),
               TextFormField(
                 controller: _valorCtrl,
                 decoration: const InputDecoration(labelText: 'Valor'),
                 keyboardType: TextInputType.number,
-                validator: (v) => (v == null || v.trim().isEmpty) ? 'Requerido' : null,
+                validator: (v) =>
+                    (v == null || v.trim().isEmpty) ? 'Requerido' : null,
               ),
             ],
           ),
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancelar'),
+        ),
         FilledButton(
           onPressed: () {
             if (!_formKey.currentState!.validate()) return;
             Navigator.pop(
               context,
-              Lectura(instrumento: _instCtrl.text.trim(), valor: _valorCtrl.text.trim()),
+              Lectura(
+                instrumento: _instCtrl.text.trim(),
+                valor: _valorCtrl.text.trim(),
+              ),
             );
           },
           child: const Text('Guardar'),

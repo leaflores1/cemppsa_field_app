@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'repositories/planillas_repository.dart';
 import 'ui/screens/home_screen.dart';
+import 'services/connectivity_status.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -13,8 +14,11 @@ class CemppsaApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => PlanillasRepository(),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => PlanillasRepository()),
+        ChangeNotifierProvider(create: (_) => ConnectivityStatus()..init()),
+      ],
       child: MaterialApp(
         title: 'CEMPPSA Field',
         debugShowCheckedModeBanner: false,

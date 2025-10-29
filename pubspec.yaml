@@ -1,7 +1,6 @@
 name: cemppsa_field_app
 description: App de campo CEMPPSA (offline + sync)
-
-publish_to: "none"  # evita que se publique por error en pub.dev
+publish_to: "none"
 
 version: 1.0.0+1
 
@@ -21,10 +20,14 @@ dependencies:
   hive: ^2.2.3
   hive_flutter: ^1.1.0
   path_provider: ^2.1.5
+  path: ^1.9.0            # ← agrega esto
 
   # --- Conectividad / API ---
   connectivity_plus: ^6.0.3
   http: ^1.2.2
+
+  # --- Export / apertura de archivos ---
+  open_filex: ^4.5.0
 
 dev_dependencies:
   flutter_test:
@@ -34,4 +37,4 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
-      - assets/images/cemppsa_logo.png
+    - assets/images/cemppsa_logo.png
