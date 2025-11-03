@@ -295,12 +295,16 @@ class _LecturaTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final df = DateFormat('dd/MM/yyyy HH:mm');
     return ListTile(
       title: Text(
-        lectura.instrumento,
+        '${lectura.instrumento}  •  ${lectura.parametro} (${lectura.unidad})',
         style: const TextStyle(fontWeight: FontWeight.w600),
       ),
-      subtitle: Text('Valor: ${lectura.valor}'),
+      subtitle: Text(
+        'Valor: ${lectura.valor}   •   Medido: ${df.format(lectura.fecha)}'
+        '${(lectura.notas == null || lectura.notas!.isEmpty) ? '' : '   •   Notas: ${lectura.notas}'}',
+      ),
       trailing: readOnly
           ? const Icon(Icons.lock_outline)
           : Row(
@@ -331,21 +335,32 @@ class _LecturaDialog extends StatefulWidget {
 
 class _LecturaDialogState extends State<_LecturaDialog> {
   final _formKey = GlobalKey<FormState>();
+
   late final TextEditingController _instCtrl;
   late final TextEditingController _valorCtrl;
+  late final TextEditingController _notasCtrl;
+  String _parametro = 'nivel';
+  String _unidad = 'm';
 
   @override
   void initState() {
     super.initState();
-    _instCtrl =
-        TextEditingController(text: widget.initial?.instrumento ?? '');
-    _valorCtrl = TextEditingController(text: widget.initial?.valor ?? '');
+    _instCtrl = TextEditingController(text: widget.initial?.instrumento ?? '');
+    _valorCtrl = TextEditingController(
+      text: widget.initial?.valor == null
+          ? ''
+          : widget.initial!.valor.toString(),
+    );
+    _notasCtrl = TextEditingController(text: widget.initial?.notas ?? '');
+    _parametro = widget.initial?.parametro ?? 'nivel';
+    _unidad = widget.initial?.unidad ?? 'm';
   }
 
   @override
   void dispose() {
     _instCtrl.dispose();
     _valorCtrl.dispose();
+    _notasCtrl.dispose();
     super.dispose();
   }
 
@@ -356,24 +371,62 @@ class _LecturaDialogState extends State<_LecturaDialog> {
       content: Form(
         key: _formKey,
         child: SizedBox(
-          width: 360,
+          width: 380,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextFormField(
                 controller: _instCtrl,
                 decoration:
-                    const InputDecoration(labelText: 'Instrumento'),
+                    const InputDecoration(labelText: 'Código del instrumento'),
                 validator: (v) =>
                     (v == null || v.trim().isEmpty) ? 'Requerido' : null,
               ),
               const SizedBox(height: 12),
+
+              DropdownButtonFormField<String>(
+                value: _parametro,
+                decoration: const InputDecoration(labelText: 'Parámetro'),
+                items: const [
+                  DropdownMenuItem(value: 'nivel', child: Text('nivel')),
+                  DropdownMenuItem(value: 'presion', child: Text('presion')),
+                  DropdownMenuItem(value: 'caudal', child: Text('caudal')),
+                  DropdownMenuItem(value: 'temperatura', child: Text('temperatura')),
+                ],
+                onChanged: (v) => setState(() => _parametro = v ?? 'nivel'),
+              ),
+              const SizedBox(height: 12),
+
+              DropdownButtonFormField<String>(
+                value: _unidad,
+                decoration: const InputDecoration(labelText: 'Unidad'),
+                items: const [
+                  DropdownMenuItem(value: 'm', child: Text('m')),
+                  DropdownMenuItem(value: 'cm', child: Text('cm')),
+                  DropdownMenuItem(value: 'mm', child: Text('mm')),
+                  DropdownMenuItem(value: '°C', child: Text('°C')),
+                  DropdownMenuItem(value: 'm3/s', child: Text('m3/s')),
+                ],
+                onChanged: (v) => setState(() => _unidad = v ?? 'm'),
+              ),
+              const SizedBox(height: 12),
+
               TextFormField(
                 controller: _valorCtrl,
                 decoration: const InputDecoration(labelText: 'Valor'),
                 keyboardType: TextInputType.number,
-                validator: (v) =>
-                    (v == null || v.trim().isEmpty) ? 'Requerido' : null,
+                validator: (v) {
+                  if (v == null || v.trim().isEmpty) return 'Requerido';
+                  final x = double.tryParse(v.replaceAll(',', '.'));
+                  if (x == null) return 'Número inválido';
+                  return null;
+                },
+              ),
+              const SizedBox(height: 12),
+
+              TextFormField(
+                controller: _notasCtrl,
+                decoration: const InputDecoration(labelText: 'Notas (opcional)'),
               ),
             ],
           ),
@@ -387,11 +440,19 @@ class _LecturaDialogState extends State<_LecturaDialog> {
         FilledButton(
           onPressed: () {
             if (!_formKey.currentState!.validate()) return;
+            final valorNum =
+                double.parse(_valorCtrl.text.replaceAll(',', '.'));
             Navigator.pop(
               context,
               Lectura(
                 instrumento: _instCtrl.text.trim(),
-                valor: _valorCtrl.text.trim(),
+                parametro: _parametro,
+                unidad: _unidad,
+                valor: valorNum,
+                fecha: widget.initial?.fecha ?? DateTime.now(),
+                notas: _notasCtrl.text.trim().isEmpty
+                    ? null
+                    : _notasCtrl.text.trim(),
               ),
             );
           },

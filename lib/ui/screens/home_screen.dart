@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../repositories/planillas_repository.dart';
+import '../../services/offline_storage.dart';
 import 'form_screen.dart';
 import 'planillas_hub_screen.dart';
 import 'ingest_hub_screen.dart';
@@ -9,7 +10,6 @@ import '../widgets/connectivity_banner.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
-  
 
   @override
   Widget build(BuildContext context) {
@@ -38,23 +38,21 @@ class HomeScreen extends StatelessWidget {
       backgroundColor: Colors.grey[50],
 
       // --- APP BAR solo con el logo centrado ---
-appBar: AppBar(
-  centerTitle: true,
-  automaticallyImplyLeading: false, // oculta la flecha atrás si no la querés
-  title: Padding(
-    padding: const EdgeInsets.only(top: 12), // ajustá este valor para bajarlo
-    child: Image.asset(
-      'assets/images/cemppsa_logo.png',
-      height: 90, // ajustá el tamaño del logo
-      fit: BoxFit.contain,
-    ),
-  ),
-),
-
+      appBar: AppBar(
+        centerTitle: true,
+        automaticallyImplyLeading: false,
+        title: Padding(
+          padding: const EdgeInsets.only(top: 12),
+          child: Image.asset(
+            'assets/images/cemppsa_logo.png',
+            height: 90,
+            fit: BoxFit.contain,
+          ),
+        ),
+      ),
 
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
-        
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -104,7 +102,7 @@ appBar: AppBar(
               },
             ),
             const SizedBox(height: 24),
-            
+
             _HomeCard(
               title: 'Enviar desde otra fuente',
               subtitle:
@@ -153,9 +151,31 @@ appBar: AppBar(
         ),
       ),
 
-      floatingActionButton: FloatingActionButton(
-        onPressed: _crearPlanillaFlow,
-        child: const Icon(Icons.add),
+      // --- Floating buttons (Agregar planilla + Limpiar outbox) ---
+      floatingActionButton: Column(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          FloatingActionButton(
+            heroTag: "btn1",
+            onPressed: _crearPlanillaFlow,
+            child: const Icon(Icons.add),
+          ),
+          const SizedBox(height: 12),
+          FloatingActionButton(
+            heroTag: "btn2",
+            backgroundColor: Colors.redAccent,
+            tooltip: 'Limpiar outbox (cola offline)',
+            onPressed: () async {
+              final offline = context.read<OfflineStorage>();
+              await offline.clear();
+              // ignore: use_build_context_synchronously
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Outbox limpiado ✅')),
+              );
+            },
+            child: const Icon(Icons.delete_forever),
+          ),
+        ],
       ),
     );
   }

@@ -1,38 +1,30 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../services/connectivity_status.dart';
+import 'package:cemppsa_field_app/services/network_manager.dart';
 
 class ConnectivityBanner extends StatelessWidget {
   const ConnectivityBanner({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final online = context.watch<ConnectivityStatus>().online;
+    final net = context.watch<NetworkManager>();
+    final online = net.isOnline;
+    final base = net.currentBaseUrl ?? 'sin servidor';
 
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 250),
+    final bg = online ? Colors.green.shade100 : Colors.red.shade100;
+    final fg = online ? Colors.green.shade800 : Colors.red.shade800;
+    final icon = online ? Icons.wifi : Icons.wifi_off;
+    final text = online ? 'Conectado · $base' : 'Sin conexión. Trabajás offline';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: online ? Colors.green[50] : Colors.red[50],
-        border: Border.all(color: online ? Colors.green : Colors.red),
-        borderRadius: BorderRadius.circular(12),
-      ),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(8)),
       child: Row(
         children: [
-          Icon(online ? Icons.wifi : Icons.wifi_off,
-              color: online ? Colors.green : Colors.red),
+          Icon(icon, color: fg),
           const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              online
-                  ? 'Conectado'
-                  : 'Sin conexión. Los envíos quedarán pendientes.',
-              style: TextStyle(
-                color: online ? Colors.green[900] : Colors.red[900],
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
+          Expanded(child: Text(text, style: TextStyle(color: fg, fontWeight: FontWeight.w600))),
         ],
       ),
     );

@@ -1,0 +1,9 @@
+class AppConfig {
+  static const candidateBaseUrls = [
+    'http://192.168.113.135:8000',
+  ];
+
+  static const healthPath = '/health';  // ✅ FastAPI lo tiene y responde 200
+  static const apiSyncPath = '/api/v1/sync';
+  static const httpTimeout = Duration(seconds: 5);
+}

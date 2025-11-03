@@ -1,33 +1,39 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
+import 'services/offline_storage.dart';
+import 'services/network_manager.dart';
 import 'repositories/planillas_repository.dart';
+import 'services/sync_service.dart';
 import 'ui/screens/home_screen.dart';
-import 'services/connectivity_status.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const CemppsaApp());
-}
 
-class CemppsaApp extends StatelessWidget {
-  const CemppsaApp({super.key});
+  final offline = OfflineStorage();
+  await offline.init();
 
-  @override
-  Widget build(BuildContext context) {
-    return MultiProvider(
+  final net = NetworkManager();
+  await net.start();
+
+  // Construí primero el repo para poder pasárselo al SyncService
+  final repo = PlanillasRepository(net: net, offline: offline);
+
+  final sync = SyncService(net: net, offline: offline, repo: repo);
+  sync.start();
+
+  runApp(
+    MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => PlanillasRepository()),
-        ChangeNotifierProvider(create: (_) => ConnectivityStatus()..init()),
+        Provider<OfflineStorage>.value(value: offline),
+        ChangeNotifierProvider<NetworkManager>.value(value: net),
+        ChangeNotifierProvider<PlanillasRepository>.value(value: repo),
+        Provider<SyncService>.value(value: sync),
       ],
-      child: MaterialApp(
-        title: 'CEMPPSA Field',
+      child: const MaterialApp(
         debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          useMaterial3: true,
-          colorSchemeSeed: Colors.indigo,
-        ),
-        home: const HomeScreen(),
+        home: HomeScreen(),
       ),
-    );
-  }
+    ),
+  );
 }

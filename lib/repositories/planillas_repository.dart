@@ -1,30 +1,50 @@
 import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
+import 'package:http/http.dart' as http;
+
 import '../data/models/planilla.dart';
 import '../data/models/lectura.dart';
+import '../services/network_manager.dart';
+import '../services/offline_storage.dart';
+import '../config/app_config.dart';
 
 class PlanillasRepository extends ChangeNotifier {
   final _uuid = const Uuid();
   final List<Planilla> _items = [];
 
-  PlanillasRepository() {
-    // Semilla de ejemplo
-    for (var i = 1; i <= 3; i++) {
-      _items.add(
-        Planilla(
-          id: _uuid.v4(),
-          tipoMedicion: i.isOdd ? 'Piezómetros' : 'Freatímetro',
-          fecha: DateTime.now().subtract(Duration(days: i)),
-          tecnico: 'Tec. $i',
-          estado: i == 1
-              ? PlanillaEstado.sending
-              : (i == 2 ? PlanillaEstado.sent : PlanillaEstado.draft),
-          lecturas: [
-            Lectura(instrumento: 'PP$i', valor: (3000 + i).toString()),
-          ],
-        ),
-      );
+  final NetworkManager net;
+  final OfflineStorage offline;
+
+  PlanillasRepository({required this.net, required this.offline}) {
+    // Semilla solo si está vacío (evita duplicar en hot restart)
+    if (_items.isEmpty) {
+      for (var i = 1; i <= 3; i++) {
+        _items.add(
+          Planilla(
+            id: _uuid.v4(),
+            tipoMedicion: i.isOdd ? 'Piezómetros' : 'Freatímetro',
+            fecha: DateTime.now().subtract(Duration(days: i)),
+            tecnico: 'Tec. $i',
+            estado: i == 1
+                ? PlanillaEstado.sending
+                : (i == 2 ? PlanillaEstado.sent : PlanillaEstado.draft),
+            lecturas: <Lectura>[
+              Lectura(
+                id: 1,
+                instrumento: 'PP$i',
+                parametro: 'nivel',
+                unidad: 'm',
+                valor: (3000 + i).toDouble(),
+                fecha: DateTime.now().subtract(Duration(days: i)),
+                notas: 'seed',
+              ),
+            ],
+          ),
+        );
+      }
     }
   }
 
@@ -65,7 +85,7 @@ class PlanillasRepository extends ChangeNotifier {
   void addLectura(String planillaId, Lectura lectura) {
     final p = findById(planillaId);
     if (p == null || !_esEditable(p)) return;
-    p.lecturas.add(lectura);
+    p.lecturas.add(lectura); // lista es mutable (Planilla hace List.from)
     notifyListeners();
   }
 
@@ -85,22 +105,70 @@ class PlanillasRepository extends ChangeNotifier {
     notifyListeners();
   }
 
+// Marca como 'sent' todas las planillas cuyos IDs estén en la lista.
+  void markAsSentBatchIds(List<String> ids) {
+    bool changed = false;
+    for (final p in _items) {
+      if (ids.contains(p.id) && p.estado != PlanillaEstado.sent) {
+        p.estado = PlanillaEstado.sent;
+        changed = true;
+      }
+    }
+    if (changed) notifyListeners();
+  }
+
+
+
+
   // -------- Envío / Sync --------
   Future<void> enviarPlanilla(String id) async {
     final p = findById(id);
     if (p == null) return;
-
-    // Solo se puede enviar desde Borrador
     if (p.estado != PlanillaEstado.draft) return;
 
     p.estado = PlanillaEstado.sending;
     notifyListeners();
 
-    // Simulación de envío (3s para que la veas en "Enviando")
-    await Future<void>.delayed(const Duration(seconds: 3));
+    final base = net.currentBaseUrl;
 
-    p.estado = PlanillaEstado.sent;
+    // Si hay base resolvida, intento envío directo
+    if (net.isOnline && base != null) {
+      final ok = await _postPlanilla(p, base);
+      if (ok) {
+        p.estado = PlanillaEstado.sent;
+        notifyListeners();
+        return;
+      }
+      // si falló el POST pese a estar online, encolá para reintentar
+    }
+
+    // Encolar y reintentar cuando haya red
+    await offline.enqueue(p);
+    await offline.flushIfPossible(net);
     notifyListeners();
+  }
+
+  Future<bool> _postPlanilla(Planilla p, String baseUrl) async {
+    final uri = Uri.parse('$baseUrl${AppConfig.apiSyncPath}');
+    final body = jsonEncode(p.toJson()); // <-- Respeta SyncBatchIn del backend
+
+    try {
+      final res = await http
+          .post(
+            uri,
+            headers: {'Content-Type': 'application/json'},
+            body: body,
+          )
+          .timeout(AppConfig.httpTimeout);
+
+      if (res.statusCode == 200 || res.statusCode == 201) return true;
+
+      debugPrint('POST ${AppConfig.apiSyncPath} -> ${res.statusCode}: ${res.body}');
+      return false;
+    } catch (e) {
+      debugPrint('POST ${AppConfig.apiSyncPath} error: $e');
+      return false;
+    }
   }
 
   // Eliminar planilla (permitido en cualquier estado)
@@ -116,4 +184,9 @@ class PlanillasRepository extends ChangeNotifier {
   int get countDrafts => byEstado(PlanillaEstado.draft).length;
   int get countSending => byEstado(PlanillaEstado.sending).length;
   int get countSent => byEstado(PlanillaEstado.sent).length;
+
+
+
+
+
 }
