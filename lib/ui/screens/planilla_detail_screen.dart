@@ -6,6 +6,7 @@ import '../../repositories/planillas_repository.dart';
 import '../../data/models/lectura.dart';
 import '../../data/models/planilla.dart';
 import '../../utils/csv_exporter.dart';
+import '../widgets/instrument_quick_list.dart';
 
 class PlanillaDetailScreen extends StatelessWidget {
   final String planillaId;
@@ -58,8 +59,23 @@ class PlanillaDetailScreen extends StatelessWidget {
           ),
           const SizedBox(height: 16),
 
+          // Carga rápida por catálogo (solo en borrador)
+          if (!readOnly) ...[
+            Text(
+              'Cargar lecturas',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 8),
+            InstrumentQuickList(planilla: p),
+            const SizedBox(height: 16),
+          ],
+
+          // Listado de lecturas ya cargadas
           Text(
-            'Lecturas',
+            'Lecturas cargadas',
             style: Theme.of(context)
                 .textTheme
                 .titleMedium
@@ -114,20 +130,8 @@ class PlanillaDetailScreen extends StatelessWidget {
 
           const SizedBox(height: 16),
 
-          // Acciones según estado
-          if (!readOnly) ...[
-            FilledButton.icon(
-              onPressed: () async {
-                final nueva = await showDialog<Lectura>(
-                  context: context,
-                  builder: (_) => const _LecturaDialog(title: 'Agregar lectura'),
-                );
-                if (nueva != null) repo.addLectura(p.id, nueva);
-              },
-              icon: const Icon(Icons.add),
-              label: const Text('Agregar lectura'),
-            ),
-            const SizedBox(height: 8),
+          // Acciones según estado (ocultamos "Agregar lectura" manual)
+          if (!readOnly)
             FilledButton.icon(
               onPressed: p.lecturas.isEmpty
                   ? null
@@ -141,8 +145,8 @@ class PlanillaDetailScreen extends StatelessWidget {
                     },
               icon: const Icon(Icons.send),
               label: const Text('Enviar'),
-            ),
-          ] else
+            )
+          else
             Container(
               padding: const EdgeInsets.all(12),
               decoration: _boxDecoration(context),
@@ -375,12 +379,14 @@ class _LecturaDialogState extends State<_LecturaDialog> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // Código solo lectura (no se tilda a mano)
               TextFormField(
                 controller: _instCtrl,
-                decoration:
-                    const InputDecoration(labelText: 'Código del instrumento'),
-                validator: (v) =>
-                    (v == null || v.trim().isEmpty) ? 'Requerido' : null,
+                enabled: false,
+                decoration: const InputDecoration(
+                  labelText: 'Código del instrumento',
+                  helperText: 'Viene del catálogo',
+                ),
               ),
               const SizedBox(height: 12),
 
@@ -389,7 +395,7 @@ class _LecturaDialogState extends State<_LecturaDialog> {
                 decoration: const InputDecoration(labelText: 'Parámetro'),
                 items: const [
                   DropdownMenuItem(value: 'nivel', child: Text('nivel')),
-                  DropdownMenuItem(value: 'presion', child: Text('presion')),
+                  DropdownMenuItem(value: 'presion', child: Text('presión')),
                   DropdownMenuItem(value: 'caudal', child: Text('caudal')),
                   DropdownMenuItem(value: 'temperatura', child: Text('temperatura')),
                 ],
@@ -445,6 +451,7 @@ class _LecturaDialogState extends State<_LecturaDialog> {
             Navigator.pop(
               context,
               Lectura(
+                id: widget.initial?.id ?? DateTime.now().millisecondsSinceEpoch,
                 instrumento: _instCtrl.text.trim(),
                 parametro: _parametro,
                 unidad: _unidad,
