@@ -185,8 +185,4 @@ class PlanillasRepository extends ChangeNotifier {
   int get countSending => byEstado(PlanillaEstado.sending).length;
   int get countSent => byEstado(PlanillaEstado.sent).length;
 
-
-
-
-
 }

@@ -45,15 +45,14 @@ class Planilla {
         "readings": lecturas.asMap().entries.map((entry) {
           final idx = entry.key;
           final l = entry.value;
-          return {
-            "client_row_id": idx + 1,
-            "instrument_code": tipoMedicion,
-            "parameter": l.parametro ?? "nivel",
-            "unit": l.unidad ?? "m",
-            "value": l.valor ?? 0,
-            "measured_at": l.fecha.toIso8601String(),
-            "notes": l.notas ?? "",
-          };
+
+          final json = l.toJson();
+
+         
+        // Forzamos client_row_id secuencial (1..N) para el backend
+         json['client_row_id'] = idx + 1;
+
+        return json;
         }).toList(),
       };
 
