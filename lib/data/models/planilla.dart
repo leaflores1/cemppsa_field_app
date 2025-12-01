@@ -1,3 +1,5 @@
+//lib/data/models/planilla.dart
+
 import 'package:uuid/uuid.dart';
 import 'lectura.dart';
 
@@ -42,6 +44,9 @@ class Planilla {
         "device_id": "android_${id.substring(0, 6)}", // identificador local
         "technician_id": tecnico,
         "created_at": fecha.toIso8601String(),
+        
+        "planilla_nombre": tipoMedicion,
+
         "readings": lecturas.asMap().entries.map((entry) {
           final idx = entry.key;
           final l = entry.value;

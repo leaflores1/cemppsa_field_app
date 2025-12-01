@@ -19,33 +19,7 @@ class PlanillasRepository extends ChangeNotifier {
   final OfflineStorage offline;
 
   PlanillasRepository({required this.net, required this.offline}) {
-    // Semilla solo si está vacío (evita duplicar en hot restart)
-    if (_items.isEmpty) {
-      for (var i = 1; i <= 3; i++) {
-        _items.add(
-          Planilla(
-            id: _uuid.v4(),
-            tipoMedicion: i.isOdd ? 'Piezómetros' : 'Freatímetro',
-            fecha: DateTime.now().subtract(Duration(days: i)),
-            tecnico: 'Tec. $i',
-            estado: i == 1
-                ? PlanillaEstado.sending
-                : (i == 2 ? PlanillaEstado.sent : PlanillaEstado.draft),
-            lecturas: <Lectura>[
-              Lectura(
-                id: 1,
-                instrumento: 'PP$i',
-                parametro: 'nivel',
-                unidad: 'm',
-                valor: (3000 + i).toDouble(),
-                fecha: DateTime.now().subtract(Duration(days: i)),
-                notas: 'seed',
-              ),
-            ],
-          ),
-        );
-      }
-    }
+    
   }
 
   bool _esEditable(Planilla p) => p.estado == PlanillaEstado.draft;
