@@ -14,12 +14,12 @@ class OfflineStorage {
   late final Box _box;
 
   Future<void> init() async {
-    await Hive.initFlutter();
+    // Hive ya se inicializa en main.dart
     _box = await Hive.openBox(_boxName);
   }
 
   Future<void> enqueue(Planilla p) async {
-    await _box.add(p.toJson());  // guarda el payload con batch_uuid
+    await _box.add(p.toJson()); // guarda el payload con batch_uuid
   }
 
   Future<void> clear() async => _box.clear();
