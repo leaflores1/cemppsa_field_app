@@ -1,15 +1,13 @@
-//lib/data/models/planilla.dart
-
 import 'package:uuid/uuid.dart';
 import 'lectura.dart';
 
 enum PlanillaEstado { draft, sending, sent }
 
 class Planilla {
-  final String id;                 // uuid
-  final String tipoMedicion;       // instrumento o tipo
-  final DateTime fecha;            // fecha de creación
-  final String tecnico;            // nombre del técnico
+  final String id;
+  final String tipoMedicion;
+  final DateTime fecha;
+  final String tecnico;
   PlanillaEstado estado;
   final List<Lectura> lecturas;
 
@@ -23,41 +21,47 @@ class Planilla {
   }) : lecturas = List<Lectura>.from(lecturas ?? const []);
 
   factory Planilla.fromJson(Map<String, dynamic> json) => Planilla(
-        id: json['batch_uuid'] as String? ??
-            json['id'] as String? ??
+        id: json['batch_uuid'] ??
+            json['id'] ??
             const Uuid().v4(),
-        tipoMedicion:
-            json['tipo_medicion'] as String? ?? json['instrument_code'] ?? '',
+
+        /// 🔥 NOMBRE DE PLANILLA: SUPER COMPATIBLE
+        tipoMedicion: json['tipo_medicion']               // formato nuevo
+                ?? json['planilla_nombre']                // formato viejo
+                ?? json['instrument_code']                // usado antes en alguna prueba
+                ?? 'Sin nombre',
+
         fecha: DateTime.tryParse(json['created_at'] ?? json['fecha'] ?? '') ??
             DateTime.now(),
-        tecnico: json['technician_id'] as String? ?? json['tecnico'] ?? '',
-        estado: _estadoFromString(json['estado'] as String? ?? 'draft'),
+
+        tecnico: json['technician_id'] ?? json['tecnico'] ?? '',
+
+        estado: _estadoFromString(json['estado'] ?? 'draft'),
+
         lecturas: (json['readings'] ?? json['lecturas'] ?? const [])
             .map<Lectura>(
-                (e) => Lectura.fromJson(Map<String, dynamic>.from(e)))
+              (e) => Lectura.fromJson(Map<String, dynamic>.from(e)),
+            )
             .toList(),
       );
 
-  /// 🔁 Serializa según el modelo SyncBatchIn de FastAPI
+  /// 🔁 Serializa para FastAPI
   Map<String, dynamic> toJson() => {
         "batch_uuid": id,
-        "device_id": "android_${id.substring(0, 6)}", // identificador local
+        "device_id": "android_${id.substring(0, 6)}",
         "technician_id": tecnico,
         "created_at": fecha.toIso8601String(),
-        
-        "planilla_nombre": tipoMedicion,
+
+        /// 🔥 Nombre unificado
+        "tipo_medicion": tipoMedicion,
 
         "readings": lecturas.asMap().entries.map((entry) {
           final idx = entry.key;
           final l = entry.value;
 
           final json = l.toJson();
-
-         
-        // Forzamos client_row_id secuencial (1..N) para el backend
-         json['client_row_id'] = idx + 1;
-
-        return json;
+          json['client_row_id'] = idx + 1;
+          return json;
         }).toList(),
       };
 
@@ -72,4 +76,3 @@ class Planilla {
     }
   }
 }
-
