@@ -45,14 +45,16 @@ class Planilla {
             .toList(),
       );
 
-  /// 🔁 Serializa para FastAPI
-  Map<String, dynamic> toJson() => {
+        Map<String, dynamic> toJson() => {
         "batch_uuid": id,
         "device_id": "android_${id.substring(0, 6)}",
         "technician_id": tecnico,
-        "created_at": fecha.toIso8601String(),
+        "created_at": fecha.toUtc().toIso8601String(),
 
-        /// 🔥 Nombre unificado
+        // 👇 CLAVE: lo que espera el backend
+        "planilla_nombre": tipoMedicion,
+
+        // opcional: lo dejamos por compatibilidad si alguna vez lo usás en otro lado
         "tipo_medicion": tipoMedicion,
 
         "readings": lecturas.asMap().entries.map((entry) {
@@ -64,6 +66,9 @@ class Planilla {
           return json;
         }).toList(),
       };
+
+
+
 
   static PlanillaEstado _estadoFromString(String s) {
     switch (s) {
