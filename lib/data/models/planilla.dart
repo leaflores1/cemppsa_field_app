@@ -26,16 +26,19 @@ class Planilla {
             const Uuid().v4(),
 
         /// 🔥 NOMBRE DE PLANILLA: SUPER COMPATIBLE
-        tipoMedicion: json['tipo_medicion']               // formato nuevo
-                ?? json['planilla_nombre']                // formato viejo
-                ?? json['instrument_code']                // usado antes en alguna prueba
+        tipoMedicion: json['tipo_medicion'] // formato nuevo
+                ?? json['planilla_nombre']  // formato viejo
+                ?? json['instrument_code']  // usado antes en pruebas
                 ?? 'Sin nombre',
 
-        fecha: DateTime.tryParse(json['created_at'] ?? json['fecha'] ?? '') ??
+        fecha: DateTime.tryParse(
+                  json['created_at'] ?? json['fecha'] ?? '',
+                ) ??
             DateTime.now(),
 
         tecnico: json['technician_id'] ?? json['tecnico'] ?? '',
 
+        /// 👇 Lee el estado si existe; si no, vuelve a draft
         estado: _estadoFromString(json['estado'] ?? 'draft'),
 
         lecturas: (json['readings'] ?? json['lecturas'] ?? const [])
@@ -45,17 +48,19 @@ class Planilla {
             .toList(),
       );
 
-        Map<String, dynamic> toJson() => {
+  /// 🔁 Serializa para FastAPI **y** para persistir en Hive
+  Map<String, dynamic> toJson() => {
         "batch_uuid": id,
         "device_id": "android_${id.substring(0, 6)}",
         "technician_id": tecnico,
         "created_at": fecha.toUtc().toIso8601String(),
 
-        // 👇 CLAVE: lo que espera el backend
+        // 👇 Lo que usa el backend y la consola
         "planilla_nombre": tipoMedicion,
-
-        // opcional: lo dejamos por compatibilidad si alguna vez lo usás en otro lado
         "tipo_medicion": tipoMedicion,
+
+        // 👇 CLAVE: guardamos el estado para que no se pierda al reabrir la app
+        "estado": _estadoToString(estado),
 
         "readings": lecturas.asMap().entries.map((entry) {
           final idx = entry.key;
@@ -67,8 +72,7 @@ class Planilla {
         }).toList(),
       };
 
-
-
+  // ===== Helpers de estado =====
 
   static PlanillaEstado _estadoFromString(String s) {
     switch (s) {
@@ -76,8 +80,20 @@ class Planilla {
         return PlanillaEstado.sending;
       case 'sent':
         return PlanillaEstado.sent;
+      case 'draft':
       default:
         return PlanillaEstado.draft;
+    }
+  }
+
+  static String _estadoToString(PlanillaEstado e) {
+    switch (e) {
+      case PlanillaEstado.draft:
+        return 'draft';
+      case PlanillaEstado.sending:
+        return 'sending';
+      case PlanillaEstado.sent:
+        return 'sent';
     }
   }
 }
