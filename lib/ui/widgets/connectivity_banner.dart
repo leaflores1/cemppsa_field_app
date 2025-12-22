@@ -11,20 +11,39 @@ class ConnectivityBanner extends StatelessWidget {
     final online = net.isOnline;
     final base = net.currentBaseUrl ?? 'sin servidor';
 
-    final bg = online ? Colors.green.shade100 : Colors.red.shade100;
-    final fg = online ? Colors.green.shade800 : Colors.red.shade800;
-    final icon = online ? Icons.wifi : Icons.wifi_off;
-    final text = online ? 'Conectado · $base' : 'Sin conexión. Trabajás offline';
+    final dot = online ? const Color(0xFF34D399) : const Color(0xFFFB7185); // emerald / rose
+    final text = online ? 'Sistema en línea · $base' : 'Sin conexión. Trabajás offline';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(8)),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withOpacity(0.10)),
+      ),
       child: Row(
         children: [
-          Icon(icon, color: fg),
-          const SizedBox(width: 8),
-          Expanded(child: Text(text, style: TextStyle(color: fg, fontWeight: FontWeight.w600))),
+          Container(
+            height: 10,
+            width: 10,
+            decoration: BoxDecoration(color: dot, borderRadius: BorderRadius.circular(99)),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Colors.white.withOpacity(0.80),
+                    fontWeight: FontWeight.w600,
+                  ),
+            ),
+          ),
+          Icon(
+            online ? Icons.wifi : Icons.wifi_off,
+            size: 18,
+            color: Colors.white.withOpacity(0.65),
+          ),
         ],
       ),
     );

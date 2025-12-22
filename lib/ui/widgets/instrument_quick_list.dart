@@ -43,13 +43,16 @@ class _InstrumentQuickListState extends State<InstrumentQuickList> {
     if (codes.isEmpty) {
       return Container(
         padding: const EdgeInsets.all(16),
-        decoration: _box(context),
-        child: const Text('No hay códigos precargados para este instrumento.'),
+        decoration: _box(),
+        child: Text(
+          'No hay códigos precargados para este instrumento.',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
       );
     }
 
     return Container(
-      decoration: _box(context),
+      decoration: _box(),
       child: ListView.separated(
         padding: const EdgeInsets.all(12),
         shrinkWrap: true,
@@ -57,7 +60,6 @@ class _InstrumentQuickListState extends State<InstrumentQuickList> {
         itemBuilder: (_, i) {
           final code = codes[i];
 
-          // ¿Existe ya una lectura para este código?
           final idx = p.lecturas.indexWhere((l) => l.instrumento == code);
           final existing = idx >= 0 ? p.lecturas[idx] : null;
 
@@ -68,32 +70,30 @@ class _InstrumentQuickListState extends State<InstrumentQuickList> {
 
           return Row(
             children: [
-              // Código
               SizedBox(
-                width: 80,
+                width: 84,
                 child: Text(
                   code,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white.withOpacity(0.85),
+                      ),
                 ),
               ),
-
-              // Input de valor
               Expanded(
                 child: TextField(
                   controller: ctrl,
                   keyboardType: TextInputType.number,
                   decoration: const InputDecoration(
-                    isDense: true,
                     labelText: 'Valor',
                   ),
                 ),
               ),
               const SizedBox(width: 8),
 
-              // Guardar/Actualizar
               IconButton(
                 tooltip: existing == null ? 'Agregar' : 'Actualizar',
-                icon: const Icon(Icons.save_alt),
+                icon: Icon(Icons.save_alt, color: Colors.white.withOpacity(0.80)),
                 onPressed: () {
                   final text = ctrl.text.trim();
                   final val = double.tryParse(text.replaceAll(',', '.'));
@@ -129,10 +129,9 @@ class _InstrumentQuickListState extends State<InstrumentQuickList> {
                 },
               ),
 
-              // Eliminar (si existe)
               IconButton(
                 tooltip: 'Eliminar',
-                icon: const Icon(Icons.delete_outline),
+                icon: Icon(Icons.delete_outline, color: Colors.white.withOpacity(0.55)),
                 onPressed: existing == null
                     ? null
                     : () {
@@ -146,21 +145,18 @@ class _InstrumentQuickListState extends State<InstrumentQuickList> {
             ],
           );
         },
-        separatorBuilder: (_, __) => const Divider(height: 16),
+        separatorBuilder: (_, __) => Divider(
+          height: 18,
+          color: Colors.white.withOpacity(0.08),
+        ),
         itemCount: codes.length,
       ),
     );
   }
 
-  BoxDecoration _box(BuildContext context) => BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.06),
-            blurRadius: 10,
-            spreadRadius: 2,
-          ),
-        ],
+  BoxDecoration _box() => BoxDecoration(
+        color: Colors.white.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withOpacity(0.10)),
       );
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../data/models/planilla.dart';
 import '../screens/planilla_detail_screen.dart';
+import 'estado_chip.dart';
 
 class PlanillaCard extends StatelessWidget {
   final Planilla planilla;
@@ -10,14 +11,9 @@ class PlanillaCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final df = DateFormat('dd/MM/yyyy HH:mm');
-    final (bg, fg, label) = switch (planilla.estado) {
-      PlanillaEstado.draft => (Colors.grey.shade100, Colors.grey.shade800, 'Borrador'),
-      PlanillaEstado.sending => (Colors.orange.shade100, Colors.orange.shade800, 'Enviando'),
-      PlanillaEstado.sent => (Colors.green.shade100, Colors.green.shade800, 'Enviada'),
-    };
 
     return InkWell(
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(18),
       onTap: () {
         Navigator.push(
           context,
@@ -28,15 +24,9 @@ class PlanillaCard extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.06),
-              blurRadius: 10,
-              spreadRadius: 2,
-            ),
-          ],
+          color: Colors.white.withOpacity(0.06),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: Colors.white.withOpacity(0.10)),
         ),
         child: Row(
           children: [
@@ -47,13 +37,9 @@ class PlanillaCard extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 12),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(999)),
-              child: Text(label, style: TextStyle(color: fg, fontWeight: FontWeight.w600)),
-            ),
-            const SizedBox(width: 4),
-            const Icon(Icons.chevron_right),
+            EstadoChip(estado: planilla.estado),
+            const SizedBox(width: 6),
+            Icon(Icons.chevron_right, color: Colors.white.withOpacity(0.55)),
           ],
         ),
       ),
@@ -68,12 +54,13 @@ class _TitleSubtitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+        Text(title, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
         const SizedBox(height: 4),
-        Text(subtitle),
+        Text(subtitle, style: t.bodySmall),
       ],
     );
   }
