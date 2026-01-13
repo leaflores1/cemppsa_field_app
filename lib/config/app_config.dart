@@ -1,6 +1,6 @@
 class AppConfig {
   static const candidateBaseUrls = [
-    'http://192.168.113.135:8000',
+    'http://192.168.113.188:8000',
     'http://192.168.100.112:8000',
   ];
 
