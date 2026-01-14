@@ -97,6 +97,7 @@ class SyncService extends ChangeNotifier {
 
   Future<bool> sendPlanilla(Planilla planilla) async {
     final requestBody = planilla.toSyncRequest();
+    _normalizeAforadoresPayload(planilla, requestBody);
     debugPrint(
       'SyncService.sendPlanilla: batch_uuid=${planilla.batchUuid} '
       'planilla_nombre=${planilla.tipo.codigo} readings_count=${planilla.totalLecturas}',
@@ -291,5 +292,61 @@ class SyncService extends ChangeNotifier {
     }
     return 'batch_uuid=${planilla.batchUuid} statusCode=$statusCode'
         '$extraPart body=$responseBody';
+  }
+
+  static const Map<String, String> _aforadorAliases = {
+    'AFCIZQ': 'CAV-IZQ',
+    'CAVIZQ': 'CAV-IZQ',
+    'AFCDER': 'CAV-DER',
+    'CAVDER': 'CAV-DER',
+  };
+
+  void _normalizeAforadoresPayload(
+    Planilla planilla,
+    Map<String, dynamic> body,
+  ) {
+    if (planilla.tipo != TipoPlanilla.aforadores) {
+      return;
+    }
+    final readings = body['readings'];
+    if (readings is! List) {
+      return;
+    }
+    for (final entry in readings) {
+      if (entry is! Map) {
+        continue;
+      }
+      final instrumentCode = entry['instrument_code'];
+      if (instrumentCode is String) {
+        entry['instrument_code'] = _normalizeAforadorInstrumentCode(
+          instrumentCode,
+        );
+      }
+      final parameter = entry['parameter'];
+      if (parameter is String) {
+        final normalized = parameter.trim().toLowerCase();
+        if (normalized == 'altura' ||
+            normalized == 'nivel' ||
+            normalized == 'nivel_msnm' ||
+            normalized == 'nivel-msnm') {
+          entry['parameter'] = 'NIVEL_MSNM';
+        }
+      }
+      final parameterValue = entry['parameter'];
+      if (parameterValue is String &&
+          parameterValue.trim().toUpperCase() == 'NIVEL_MSNM') {
+        entry['unit'] = 'msnm';
+      }
+    }
+  }
+
+  String _normalizeAforadorInstrumentCode(String code) {
+    final trimmed = code.trim().toUpperCase();
+    final normalizedKey = trimmed.replaceAll(RegExp(r'[^A-Z0-9]'), '');
+    final alias = _aforadorAliases[normalizedKey];
+    if (alias != null) {
+      return alias;
+    }
+    return trimmed.replaceAll(RegExp(r'[_\s]'), '');
   }
 }
