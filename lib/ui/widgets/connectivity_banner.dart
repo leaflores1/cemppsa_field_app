@@ -1,51 +1,86 @@
+// ==============================================================================
+// Connectivity Banner
+// Muestra estado de conexión y sincronización
+// ==============================================================================
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:cemppsa_field_app/services/network_manager.dart';
+
+import '../../services/sync_service.dart';
 
 class ConnectivityBanner extends StatelessWidget {
   const ConnectivityBanner({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final net = context.watch<NetworkManager>();
-    final online = net.isOnline;
-    final base = net.currentBaseUrl ?? 'sin servidor';
+    return Consumer<SyncService>(
+      builder: (context, sync, _) {
+        if (sync.status == ConnectionStatus.connected &&
+            !sync.isSyncing) {
+          return const SizedBox.shrink();
+        }
 
-    final dot = online ? const Color(0xFF34D399) : const Color(0xFFFB7185); // emerald / rose
-    final text = online ? 'Sistema en línea · $base' : 'Sin conexión. Trabajás offline';
+        Color color;
+        IconData icon;
+        String text;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.06),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withOpacity(0.10)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            height: 10,
-            width: 10,
-            decoration: BoxDecoration(color: dot, borderRadius: BorderRadius.circular(99)),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              text,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Colors.white.withOpacity(0.80),
-                    fontWeight: FontWeight.w600,
+        switch (sync.status) {
+          case ConnectionStatus.syncing:
+            color = Colors.blue;
+            icon = Icons.sync;
+            text = 'Sincronizando… (${sync.pendingCount})';
+            break;
+
+          case ConnectionStatus.disconnected:
+            color = Colors.red;
+            icon = Icons.cloud_off;
+            text = 'Sin conexión al servidor';
+            break;
+
+          default:
+            color = Colors.orange;
+            icon = Icons.cloud_queue;
+            text = 'Conectando…';
+        }
+
+        return Material(
+          color: color,
+          elevation: 4,
+          child: SafeArea(
+            bottom: false,
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 8,
+              ),
+              child: Row(
+                children: [
+                  Icon(icon, color: Colors.white),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      text,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
+                  if (sync.status == ConnectionStatus.disconnected)
+                    TextButton(
+                      onPressed: () => sync.checkConnection(),
+                      child: const Text(
+                        'Reintentar',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
-          Icon(
-            online ? Icons.wifi : Icons.wifi_off,
-            size: 18,
-            color: Colors.white.withOpacity(0.65),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

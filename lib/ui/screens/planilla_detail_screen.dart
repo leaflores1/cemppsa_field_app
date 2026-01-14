@@ -1,471 +1,474 @@
+// ==============================================================================
+// CEMPPSA Field App - PlanillaDetailScreen
+// Detalle de una planilla con todas sus lecturas
+// ==============================================================================
+
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-import '../../repositories/planillas_repository.dart';
-import '../../data/models/lectura.dart';
 import '../../data/models/planilla.dart';
-import '../../utils/csv_exporter.dart';
-import '../widgets/instrument_quick_list.dart';
+import '../../data/models/lectura.dart';
+import '../../repositories/planilla_repository.dart';
+import '../widgets/estado_chip.dart';
 
-class PlanillaDetailScreen extends StatelessWidget {
-  final String planillaId;
-  const PlanillaDetailScreen({super.key, required this.planillaId});
+class PlanillaDetailScreen extends StatefulWidget {
+  const PlanillaDetailScreen({super.key});
+
+  @override
+  State<PlanillaDetailScreen> createState() => _PlanillaDetailScreenState();
+}
+
+class _PlanillaDetailScreenState extends State<PlanillaDetailScreen> {
+  late Planilla _planilla;
+  bool _editable = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+    if (args != null) {
+      _planilla = args['planilla'] as Planilla;
+      _editable = args['editable'] as bool? ?? false;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final repo = context.watch<PlanillasRepository>();
-    final p = repo.findById(planillaId);
-
-    if (p == null) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Planilla')),
-        body: const Center(child: Text('Planilla no encontrada')),
-      );
-    }
-
-    final readOnly = p.estado != PlanillaEstado.draft;
-    final df = DateFormat('dd/MM/yyyy HH:mm');
-
     return Scaffold(
+      backgroundColor: const Color(0xFF0F172A),
       appBar: AppBar(
-        title: const Text('Detalle de planilla'),
-        centerTitle: true,
+        backgroundColor: const Color(0xFF1E293B),
+        foregroundColor: Colors.white,
+        title: Text(_planilla.tipo.displayName),
+        elevation: 0,
         actions: [
-          IconButton(
-            tooltip: 'Eliminar planilla',
-            onPressed: () async {
-              final ok = await _confirm(
-                context,
-                'Eliminar planilla',
-                '¿Seguro que querés eliminar esta planilla del historial?',
-              );
-              if (ok) {
-                repo.deletePlanilla(p.id);
-                if (context.mounted) Navigator.pop(context);
-              }
-            },
-            icon: const Icon(Icons.delete_outline),
+          if (_editable)
+            IconButton(
+              icon: const Icon(Icons.edit_outlined),
+              onPressed: _editPlanilla,
+              tooltip: 'Editar',
+            ),
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert),
+            color: const Color(0xFF1E293B),
+            onSelected: _handleMenuAction,
+            itemBuilder: (ctx) => [
+              const PopupMenuItem(
+                value: 'export',
+                child: Row(
+                  children: [
+                    Icon(Icons.file_download_outlined, color: Colors.grey, size: 20),
+                    SizedBox(width: 12),
+                    Text('Exportar', style: TextStyle(color: Colors.white)),
+                  ],
+                ),
+              ),
+              if (_planilla.estado == PlanillaEstado.borrador)
+                const PopupMenuItem(
+                  value: 'delete',
+                  child: Row(
+                    children: [
+                      Icon(Icons.delete_outline, color: Color(0xFFEF4444), size: 20),
+                      SizedBox(width: 12),
+                      Text('Eliminar', style: TextStyle(color: Color(0xFFEF4444))),
+                    ],
+                  ),
+                ),
+            ],
           ),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
+      body: Column(
         children: [
-          _HeaderTile(
-            title: p.tipoMedicion,
-            subtitle: 'Téc.: ${p.tecnico}  •  ${df.format(p.fecha)}',
-            estado: p.estado,
+          // Header con info de la planilla
+          _buildHeader(),
+
+          // Lista de lecturas
+          Expanded(
+            child: _planilla.isEmpty
+                ? _buildEmptyState()
+                : _buildLecturasList(),
           ),
-          const SizedBox(height: 16),
+        ],
+      ),
+      bottomNavigationBar: _buildBottomBar(),
+    );
+  }
 
-          // Carga rápida por catálogo (solo en borrador)
-          if (!readOnly) ...[
-            Text(
-              'Cargar lecturas',
-              style: Theme.of(context)
-                  .textTheme
-                  .titleMedium
-                  ?.copyWith(fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 8),
-            InstrumentQuickList(planilla: p),
-            const SizedBox(height: 16),
-          ],
+  Widget _buildHeader() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: const BoxDecoration(
+        color: Color(0xFF1E293B),
+        border: Border(bottom: BorderSide(color: Color(0xFF334155))),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Estado y tipo
+          Row(
+            children: [
+              EstadoChip(estado: _planilla.estado),
+              const Spacer(),
+              Text(
+                '${_planilla.totalLecturas} lecturas',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey[400],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
 
-          // Listado de lecturas ya cargadas
-          Text(
-            'Lecturas cargadas',
-            style: Theme.of(context)
-                .textTheme
-                .titleMedium
-                ?.copyWith(fontWeight: FontWeight.w600),
+          // UUID (truncado)
+          Row(
+            children: [
+              Icon(Icons.fingerprint, size: 16, color: Colors.grey[600]),
+              const SizedBox(width: 8),
+              Text(
+                _planilla.batchUuid.substring(0, 8).toUpperCase(),
+                style: TextStyle(
+                  fontSize: 12,
+                  fontFamily: 'monospace',
+                  color: Colors.grey[500],
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 8),
 
-          if (p.lecturas.isEmpty)
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: _boxDecoration(context),
-              child: const Text('No hay lecturas cargadas.'),
-            )
-          else
-            Container(
-              decoration: _boxDecoration(context),
-              child: Column(
-                children: [
-                  for (var i = 0; i < p.lecturas.length; i++)
-                    _LecturaTile(
-                      index: i,
-                      lectura: p.lecturas[i],
-                      readOnly: readOnly,
-                      onEdit: readOnly
-                          ? null
-                          : () async {
-                              final edited = await showDialog<Lectura>(
-                                context: context,
-                                builder: (_) => _LecturaDialog(
-                                  title: 'Editar lectura',
-                                  initial: p.lecturas[i],
-                                ),
-                              );
-                              if (edited != null) {
-                                repo.updateLectura(p.id, i, edited);
-                              }
-                            },
-                      onDelete: readOnly
-                          ? null
-                          : () async {
-                              final ok = await _confirm(
-                                context,
-                                'Eliminar lectura',
-                                '¿Seguro que querés eliminar esta lectura?',
-                              );
-                              if (ok) repo.deleteLectura(p.id, i);
-                            },
-                    ),
-                ],
+          // Fecha de creación
+          Row(
+            children: [
+              Icon(Icons.calendar_today, size: 16, color: Colors.grey[600]),
+              const SizedBox(width: 8),
+              Text(
+                _formatDateTime(_planilla.createdAt),
+                style: TextStyle(fontSize: 13, color: Colors.grey[400]),
               ),
-            ),
+            ],
+          ),
+          const SizedBox(height: 8),
 
-          const SizedBox(height: 16),
+          // Rango de fechas de lecturas
+          Row(
+            children: [
+              Icon(Icons.date_range, size: 16, color: Colors.grey[600]),
+              const SizedBox(width: 8),
+              Text(
+                _planilla.rangoFechas,
+                style: TextStyle(fontSize: 13, color: Colors.grey[400]),
+              ),
+            ],
+          ),
 
-          // Acciones según estado (ocultamos "Agregar lectura" manual)
-          if (!readOnly)
-            FilledButton.icon(
-              onPressed: p.lecturas.isEmpty
-                  ? null
-                  : () async {
-                      await repo.enviarPlanilla(p.id);
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Planilla enviada')),
-                        );
-                      }
-                    },
-              icon: const Icon(Icons.send),
-              label: const Text('Enviar'),
-            )
-          else
+          // Error message si existe
+          if (_planilla.errorMessage != null) ...[
+            const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.all(12),
-              decoration: _boxDecoration(context),
-              child: const Row(
+              decoration: BoxDecoration(
+                color: const Color(0xFFEF4444).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFEF4444).withOpacity(0.3)),
+              ),
+              child: Row(
                 children: [
-                  Icon(Icons.lock_outline),
-                  SizedBox(width: 8),
+                  const Icon(Icons.error_outline, color: Color(0xFFEF4444), size: 18),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Esta planilla es de solo lectura (enviada).',
+                      _planilla.errorMessage!,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFFEF4444),
+                      ),
                     ),
                   ),
                 ],
               ),
             ),
+          ],
+        ],
+      ),
+    );
+  }
 
-          // Exportar CSV (siempre visible)
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.inbox_outlined, size: 64, color: Colors.grey[700]),
+          const SizedBox(height: 16),
+          Text(
+            'Sin lecturas',
+            style: TextStyle(fontSize: 18, color: Colors.grey[500]),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLecturasList() {
+    // Agrupar por instrumento
+    final grouped = <String, List<Lectura>>{};
+    for (final l in _planilla.lecturas) {
+      grouped.putIfAbsent(l.instrumentCode, () => []).add(l);
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: _planilla.lecturas.length,
+      itemBuilder: (ctx, index) {
+        final lectura = _planilla.lecturas[index];
+        return _LecturaRow(
+          lectura: lectura,
+          onEdit: _editable ? () => _editLectura(index) : null,
+        );
+      },
+    );
+  }
+
+  Widget _buildBottomBar() {
+    if (_planilla.estado == PlanillaEstado.enviada) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: const BoxDecoration(
+        color: Color(0xFF1E293B),
+        border: Border(top: BorderSide(color: Color(0xFF334155))),
+      ),
+      child: SafeArea(
+        child: Row(
+          children: [
+            if (_planilla.estado == PlanillaEstado.borrador) ...[
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _markAsPending,
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    side: const BorderSide(color: Color(0xFF334155)),
+                  ),
+                  child: const Text(
+                    'Marcar como lista',
+                    style: TextStyle(color: Colors.white70),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+            ],
+            if (_planilla.estado == PlanillaEstado.error ||
+                _planilla.estado == PlanillaEstado.pendiente)
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () => Navigator.pushNamed(context, '/'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF22C55E),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                  icon: const Icon(Icons.sync, color: Colors.white),
+                  label: const Text(
+                    'Ir a sincronizar',
+                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _editPlanilla() {
+    // TODO: Navegar a edición de planilla
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Edición de planilla próximamente')),
+    );
+  }
+
+  void _editLectura(int index) {
+    // TODO: Abrir bottom sheet de edición
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Edición de lectura próximamente')),
+    );
+  }
+
+  void _handleMenuAction(String action) {
+    switch (action) {
+      case 'export':
+        _exportPlanilla();
+        break;
+      case 'delete':
+        _confirmDelete();
+        break;
+    }
+  }
+
+  void _exportPlanilla() {
+    Navigator.pushNamed(
+      context,
+      '/export',
+      arguments: {'planilla': _planilla},
+    );
+  }
+
+  void _confirmDelete() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E293B),
+        title: const Text('¿Eliminar planilla?', style: TextStyle(color: Colors.white)),
+        content: Text(
+          'Esta acción no se puede deshacer.',
+          style: TextStyle(color: Colors.grey[400]),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
             onPressed: () async {
-              final uri = await CsvExporter.exportPlanilla(p);
-              if (context.mounted) {
-                final loc = uri?.toString() ?? 'ubicación desconocida';
+              await context.read<PlanillaRepository>().delete(_planilla.batchUuid);
+              if (mounted) {
+                Navigator.pop(ctx);
+                Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('CSV exportado en: $loc')),
+                  const SnackBar(
+                    content: Text('Planilla eliminada'),
+                    backgroundColor: Color(0xFFEF4444),
+                  ),
                 );
               }
             },
-            icon: const Icon(Icons.download),
-            label: const Text('Exportar CSV'),
+            child: const Text('Eliminar', style: TextStyle(color: Color(0xFFEF4444))),
           ),
         ],
       ),
     );
   }
 
-  static Future<bool> _confirm(
-    BuildContext context,
-    String title,
-    String msg,
-  ) async {
-    final res = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: Text(title),
-        content: Text(msg),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Aceptar'),
-          ),
-        ],
-      ),
-    );
-    return res ?? false;
-  }
-
-  static BoxDecoration _boxDecoration(BuildContext context) => BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.06),
-            blurRadius: 10,
-            spreadRadius: 2,
-          ),
-        ],
+  void _markAsPending() async {
+    _planilla.marcarPendiente();
+    await context.read<PlanillaRepository>().save(_planilla);
+    setState(() {});
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Planilla marcada como lista para enviar'),
+          backgroundColor: Color(0xFF22C55E),
+        ),
       );
+    }
+  }
+
+  String _formatDateTime(DateTime dt) {
+    return '${dt.day.toString().padLeft(2, '0')}/'
+        '${dt.month.toString().padLeft(2, '0')}/'
+        '${dt.year} ${dt.hour.toString().padLeft(2, '0')}:'
+        '${dt.minute.toString().padLeft(2, '0')}';
+  }
 }
 
-class _HeaderTile extends StatelessWidget {
-  final String title;
-  final String subtitle;
-  final PlanillaEstado estado;
-  const _HeaderTile({
-    required this.title,
-    required this.subtitle,
-    required this.estado,
+// =============================================================================
+// Widget de fila de lectura
+// =============================================================================
+
+class _LecturaRow extends StatelessWidget {
+  final Lectura lectura;
+  final VoidCallback? onEdit;
+
+  const _LecturaRow({
+    required this.lectura,
+    this.onEdit,
   });
 
   @override
   Widget build(BuildContext context) {
-    final (bg, fg, label) = switch (estado) {
-      PlanillaEstado.draft =>
-        (Colors.grey.shade100, Colors.grey.shade800, 'Borrador'),
-      PlanillaEstado.sending =>
-        (Colors.orange.shade100, Colors.orange.shade800, 'Enviando'),
-      PlanillaEstado.sent =>
-        (Colors.green.shade100, Colors.green.shade800, 'Enviada'),
-    };
-
     return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: PlanillaDetailScreen._boxDecoration(context),
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E293B),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFF334155)),
+      ),
       child: Row(
         children: [
+          // Código de instrumento
+          Container(
+            width: 60,
+            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFF3B82F6).withOpacity(0.1),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text(
+              lectura.instrumentCode,
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF3B82F6),
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+          const SizedBox(width: 12),
+
+          // Valor y unidad
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  title,
-                  style: Theme.of(context)
-                      .textTheme
-                      .titleLarge
-                      ?.copyWith(fontWeight: FontWeight.w700),
+                  '${lectura.value} ${lectura.unit}',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
                 ),
-                const SizedBox(height: 6),
-                Text(subtitle, style: Theme.of(context).textTheme.bodyMedium),
+                const SizedBox(height: 2),
+                Text(
+                  '${lectura.parameter} • ${_formatTime(lectura.measuredAt)}',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.grey[500],
+                  ),
+                ),
               ],
             ),
           ),
-          const SizedBox(width: 12),
-          Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: bg,
-              borderRadius: BorderRadius.circular(999),
+
+          // Notas indicator
+          if (lectura.notes != null && lectura.notes!.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Tooltip(
+                message: lectura.notes!,
+                child: Icon(Icons.notes, size: 18, color: Colors.grey[600]),
+              ),
             ),
-            child: Text(
-              label,
-              style: TextStyle(color: fg, fontWeight: FontWeight.w600),
+
+          // Edit button
+          if (onEdit != null)
+            IconButton(
+              icon: Icon(Icons.edit_outlined, size: 18, color: Colors.grey[500]),
+              onPressed: onEdit,
+              visualDensity: VisualDensity.compact,
             ),
-          ),
         ],
       ),
     );
   }
-}
 
-class _LecturaTile extends StatelessWidget {
-  final int index;
-  final Lectura lectura;
-  final bool readOnly;
-  final VoidCallback? onEdit;
-  final VoidCallback? onDelete;
-
-  const _LecturaTile({
-    required this.index,
-    required this.lectura,
-    required this.readOnly,
-    this.onEdit,
-    this.onDelete,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final df = DateFormat('dd/MM/yyyy HH:mm');
-    return ListTile(
-      title: Text(
-        '${lectura.instrumento}  •  ${lectura.parametro} (${lectura.unidad})',
-        style: const TextStyle(fontWeight: FontWeight.w600),
-      ),
-      subtitle: Text(
-        'Valor: ${lectura.valor}   •   Medido: ${df.format(lectura.fecha)}'
-        '${(lectura.notas == null || lectura.notas!.isEmpty) ? '' : '   •   Notas: ${lectura.notas}'}',
-      ),
-      trailing: readOnly
-          ? const Icon(Icons.lock_outline)
-          : Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  onPressed: onEdit,
-                  icon: const Icon(Icons.edit_outlined),
-                ),
-                IconButton(
-                  onPressed: onDelete,
-                  icon: const Icon(Icons.delete_outline),
-                ),
-              ],
-            ),
-    );
-  }
-}
-
-class _LecturaDialog extends StatefulWidget {
-  final String title;
-  final Lectura? initial;
-  const _LecturaDialog({required this.title, this.initial});
-
-  @override
-  State<_LecturaDialog> createState() => _LecturaDialogState();
-}
-
-class _LecturaDialogState extends State<_LecturaDialog> {
-  final _formKey = GlobalKey<FormState>();
-
-  late final TextEditingController _instCtrl;
-  late final TextEditingController _valorCtrl;
-  late final TextEditingController _notasCtrl;
-  String _parametro = 'nivel';
-  String _unidad = 'm';
-
-  @override
-  void initState() {
-    super.initState();
-    _instCtrl = TextEditingController(text: widget.initial?.instrumento ?? '');
-    _valorCtrl = TextEditingController(
-      text: widget.initial?.valor == null
-          ? ''
-          : widget.initial!.valor.toString(),
-    );
-    _notasCtrl = TextEditingController(text: widget.initial?.notas ?? '');
-    _parametro = widget.initial?.parametro ?? 'nivel';
-    _unidad = widget.initial?.unidad ?? 'm';
-  }
-
-  @override
-  void dispose() {
-    _instCtrl.dispose();
-    _valorCtrl.dispose();
-    _notasCtrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text(widget.title),
-      content: Form(
-        key: _formKey,
-        child: SizedBox(
-          width: 380,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Código solo lectura (no se tilda a mano)
-              TextFormField(
-                controller: _instCtrl,
-                enabled: false,
-                decoration: const InputDecoration(
-                  labelText: 'Código del instrumento',
-                  helperText: 'Viene del catálogo',
-                ),
-              ),
-              const SizedBox(height: 12),
-
-              DropdownButtonFormField<String>(
-                value: _parametro,
-                decoration: const InputDecoration(labelText: 'Parámetro'),
-                items: const [
-                  DropdownMenuItem(value: 'nivel', child: Text('nivel')),
-                  DropdownMenuItem(value: 'presion', child: Text('presión')),
-                  DropdownMenuItem(value: 'caudal', child: Text('caudal')),
-                  DropdownMenuItem(value: 'temperatura', child: Text('temperatura')),
-                ],
-                onChanged: (v) => setState(() => _parametro = v ?? 'nivel'),
-              ),
-              const SizedBox(height: 12),
-
-              DropdownButtonFormField<String>(
-                value: _unidad,
-                decoration: const InputDecoration(labelText: 'Unidad'),
-                items: const [
-                  DropdownMenuItem(value: 'm', child: Text('m')),
-                  DropdownMenuItem(value: 'cm', child: Text('cm')),
-                  DropdownMenuItem(value: 'mm', child: Text('mm')),
-                  DropdownMenuItem(value: '°C', child: Text('°C')),
-                  DropdownMenuItem(value: 'm3/s', child: Text('m3/s')),
-                ],
-                onChanged: (v) => setState(() => _unidad = v ?? 'm'),
-              ),
-              const SizedBox(height: 12),
-
-              TextFormField(
-                controller: _valorCtrl,
-                decoration: const InputDecoration(labelText: 'Valor'),
-                keyboardType: TextInputType.number,
-                validator: (v) {
-                  if (v == null || v.trim().isEmpty) return 'Requerido';
-                  final x = double.tryParse(v.replaceAll(',', '.'));
-                  if (x == null) return 'Número inválido';
-                  return null;
-                },
-              ),
-              const SizedBox(height: 12),
-
-              TextFormField(
-                controller: _notasCtrl,
-                decoration: const InputDecoration(labelText: 'Notas (opcional)'),
-              ),
-            ],
-          ),
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancelar'),
-        ),
-        FilledButton(
-          onPressed: () {
-            if (!_formKey.currentState!.validate()) return;
-            final valorNum =
-                double.parse(_valorCtrl.text.replaceAll(',', '.'));
-            Navigator.pop(
-              context,
-              Lectura(
-                id: widget.initial?.id ?? DateTime.now().millisecondsSinceEpoch,
-                instrumento: _instCtrl.text.trim(),
-                parametro: _parametro,
-                unidad: _unidad,
-                valor: valorNum,
-                fecha: widget.initial?.fecha ?? DateTime.now(),
-                notas: _notasCtrl.text.trim().isEmpty
-                    ? null
-                    : _notasCtrl.text.trim(),
-              ),
-            );
-          },
-          child: const Text('Guardar'),
-        ),
-      ],
-    );
+  String _formatTime(DateTime dt) {
+    return '${dt.hour.toString().padLeft(2, '0')}:'
+        '${dt.minute.toString().padLeft(2, '0')}';
   }
 }
