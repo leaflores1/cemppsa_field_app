@@ -3,6 +3,8 @@
 // Usa ApiClient + endpoints de ingesta (NO /sync)
 // ==============================================================================
 
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 
 import '../api/api_client.dart';
@@ -94,18 +96,61 @@ class SyncService extends ChangeNotifier {
   // ===========================================================================
 
   Future<bool> sendPlanilla(Planilla planilla) async {
-    final response = await _api.post(
-      '/api/v1/ingesta/planillas',
-      body: planilla.toSyncRequest(),
+    final requestBody = planilla.toSyncRequest();
+    debugPrint(
+      'SyncService.sendPlanilla: batch_uuid=${planilla.batchUuid} '
+      'planilla_nombre=${planilla.tipo.codigo} readings_count=${planilla.totalLecturas}',
     );
 
-    if (response.isSuccess) {
-      final status = response.data?['status'];
-      return status == 'accepted' || status == 'duplicate';
+    final response = await _api.post(
+      '/api/v1/ingesta/planillas',
+      headers: {
+        'X-Request-ID': planilla.batchUuid,
+      },
+      body: requestBody,
+    );
+
+    final responseBody = _stringifyResponse(response.data);
+    debugPrint(
+      'SyncService.sendPlanilla: batch_uuid=${planilla.batchUuid} '
+      'statusCode=${response.statusCode} isSuccess=${response.isSuccess}',
+    );
+    debugPrint(
+      'SyncService.sendPlanilla: batch_uuid=${planilla.batchUuid} '
+      'responseBody=$responseBody',
+    );
+    if (response.error != null) {
+      debugPrint(
+        'SyncService.sendPlanilla: batch_uuid=${planilla.batchUuid} '
+        'error=${response.error}',
+      );
     }
 
-    _lastError = response.error ??
-        'HTTP ${response.statusCode}: ${response.data}';
+    if (response.isSuccess) {
+      final status =
+          response.data is Map ? response.data['status']?.toString() : null;
+      if (status == 'accepted' || status == 'duplicate') {
+        return true;
+      }
+
+      final errorMessage = _buildPlanillaError(
+        planilla: planilla,
+        response: response,
+        responseBody: responseBody,
+        extra: 'unexpected_status=$status',
+      );
+      _lastError = errorMessage;
+      planilla.errorMessage = errorMessage;
+      return false;
+    }
+
+    final errorMessage = _buildPlanillaError(
+      planilla: planilla,
+      response: response,
+      responseBody: responseBody,
+    );
+    _lastError = errorMessage;
+    planilla.errorMessage = errorMessage;
     return false;
   }
 
@@ -122,6 +167,12 @@ class SyncService extends ChangeNotifier {
       );
     }
 
+    final pendientes = List<Planilla>.from(repository.pendientes);
+    debugPrint(
+      'SyncService.syncAll: status=$_status total_planillas=${repository.count} '
+      'pendientes=${pendientes.length}',
+    );
+
     final connected = await checkConnection();
     if (!connected) {
       return SyncResult(
@@ -133,7 +184,6 @@ class SyncService extends ChangeNotifier {
 
     _status = ConnectionStatus.syncing;
 
-    final pendientes = List<Planilla>.from(repository.pendientes);
     _pendingCount = pendientes.length;
     notifyListeners();
 
@@ -141,6 +191,11 @@ class SyncService extends ChangeNotifier {
     int failed = 0;
 
     for (final planilla in pendientes) {
+      debugPrint(
+        'SyncService.syncAll: planilla batch_uuid=${planilla.batchUuid} '
+        'planilla_nombre=${planilla.tipo.codigo} estado=${planilla.estado.name} '
+        'lecturas_count=${planilla.totalLecturas}',
+      );
       planilla.marcarEnviando();
       await repository.save(planilla);
       notifyListeners();
@@ -205,5 +260,36 @@ class SyncService extends ChangeNotifier {
     notifyListeners();
 
     return success;
+  }
+
+  String _stringifyResponse(dynamic value) {
+    if (value == null) {
+      return 'null';
+    }
+    if (value is String) {
+      return value;
+    }
+    try {
+      return jsonEncode(value);
+    } catch (_) {
+      return value.toString();
+    }
+  }
+
+  String _buildPlanillaError({
+    required Planilla planilla,
+    required ApiResponse response,
+    required String responseBody,
+    String? extra,
+  }) {
+    final statusCode = response.statusCode?.toString() ?? 'null';
+    final error = response.error;
+    final extraPart = (extra != null && extra.isNotEmpty) ? ' $extra' : '';
+    if (error != null && error.isNotEmpty) {
+      return 'batch_uuid=${planilla.batchUuid} statusCode=$statusCode '
+          'error=$error$extraPart body=$responseBody';
+    }
+    return 'batch_uuid=${planilla.batchUuid} statusCode=$statusCode'
+        '$extraPart body=$responseBody';
   }
 }
