@@ -10,6 +10,7 @@ import 'package:provider/provider.dart';
 import '../../core/config.dart';
 import '../../repositories/planilla_repository.dart';
 import '../../repositories/catalogo_repository.dart';
+import '../../services/auth_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -47,14 +48,64 @@ class _SettingsScreenState extends State<SettingsScreen> {
         padding: const EdgeInsets.all(16),
         children: [
           // =========================
-          // USUARIO
+          // CUENTA
           // =========================
-          const _SectionHeader(title: 'USUARIO'),
+          const _SectionHeader(title: 'CUENTA'),
+          const SizedBox(height: 12),
+          _SettingsCard(
+            children: [
+              Consumer<AuthService>(
+                builder: (context, auth, _) {
+                  final user = auth.currentUser;
+                  return Column(
+                    children: [
+                      _InfoTile(
+                        label: 'Usuario Logueado',
+                        value: user?.fullName ?? 'Desconocido',
+                        trailing: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF3B82F6).withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            user?.role.name.toUpperCase() ?? 'USER',
+                            style: const TextStyle(fontSize: 10, color: Color(0xFF3B82F6)),
+                          ),
+                        ),
+                      ),
+                      const Divider(color: Color(0xFF334155)),
+                      _ActionTile(
+                        icon: Icons.logout,
+                        label: 'Cerrar Sesión',
+                        subtitle: user?.email ?? '',
+                        onTap: () async {
+                          final auth = context.read<AuthService>();
+                          await auth.logout();
+                          if (mounted) {
+                            // Navegar a la raíz (AuthWrapper) para reiniciar el flujo
+                            Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+                          }
+                        },
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 24),
+
+          // =========================
+          // CONFIGURACIÓN LOCAL
+          // =========================
+          const _SectionHeader(title: 'CONFIGURACIÓN LOCAL'),
           const SizedBox(height: 12),
           _SettingsCard(
             children: [
               _TextFieldTile(
-                label: 'ID del Técnico',
+                label: 'ID del Técnico (Legacy)',
                 hint: 'Ej: tecnico_juan',
                 controller: _technicianController,
                 onChanged: (v) => AppConfig.technicianId = v,
