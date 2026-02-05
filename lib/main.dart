@@ -11,6 +11,7 @@ import 'package:uuid/uuid.dart';
 
 // Core
 import 'core/config.dart';
+import 'core/storage/secure_storage_service.dart';
 
 // Repositorios
 import 'repositories/catalogo_repository.dart';
@@ -21,6 +22,7 @@ import 'api/api_client.dart';
 
 // Servicios
 import 'services/sync_service.dart';
+import 'services/auth_service.dart';
 
 // Pantallas
 import 'ui/screens/home_screen.dart';
@@ -30,6 +32,9 @@ import 'ui/screens/planillas_hub_screen.dart';
 import 'ui/screens/planilla_detail_screen.dart';
 import 'ui/screens/export_csv_screen.dart';
 import 'ui/screens/settings_screen.dart';
+import 'ui/screens/auth/login_screen.dart';
+import 'ui/screens/auth/register_screen.dart';
+import 'ui/widgets/role_gate.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -54,6 +59,13 @@ void main() async {
   // Generar device ID si no existe
   AppConfig.deviceId ??= 'android_${const Uuid().v4().substring(0, 8)}';
 
+  // Secure Storage
+  final secureStorage = SecureStorageService();
+
+  // Inicializar ApiClient & AuthService
+  final apiClient = ApiClient(baseUrl: ApiConfig.baseUrl, storage: secureStorage);
+  final authService = AuthService(apiClient: apiClient, storage: secureStorage);
+
   // Inicializar repositorios
   final catalogRepo = CatalogRepository(baseUrl: ApiConfig.baseUrl);
   await catalogRepo.init();
@@ -62,12 +74,12 @@ void main() async {
   await planillaRepo.init();
 
   // Inicializar servicios
-  final apiClient = ApiClient(baseUrl: ApiConfig.baseUrl);
   final syncService = SyncService(apiClient: apiClient);
 
   runApp(
     MultiProvider(
       providers: [
+        ChangeNotifierProvider.value(value: authService),
         ChangeNotifierProvider.value(value: catalogRepo),
         ChangeNotifierProvider.value(value: planillaRepo),
         ChangeNotifierProvider.value(value: syncService),
@@ -77,8 +89,22 @@ void main() async {
   );
 }
 
-class CEMPPSAFieldApp extends StatelessWidget {
+class CEMPPSAFieldApp extends StatefulWidget {
   const CEMPPSAFieldApp({super.key});
+
+  @override
+  State<CEMPPSAFieldApp> createState() => _CEMPPSAFieldAppState();
+}
+
+class _CEMPPSAFieldAppState extends State<CEMPPSAFieldApp> {
+  @override
+  void initState() {
+    super.initState();
+    // Verificar sesión al inicio
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<AuthService>().checkAuthStatus();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -86,27 +112,31 @@ class CEMPPSAFieldApp extends StatelessWidget {
       title: AppConfig.appName,
       debugShowCheckedModeBanner: false,
       theme: _buildTheme(),
-      initialRoute: '/',
+      home: const AuthWrapper(),
       routes: {
-        // Pantalla principal
-        '/': (ctx) => const HomeScreen(),
+        // Auth
+        '/login': (ctx) => const LoginScreen(),
+        '/register': (ctx) => const RegisterScreen(),
 
-        // Flujos de carga de datos
-        '/manual-reading': (ctx) => const ManualReadingScreen(),
-        '/cr10x-batch': (ctx) => const CR10XBatchScreen(),
+        // Home explicito
+        '/home': (ctx) => const HomeScreen(),
+
+        // Flujos de carga de datos (protegidos)
+        '/manual-reading': (ctx) => const RoleGate(child: ManualReadingScreen()),
+        '/cr10x-batch': (ctx) => const RoleGate(child: CR10XBatchScreen()),
 
         // Gestión de planillas
-        '/planillas': (ctx) => const PlanillasHubScreen(),
-        '/planilla-detail': (ctx) => const PlanillaDetailScreen(),
+        '/planillas': (ctx) => const RoleGate(child: PlanillasHubScreen()),
+        '/planilla-detail': (ctx) => const RoleGate(child: PlanillaDetailScreen()),
 
         // Utilidades
-        '/export': (ctx) => const ExportCsvScreen(),
-        '/settings': (ctx) => const SettingsScreen(),
+        '/export': (ctx) => const RoleGate(child: ExportCsvScreen()),
+        '/settings': (ctx) => const RoleGate(child: SettingsScreen()),
 
         // Atajos para tabs de PlanillasHub
-        '/drafts': (ctx) => const PlanillasHubScreen(),
-        '/pending': (ctx) => const PlanillasHubScreen(),
-        '/sent': (ctx) => const PlanillasHubScreen(),
+        '/drafts': (ctx) => const RoleGate(child: PlanillasHubScreen()),
+        '/pending': (ctx) => const RoleGate(child: PlanillasHubScreen()),
+        '/sent': (ctx) => const RoleGate(child: PlanillasHubScreen()),
       },
       onUnknownRoute: (settings) {
         return MaterialPageRoute(
@@ -130,18 +160,9 @@ class CEMPPSAFieldApp extends StatelessWidget {
                       color: Colors.grey[500],
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    settings.name ?? 'ruta desconocida',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontFamily: 'monospace',
-                      color: Colors.grey[600],
-                    ),
-                  ),
                   const SizedBox(height: 24),
                   ElevatedButton(
-                    onPressed: () => Navigator.pushReplacementNamed(ctx, '/'),
+                    onPressed: () => Navigator.pushReplacementNamed(ctx, '/home'),
                     child: const Text('Volver al inicio'),
                   ),
                 ],
@@ -271,5 +292,30 @@ class CEMPPSAFieldApp extends StatelessWidget {
         side: const BorderSide(color: Color(0xFF64748B)),
       ),
     );
+  }
+}
+
+class AuthWrapper extends StatelessWidget {
+  const AuthWrapper({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final auth = context.watch<AuthService>();
+    if (auth.isLoading) {
+      return const Scaffold(
+        backgroundColor: Color(0xFF0F172A),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+               CircularProgressIndicator(color: Color(0xFF3B82F6)),
+               SizedBox(height: 16),
+               Text('Iniciando sesión segura...', style: TextStyle(color: Colors.white70)),
+            ],
+          ),
+        ),
+      );
+    }
+    return auth.isAuthenticated ? const HomeScreen() : const LoginScreen();
   }
 }

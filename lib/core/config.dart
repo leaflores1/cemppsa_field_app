@@ -20,6 +20,13 @@ class ApiConfig {
   static const String catalogEndpoint = '/api/v1/catalog-app/instruments';
   static const String batchesEndpoint = '/api/v1/batches';
 
+  // Auth
+  static const String loginEndpoint = '/auth/login';
+  static const String registerEndpoint = '/auth/register';
+  static const String refreshEndpoint = '/auth/refresh';
+  static const String logoutEndpoint = '/auth/logout';
+  static const String meEndpoint = '/auth/me';
+
   /// Timeouts
   static const Duration connectionTimeout = Duration(seconds: 10);
   static const Duration receiveTimeout = Duration(seconds: 30);
