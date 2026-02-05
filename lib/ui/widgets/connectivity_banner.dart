@@ -15,16 +15,17 @@ class ConnectivityBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<SyncService>(
       builder: (context, sync, _) {
-        if (sync.status == ConnectionStatus.connected &&
-            !sync.isSyncing) {
-          return const SizedBox.shrink();
-        }
-
         Color color;
         IconData icon;
         String text;
 
         switch (sync.status) {
+          case ConnectionStatus.connected:
+            color = const Color(0xFF22C55E); // green-500
+            icon = Icons.cloud_done;
+            text = 'Conectado al servidor';
+            break;
+
           case ConnectionStatus.syncing:
             color = Colors.blue;
             icon = Icons.sync;

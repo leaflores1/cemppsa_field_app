@@ -101,7 +101,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     _FlowCard(
                       title: 'Lecturas Manuales',
                       subtitle: 'Casagrande · Freatímetros · Aforadores',
-                      description: 'Carga manual semanal de instrumentos',
+                      description: 'Carga manual de instrumentos',
                       icon: Icons.edit_note_rounded,
                       color: const Color(0xFF3B82F6),
                       onTap: () =>
@@ -109,10 +109,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     const SizedBox(height: 12),
                     _FlowCard(
-                      title: 'CR10X (Contingencia)',
-                      subtitle: 'Piezómetros · Asentímetros · Triaxiales',
+                      title: 'CR10X',
+                      subtitle: 'Piezómetros · Asentímetros · Clinometros',
                       description:
-                          'Usar solo cuando falla la automatización',
+                          'Inspección manual del datalogger CR10X',
                       icon: Icons.backup_table_rounded,
                       color: const Color(0xFFF59E0B),
                       isSecondary: true,

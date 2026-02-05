@@ -48,7 +48,7 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
       appBar: AppBar(
         backgroundColor: const Color(0xFF1E293B),
         foregroundColor: Colors.white,
-        title: const Text('CR10X (Contingencia)'),
+        title: const Text('CR10X'),
         elevation: 0,
         actions: [
           if (_currentPlanilla != null)
@@ -75,47 +75,10 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Warning banner
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: const Color(0x1AF59E0B),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0x4DF59E0B)),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.warning_amber_rounded, color: Color(0xFFF59E0B)),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Solo para contingencias',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFFF59E0B),
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Usá este módulo únicamente cuando la conexión automática del CR10X falla.',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey[400],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
           const SizedBox(height: 24),
 
           const Text(
-            '¿Qué familia de datos?',
+            'Planillas de mediciones',
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.bold,
@@ -126,8 +89,8 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
 
           // Piezómetros CV
           _FamilyCard(
-            title: 'Piezómetros CV',
-            subtitle: 'PA, PB, PC, PD, PE, PF, PG',
+            title: 'Piezómetros',
+            subtitle: 'PA, PB, PC, PD, PE, PE1, PF, PG',
             icon: Icons.speed_rounded,
             color: const Color(0xFF8B5CF6),
             onTap: () => _selectFamily(TipoPlanilla.cr10xPiezometros),
