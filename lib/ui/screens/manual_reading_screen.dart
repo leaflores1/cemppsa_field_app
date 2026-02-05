@@ -58,8 +58,9 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
     
     // Contar instrumentos por tipo
     final casagrandeCount = catalog.all().where((i) =>
-        i.familia == FamiliaInstrumento.piezometro &&
-        i.subfamilia == Subfamilia.casagrande).length;
+        i.familia == FamiliaInstrumento.casagrande ||
+        (i.familia == FamiliaInstrumento.piezometro &&
+        i.subfamilia == Subfamilia.casagrande)).length;
     final freatimetrosCount = catalog.byFamilia(FamiliaInstrumento.freatimetro).length;
     final aforadoresCount = catalog.byFamilia(FamiliaInstrumento.aforador).length;
     
@@ -388,8 +389,9 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
 
       case TipoPlanilla.casagrande:
         return catalog.all().where((i) =>
-            i.familia == FamiliaInstrumento.piezometro &&
-            i.subfamilia == Subfamilia.casagrande).toList();
+            i.familia == FamiliaInstrumento.casagrande ||
+            (i.familia == FamiliaInstrumento.piezometro &&
+            i.subfamilia == Subfamilia.casagrande)).toList();
 
       case TipoPlanilla.freatimetros:
         return catalog.byFamilia(FamiliaInstrumento.freatimetro);

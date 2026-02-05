@@ -7,6 +7,7 @@
 /// Mapea exactamente a: familia_instrumento_enum en MySQL
 enum FamiliaInstrumento {
   piezometro('PIEZOMETRO', 'Piezómetro'),
+  casagrande('CASAGRANDE', 'Casagrande'), // Familia propia
   freatimetro('FREATIMETRO', 'Freatímetro'),
   asentimetro('ASENTIMETRO', 'Asentímetro'),
   aforador('AFORADOR', 'Aforador'),
@@ -38,8 +39,9 @@ enum FamiliaInstrumento {
     final upper = code.toUpperCase();
 
     // Casagrande (lecturas manuales en cámara de compuertas)
+    // Ahora es familia propia si empieza con PC y 2 dígitos
     if (RegExp(r'^PC\d{2}').hasMatch(upper)) {
-      return FamiliaInstrumento.piezometro;
+      return FamiliaInstrumento.casagrande;
     }
 
     // Piezómetros de cuerda vibrante (P + letra de eje)
@@ -241,6 +243,7 @@ class Instrumento {
 
   /// ¿Es lectura manual (Casagrande, freatímetros, aforadores)?
   bool get esManual {
+    if (familia == FamiliaInstrumento.casagrande) return true;
     if (subfamilia == Subfamilia.casagrande) return true;
     if (familia == FamiliaInstrumento.freatimetro) return true;
     if (familia == FamiliaInstrumento.aforador) return true;
@@ -269,6 +272,7 @@ class Instrumento {
 String _inferDefaultParameter(String familia) {
   switch (familia.toUpperCase()) {
     case 'PIEZOMETRO':
+    case 'CASAGRANDE': // Familia propia
       return 'presion';
     case 'FREATIMETRO':
       return 'nivel';
@@ -298,6 +302,7 @@ String _inferDefaultParameter(String familia) {
 String _inferDefaultUnit(String familia) {
   switch (familia.toUpperCase()) {
     case 'PIEZOMETRO':
+    case 'CASAGRANDE': // Familia propia
       return 'mca';
     case 'FREATIMETRO':
       return 'm.s.n.m.';
