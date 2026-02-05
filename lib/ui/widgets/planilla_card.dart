@@ -244,10 +244,30 @@ class _TipoIcon extends StatelessWidget {
           icon: Icons.view_in_ar_rounded,
           color: const Color(0xFF14B8A6),
         );
+      case TipoPlanilla.cr10xUniaxiales:
+        return _TipoConfig(
+          icon: Icons.linear_scale_rounded,
+          color: const Color(0xFF06B6D4),
+        );
       case TipoPlanilla.cr10xTermometros:
         return _TipoConfig(
           icon: Icons.thermostat_rounded,
           color: const Color(0xFFF97316),
+        );
+      case TipoPlanilla.cr10xClinometros:
+        return _TipoConfig(
+          icon: Icons.rotate_right_rounded,
+          color: const Color(0xFF6366F1),
+        );
+      case TipoPlanilla.cr10xBarometro:
+        return _TipoConfig(
+          icon: Icons.air_rounded,
+          color: const Color(0xFF0EA5E9),
+        );
+      case TipoPlanilla.cr10xCeldasPresion:
+        return _TipoConfig(
+          icon: Icons.compress_rounded,
+          color: const Color(0xFF10B981),
         );
       case TipoPlanilla.general:
         return _TipoConfig(

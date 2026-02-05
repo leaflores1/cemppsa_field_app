@@ -6,6 +6,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../repositories/catalogo_repository.dart';
 import '../../repositories/planilla_repository.dart';
 import '../../services/sync_service.dart';
 import '../widgets/connectivity_banner.dart';
@@ -58,7 +59,10 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
 
-    final result = await syncService.syncAll(planillaRepo);
+    final result = await syncService.syncAll(
+      planillaRepo,
+      catalog: context.read<CatalogRepository>(),
+    );
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(

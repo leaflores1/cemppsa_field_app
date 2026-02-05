@@ -45,8 +45,20 @@ enum TipoPlanilla {
   /// CR10X Triaxiales (carga contingencia)
   cr10xTriaxiales('CR10X_TRIAX', 'CR10X Triaxiales'),
 
+  /// CR10X Uniaxiales (carga contingencia)
+  cr10xUniaxiales('CR10X_UNIAX', 'CR10X Uniaxiales'),
+
   /// CR10X Termómetros (carga contingencia)
   cr10xTermometros('CR10X_TERMO', 'CR10X Termómetros'),
+
+  /// CR10X Clinómetros (carga contingencia)
+  cr10xClinometros('CR10X_CLINO', 'CR10X Clinómetros'),
+
+  /// CR10X Barómetro (carga contingencia)
+  cr10xBarometro('CR10X_BARO', 'CR10X Barómetro'),
+
+  /// CR10X Celdas de Presión (carga contingencia)
+  cr10xCeldasPresion('CR10X_CELDA', 'CR10X Celdas de Presión'),
 
   /// Planilla mixta o genérica
   general('GENERAL', 'General');

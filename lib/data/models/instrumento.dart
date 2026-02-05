@@ -13,6 +13,7 @@ enum FamiliaInstrumento {
   aforador('AFORADOR', 'Aforador'),
   celdaPresion('CELDA_PRESION', 'Celda de Presión'),
   triaxial('TRIAXIAL', 'Triaxial'),
+  uniaxial('UNIAXIAL', 'Uniaxial'),
   juntaPerimetral('JUNTA_PERIMETRAL', 'Junta Perimetral'),
   termometro('TERMOMETRO', 'Termómetro'),
   clinometro('CLINOMETRO', 'Clinómetro'),
@@ -72,6 +73,11 @@ enum FamiliaInstrumento {
     // Triaxiales
     if (RegExp(r'^J\d+[XYZ]?').hasMatch(upper)) {
       return FamiliaInstrumento.triaxial;
+    }
+
+    // Uniaxiales
+    if (RegExp(r'^U\d+').hasMatch(upper)) {
+      return FamiliaInstrumento.uniaxial;
     }
 
     // Clinómetros (juntas perimetrales)
@@ -196,6 +202,8 @@ class Instrumento {
   /// Constructor desde respuesta del catálogo del backend
   factory Instrumento.fromJson(Map<String, dynamic> json) {
     final familiaStr = json['familia'] as String? ?? 'PIEZOMETRO';
+    final defaultParam = json['default_parameter'] as String?;
+    final defaultUnit = json['default_unit'] as String?;
 
     return Instrumento(
       idInstrumento: json['id_instrumento'] as int?,
@@ -204,9 +212,13 @@ class Instrumento {
       familia: FamiliaInstrumento.fromBackend(familiaStr),
       subfamilia: json['subfamilia'] as String?,
       activo: json['activo'] as bool? ?? true,
-      // Inferir parámetro/unidad por defecto si no viene del backend
-      defaultParameter: _inferDefaultParameter(familiaStr),
-      defaultUnit: _inferDefaultUnit(familiaStr),
+      // Usar defaults del backend si están disponibles
+      defaultParameter: defaultParam?.trim().isNotEmpty == true
+          ? defaultParam!.trim()
+          : _inferDefaultParameter(familiaStr),
+      defaultUnit: defaultUnit?.trim().isNotEmpty == true
+          ? defaultUnit!.trim()
+          : _inferDefaultUnit(familiaStr),
     );
   }
 
@@ -253,6 +265,71 @@ class Instrumento {
   /// ¿Es del CR10X?
   bool get esCR10X => !esManual && familia == FamiliaInstrumento.piezometro;
 
+  /// Parámetro recomendado para ingesta (variable backend)
+  String? get ingestaParameter {
+    switch (familia) {
+      case FamiliaInstrumento.piezometro:
+        return 'LECTURA_CR10X';
+      case FamiliaInstrumento.casagrande:
+        return 'LECTURA';
+      case FamiliaInstrumento.freatimetro:
+        return 'PROFUNDIDAD_M';
+      case FamiliaInstrumento.aforador:
+        return 'ALTURA_MM';
+      case FamiliaInstrumento.asentimetro:
+        return 'LECTURA_LU';
+      case FamiliaInstrumento.celdaPresion:
+        return 'LECTURA_CR10X';
+      case FamiliaInstrumento.triaxial:
+        final axis = _inferAxisFromCode();
+        return axis != null ? 'EJE_$axis' : 'EJE_X';
+      case FamiliaInstrumento.uniaxial:
+        return 'LECTURA_MM';
+      case FamiliaInstrumento.termometro:
+        return 'LECTURA_CR10X';
+      case FamiliaInstrumento.clinometro:
+        return 'LECTURA_MV';
+      case FamiliaInstrumento.barometro:
+        return 'PRESION_MBAR';
+      case FamiliaInstrumento.juntaPerimetral:
+        return 'LECTURA_MM';
+      case FamiliaInstrumento.limnimetro:
+      case FamiliaInstrumento.embalse:
+        return 'NIVEL_EMBALSE';
+      case FamiliaInstrumento.convergencia:
+        return 'CONVERGENCIA_MM';
+    }
+  }
+
+  /// Unidad recomendada para ingesta (según variable de entrada).
+  /// Si devuelve null, se omite el campo `unit` en la API.
+  String? get ingestaUnit {
+    switch (familia) {
+      case FamiliaInstrumento.piezometro:
+      case FamiliaInstrumento.celdaPresion:
+      case FamiliaInstrumento.termometro:
+        return 'Hz';
+      case FamiliaInstrumento.asentimetro:
+        return 'LU';
+      case FamiliaInstrumento.clinometro:
+        return 'mV';
+      case FamiliaInstrumento.freatimetro:
+        return 'm';
+      case FamiliaInstrumento.aforador:
+        return 'mm';
+      case FamiliaInstrumento.barometro:
+        return 'mbar';
+      default:
+        return null;
+    }
+  }
+
+  String? _inferAxisFromCode() {
+    final normalized = codigo.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
+    final match = RegExp(r'([XYZ])$').firstMatch(normalized);
+    return match?.group(1);
+  }
+
   @override
   String toString() => 'Instrumento($codigo, $familia)';
 
@@ -284,6 +361,8 @@ String _inferDefaultParameter(String familia) {
       return 'presion';
     case 'TRIAXIAL':
       return 'deformacion';
+    case 'UNIAXIAL':
+      return 'deformacion';
     case 'JUNTA_PERIMETRAL':
     case 'CLINOMETRO':
       return 'inclinacion';
@@ -313,6 +392,8 @@ String _inferDefaultUnit(String familia) {
     case 'CELDA_PRESION':
       return 'MPa';
     case 'TRIAXIAL':
+      return 'mm';
+    case 'UNIAXIAL':
       return 'mm';
     case 'JUNTA_PERIMETRAL':
     case 'CLINOMETRO':

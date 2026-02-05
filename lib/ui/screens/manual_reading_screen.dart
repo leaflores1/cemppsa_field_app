@@ -11,7 +11,6 @@ import '../../data/models/lectura.dart';
 import '../../data/models/planilla.dart';
 import '../../repositories/catalogo_repository.dart';
 import '../../repositories/planilla_repository.dart';
-import '../../services/sync_service.dart';
 import '../../core/config.dart';
 
 class ManualReadingScreen extends StatefulWidget {
@@ -24,6 +23,21 @@ class ManualReadingScreen extends StatefulWidget {
 class _ManualReadingScreenState extends State<ManualReadingScreen> {
   TipoPlanilla? _selectedTipo;
   Planilla? _currentPlanilla;
+  DateTime _batchDateTime = DateTime.now();
+
+  final Map<String, TextEditingController> _controllers = {};
+  final Map<String, FocusNode> _focusNodes = {};
+
+  @override
+  void dispose() {
+    for (final controller in _controllers.values) {
+      controller.dispose();
+    }
+    for (final node in _focusNodes.values) {
+      node.dispose();
+    }
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -35,7 +49,7 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
         title: const Text('Lecturas Manuales'),
         elevation: 0,
         actions: [
-          if (_currentPlanilla != null && _currentPlanilla!.lecturas.isNotEmpty)
+          if (_currentPlanilla != null)
             TextButton.icon(
               onPressed: _saveDraft,
               icon: const Icon(Icons.save_outlined, color: Colors.white70),
@@ -45,7 +59,7 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
       ),
       body: _selectedTipo == null
           ? _buildTipoSelector()
-          : _buildReadingForm(),
+          : _buildBatchGrid(),
     );
   }
 
@@ -187,84 +201,84 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
   }
 
   // ===========================================================================
-  // Formulario de lecturas
+  // Grid de entrada masiva (igual que CR10X)
   // ===========================================================================
 
-  Widget _buildReadingForm() {
+  Widget _buildBatchGrid() {
     return Column(
       children: [
-        // Header con tipo seleccionado
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: const BoxDecoration(
-            color: Color(0xFF1E293B),
-            border: Border(bottom: BorderSide(color: Color(0xFF334155))),
-          ),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: const Color(0x333B82F6),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  _selectedTipo!.displayName,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF3B82F6),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Text(
-                '${_currentPlanilla?.totalLecturas ?? 0} lecturas',
-                style: TextStyle(color: Colors.grey[500]),
-              ),
-              const Spacer(),
-              IconButton(
-                icon: const Icon(Icons.close, color: Colors.grey),
-                onPressed: _confirmCancel,
-              ),
-            ],
-          ),
-        ),
-
-        // Lista de lecturas o estado vacío
+        _buildBatchHeader(),
         Expanded(
-          child: _currentPlanilla == null || _currentPlanilla!.isEmpty
-              ? _buildEmptyState()
-              : _buildLecturasList(),
+          child: _buildInstrumentGrid(),
         ),
-
-        // Footer con botón agregar
-        _buildFooter(),
+        _buildBatchFooter(),
       ],
     );
   }
 
-  Widget _buildEmptyState() {
-    return Center(
+  Widget _buildBatchHeader() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: const BoxDecoration(
+        color: Color(0xFF1E293B),
+        border: Border(bottom: BorderSide(color: Color(0xFF334155))),
+      ),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.add_box_outlined, size: 64, color: Colors.grey[700]),
-          const SizedBox(height: 16),
-          Text(
-            'Sin lecturas',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-              color: Colors.grey[500],
-            ),
+          Row(
+            children: [
+              Flexible(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: const Color(0x333B82F6),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    _selectedTipo!.displayName,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF3B82F6),
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                icon: const Icon(Icons.close, color: Colors.grey, size: 20),
+                onPressed: _confirmCancel,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              ),
+            ],
           ),
-          const SizedBox(height: 8),
-          Text(
-            'Tocá el botón + para agregar una lectura',
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey[600],
+          const SizedBox(height: 12),
+          InkWell(
+            onTap: _pickBatchDateTime,
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0F172A),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFF334155)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.schedule, color: Colors.grey, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Medición: ${_formatDateTime(_batchDateTime)}',
+                      style: const TextStyle(color: Colors.white, fontSize: 13),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const Icon(Icons.edit, color: Colors.grey, size: 16),
+                ],
+              ),
             ),
           ),
         ],
@@ -272,23 +286,44 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
     );
   }
 
-  Widget _buildLecturasList() {
+  Widget _buildInstrumentGrid() {
+    final instrumentos = _getInstrumentosForTipo(context.read<CatalogRepository>());
+
+    if (instrumentos.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.touch_app, size: 48, color: Colors.grey[700]),
+            const SizedBox(height: 16),
+            Text(
+              'Sin instrumentos disponibles',
+              style: TextStyle(color: Colors.grey[500]),
+            ),
+          ],
+        ),
+      );
+    }
+
     return ListView.builder(
       padding: const EdgeInsets.all(16),
-      itemCount: _currentPlanilla!.lecturas.length,
+      itemCount: instrumentos.length,
       itemBuilder: (ctx, index) {
-        final lectura = _currentPlanilla!.lecturas[index];
-        return _LecturaCard(
-          lectura: lectura,
-          onEdit: () => _editLectura(index),
-          onDelete: () => _deleteLectura(index),
+        final inst = instrumentos[index];
+        return _InstrumentInputRow(
+          instrumento: inst,
+          controller: _getController(inst.codigo),
+          focusNode: _getFocusNode(inst.codigo),
+          onSubmitted: () => _focusNext(instrumentos, index),
         );
       },
     );
   }
 
-  Widget _buildFooter() {
-    final hasLecturas = _currentPlanilla != null && _currentPlanilla!.lecturas.isNotEmpty;
+  Widget _buildBatchFooter() {
+    final filledCount = _controllers.entries
+        .where((e) => e.value.text.isNotEmpty)
+        .length;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -297,96 +332,44 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
         border: Border(top: BorderSide(color: Color(0xFF334155))),
       ),
       child: SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+        child: Row(
           children: [
-            // Botón agregar lectura
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: _showAddLecturaSheet,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF3B82F6),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-                icon: const Icon(Icons.add, color: Colors.white),
-                label: const Text(
-                  'Agregar Lectura',
-                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-                ),
+            Text(
+              '$filledCount valores',
+              style: TextStyle(color: Colors.grey[500], fontSize: 12),
+            ),
+            const Spacer(),
+            OutlinedButton(
+              onPressed: _clearAll,
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: Color(0xFF334155)),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                minimumSize: const Size(70, 36),
+              ),
+              child: const Text('Limpiar', style: TextStyle(color: Colors.grey, fontSize: 12)),
+            ),
+            const SizedBox(width: 8),
+            ElevatedButton(
+              onPressed: filledCount > 0 ? _saveBatch : null,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF22C55E),
+                disabledBackgroundColor: const Color(0xFF334155),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                minimumSize: const Size(80, 36),
+              ),
+              child: const Text(
+                'Guardar',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 12),
               ),
             ),
-
-            // Botón finalizar (solo si hay lecturas)
-            if (hasLecturas) ...[
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _finishAndSave,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF22C55E),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                  ),
-                  child: const Text(
-                    'Finalizar y Guardar',
-                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ),
-            ],
           ],
         ),
       ),
     );
   }
 
-  // ===========================================================================
-  // Bottom Sheet para agregar/editar lectura
-  // ===========================================================================
-
-  void _showAddLecturaSheet({Lectura? existing, int? editIndex}) {
-    final catalog = context.read<CatalogRepository>();
-    final instrumentos = _getInstrumentosForTipo(catalog);
-
-    // Verificar que hay instrumentos disponibles
-    if (instrumentos.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No hay instrumentos disponibles. Sincronizá el catálogo primero.'),
-          backgroundColor: Color(0xFFEF4444),
-        ),
-      );
-      return;
-    }
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: const Color(0xFF1E293B),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => _LecturaFormSheet(
-        instrumentos: instrumentos,
-        existing: existing,
-        onSave: (lectura) {
-          if (editIndex != null) {
-            setState(() {
-              _currentPlanilla!.lecturas[editIndex] = lectura;
-            });
-          } else {
-            _addLectura(lectura);
-          }
-          Navigator.pop(ctx);
-        },
-      ),
-    );
-  }
-
   List<Instrumento> _getInstrumentosForTipo(CatalogRepository catalog) {
     switch (_selectedTipo) {
-
       case TipoPlanilla.casagrande:
         return catalog.all().where((i) =>
             i.familia == FamiliaInstrumento.casagrande ||
@@ -395,10 +378,33 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
 
       case TipoPlanilla.freatimetros:
         return catalog.byFamilia(FamiliaInstrumento.freatimetro);
+
       case TipoPlanilla.aforadores:
         return catalog.byFamilia(FamiliaInstrumento.aforador);
+
       default:
         return [];
+    }
+  }
+
+  TextEditingController _getController(String codigo) {
+    if (!_controllers.containsKey(codigo)) {
+      _controllers[codigo] = TextEditingController();
+    }
+    return _controllers[codigo]!;
+  }
+
+  FocusNode _getFocusNode(String codigo) {
+    if (!_focusNodes.containsKey(codigo)) {
+      _focusNodes[codigo] = FocusNode();
+    }
+    return _focusNodes[codigo]!;
+  }
+
+  void _focusNext(List<Instrumento> instrumentos, int currentIndex) {
+    if (currentIndex < instrumentos.length - 1) {
+      final nextCode = instrumentos[currentIndex + 1].codigo;
+      _focusNodes[nextCode]?.requestFocus();
     }
   }
 
@@ -406,28 +412,92 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
   // Acciones
   // ===========================================================================
 
-  void _addLectura(Lectura lectura) {
-    setState(() {
-      _currentPlanilla!.agregarLectura(lectura);
-    });
+  Future<void> _pickBatchDateTime() async {
+    final date = await showDatePicker(
+      context: context,
+      initialDate: _batchDateTime,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+    );
+    if (date != null && mounted) {
+      final time = await showTimePicker(
+        context: context,
+        initialTime: TimeOfDay.fromDateTime(_batchDateTime),
+      );
+      if (time != null) {
+        setState(() {
+          _batchDateTime = DateTime(
+            date.year, date.month, date.day, time.hour, time.minute,
+          );
+        });
+      }
+    }
   }
 
-  void _editLectura(int index) {
-    final lectura = _currentPlanilla!.lecturas[index];
-    _showAddLecturaSheet(existing: lectura, editIndex: index);
+  void _clearAll() {
+    for (final controller in _controllers.values) {
+      controller.clear();
+    }
+    setState(() {});
   }
 
-  void _deleteLectura(int index) {
-    setState(() {
-      _currentPlanilla!.lecturas.removeAt(index);
-    });
+  Future<void> _saveBatch() async {
+    final instrumentos = _getInstrumentosForTipo(context.read<CatalogRepository>());
+    int clientRowId = _currentPlanilla!.nextClientRowId;
+
+    for (final inst in instrumentos) {
+      final controller = _controllers[inst.codigo];
+      if (controller != null && controller.text.isNotEmpty) {
+        final lectura = Lectura.fromForm(
+          clientRowId: clientRowId++,
+          instrumentCode: inst.codigo,
+          parameter: inst.ingestaParameter ?? inst.defaultParameter,
+          unit: inst.ingestaParameter != null ? inst.ingestaUnit : inst.defaultUnit,
+          rawValue: controller.text,
+          measuredAt: _batchDateTime,
+        );
+        _currentPlanilla!.agregarLectura(lectura);
+      }
+    }
+
+    _currentPlanilla!.marcarPendiente();
+    await context.read<PlanillaRepository>().save(_currentPlanilla!);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Lote guardado (${_currentPlanilla!.totalLecturas} lecturas)',
+          ),
+          backgroundColor: const Color(0xFF22C55E),
+        ),
+      );
+      Navigator.pop(context);
+    }
   }
 
   Future<void> _saveDraft() async {
-    if (_currentPlanilla == null) return;
-    
+    final instrumentos = _getInstrumentosForTipo(context.read<CatalogRepository>());
+    int clientRowId = 1;
+
+    _currentPlanilla!.lecturas.clear();
+    for (final inst in instrumentos) {
+      final controller = _controllers[inst.codigo];
+      if (controller != null && controller.text.isNotEmpty) {
+        final lectura = Lectura.fromForm(
+          clientRowId: clientRowId++,
+          instrumentCode: inst.codigo,
+          parameter: inst.ingestaParameter ?? inst.defaultParameter,
+          unit: inst.ingestaParameter != null ? inst.ingestaUnit : inst.defaultUnit,
+          rawValue: controller.text,
+          measuredAt: _batchDateTime,
+        );
+        _currentPlanilla!.agregarLectura(lectura);
+      }
+    }
+
     await context.read<PlanillaRepository>().save(_currentPlanilla!);
-    
+
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -438,43 +508,8 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
     }
   }
 
-  Future<void> _finishAndSave() async {
-    if (_currentPlanilla == null) return;
-
-    final planillaRepo = context.read<PlanillaRepository>();
-    final syncService = context.read<SyncService>();
-    final totalLecturas = _currentPlanilla!.totalLecturas;
-
-    _currentPlanilla!.marcarPendiente();
-    await planillaRepo.save(_currentPlanilla!);
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Planilla guardada ($totalLecturas lecturas). Sincronizando...'),
-          backgroundColor: const Color(0xFF3B82F6),
-        ),
-      );
-      Navigator.pop(context);
-    }
-
-    // Sincronizar automáticamente en background
-    final result = await syncService.syncAll(planillaRepo);
-
-    if (mounted && result.sent > 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(result.message),
-          backgroundColor: result.hasErrors
-              ? const Color(0xFFF59E0B)
-              : const Color(0xFF22C55E),
-        ),
-      );
-    }
-  }
-
   void _confirmCancel() {
-    final hasData = _currentPlanilla != null && _currentPlanilla!.lecturas.isNotEmpty;
+    final hasData = _controllers.values.any((c) => c.text.isNotEmpty);
 
     if (!hasData) {
       setState(() {
@@ -490,7 +525,7 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
         backgroundColor: const Color(0xFF1E293B),
         title: const Text('¿Descartar cambios?', style: TextStyle(color: Colors.white)),
         content: Text(
-          'Tenés ${_currentPlanilla!.totalLecturas} lecturas sin guardar.',
+          'Tenés valores sin guardar.',
           style: TextStyle(color: Colors.grey[400]),
         ),
         actions: [
@@ -515,6 +550,9 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
               setState(() {
                 _selectedTipo = null;
                 _currentPlanilla = null;
+                for (final controller in _controllers.values) {
+                  controller.clear();
+                }
               });
             },
             child: const Text('Descartar', style: TextStyle(color: Color(0xFFEF4444))),
@@ -522,6 +560,14 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
         ],
       ),
     );
+  }
+
+  String _formatDateTime(DateTime dt) {
+    return '${dt.day.toString().padLeft(2, '0')}/'
+        '${dt.month.toString().padLeft(2, '0')}/'
+        '${dt.year} '
+        '${dt.hour.toString().padLeft(2, '0')}:'
+        '${dt.minute.toString().padLeft(2, '0')}';
   }
 }
 
@@ -649,405 +695,84 @@ class _TipoCard extends StatelessWidget {
   }
 }
 
-class _LecturaCard extends StatelessWidget {
-  final Lectura lectura;
-  final VoidCallback onEdit;
-  final VoidCallback onDelete;
+class _InstrumentInputRow extends StatelessWidget {
+  final Instrumento instrumento;
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final VoidCallback onSubmitted;
 
-  const _LecturaCard({
-    required this.lectura,
-    required this.onEdit,
-    required this.onDelete,
+  const _InstrumentInputRow({
+    required this.instrumento,
+    required this.controller,
+    required this.focusNode,
+    required this.onSubmitted,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
         color: const Color(0xFF1E293B),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(color: const Color(0xFF334155)),
       ),
       child: Row(
         children: [
-          // Código de instrumento
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            decoration: BoxDecoration(
-              color: const Color(0x1A3B82F6),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              lectura.instrumentCode,
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF3B82F6),
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-
-          // Valor y metadata
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '${lectura.value} ${lectura.unit}',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '${_formatTime(lectura.measuredAt)}${lectura.notes != null && lectura.notes!.isNotEmpty ? ' • ${lectura.notes}' : ''}',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.grey[500],
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
-
-          // Acciones
-          IconButton(
-            icon: const Icon(Icons.edit_outlined, size: 18),
-            color: Colors.grey[500],
-            onPressed: onEdit,
-            visualDensity: VisualDensity.compact,
-          ),
-          IconButton(
-            icon: const Icon(Icons.delete_outline, size: 18),
-            color: const Color(0xFFEF4444),
-            onPressed: onDelete,
-            visualDensity: VisualDensity.compact,
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _formatTime(DateTime dt) {
-    return '${dt.hour.toString().padLeft(2, '0')}:'
-        '${dt.minute.toString().padLeft(2, '0')}';
-  }
-}
-
-class _LecturaFormSheet extends StatefulWidget {
-  final List<Instrumento> instrumentos;
-  final Lectura? existing;
-  final void Function(Lectura) onSave;
-
-  const _LecturaFormSheet({
-    required this.instrumentos,
-    required this.onSave,
-    this.existing,
-  });
-
-  @override
-  State<_LecturaFormSheet> createState() => _LecturaFormSheetState();
-}
-
-class _LecturaFormSheetState extends State<_LecturaFormSheet> {
-  Instrumento? _selectedInstrumento;
-  final _valueController = TextEditingController();
-  final _notesController = TextEditingController();
-  DateTime _measuredAt = DateTime.now();
-
-  @override
-  void initState() {
-    super.initState();
-    if (widget.existing != null) {
-      // Buscar instrumento existente
-      _selectedInstrumento = widget.instrumentos.firstWhere(
-        (i) => i.codigo == widget.existing!.instrumentCode,
-        orElse: () => widget.instrumentos.first,
-      );
-      _valueController.text = widget.existing!.value.toString();
-      _notesController.text = widget.existing!.notes ?? '';
-      _measuredAt = widget.existing!.measuredAt;
-    }
-  }
-
-  @override
-  void dispose() {
-    _valueController.dispose();
-    _notesController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom,
-        left: 16,
-        right: 16,
-        top: 16,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Handle
-          Center(
-            child: Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey[700],
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Título
-          Text(
-            widget.existing != null ? 'Editar Lectura' : 'Nueva Lectura',
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 20),
-
-          // Selector de instrumento
-          const Text(
-            'Instrumento',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF94A3B8),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: BoxDecoration(
-              color: const Color(0xFF0F172A),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: const Color(0xFF334155)),
-            ),
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<Instrumento>(
-                value: _selectedInstrumento,
-                hint: const Text('Seleccionar', style: TextStyle(color: Colors.grey)),
-                isExpanded: true,
-                dropdownColor: const Color(0xFF1E293B),
-                items: widget.instrumentos.map((inst) {
-                  return DropdownMenuItem(
-                    value: inst,
-                    child: Text(
-                      '${inst.codigo} - ${inst.nombre}',
-                      style: const TextStyle(color: Colors.white),
-                    ),
-                  );
-                }).toList(),
-                onChanged: (v) => setState(() => _selectedInstrumento = v),
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Valor
-          const Text(
-            'Valor',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF94A3B8),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _valueController,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  style: const TextStyle(color: Colors.white, fontSize: 18),
-                  decoration: InputDecoration(
-                    hintText: '0,00',
-                    hintStyle: TextStyle(color: Colors.grey[700]),
-                    filled: true,
-                    fillColor: const Color(0xFF0F172A),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: const BorderSide(color: Color(0xFF334155)),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: const BorderSide(color: Color(0xFF334155)),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF0F172A),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0xFF334155)),
-                ),
-                child: Text(
-                  _selectedInstrumento?.defaultUnit ?? 'm',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.grey[500],
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-
-          // Fecha y hora
-          const Text(
-            'Fecha y hora',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF94A3B8),
-            ),
-          ),
-          const SizedBox(height: 8),
-          InkWell(
-            onTap: _pickDateTime,
-            child: Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: const Color(0xFF0F172A),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFF334155)),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.calendar_today, color: Colors.grey, size: 18),
-                  const SizedBox(width: 12),
-                  Text(
-                    _formatDateTime(_measuredAt),
-                    style: const TextStyle(color: Colors.white),
-                  ),
-                  const Spacer(),
-                  const Icon(Icons.edit, color: Colors.grey, size: 16),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Notas (opcional)
-          const Text(
-            'Notas (opcional)',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF94A3B8),
-            ),
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _notesController,
-            style: const TextStyle(color: Colors.white),
-            maxLines: 2,
-            decoration: InputDecoration(
-              hintText: 'Observaciones...',
-              hintStyle: TextStyle(color: Colors.grey[700]),
-              filled: true,
-              fillColor: const Color(0xFF0F172A),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: const BorderSide(color: Color(0xFF334155)),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: const BorderSide(color: Color(0xFF334155)),
-              ),
-            ),
-          ),
-          const SizedBox(height: 24),
-
-          // Botón guardar
           SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _canSave() ? _save : null,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF22C55E),
-                disabledBackgroundColor: const Color(0xFF334155),
-                padding: const EdgeInsets.symmetric(vertical: 16),
+            width: 70,
+            child: Text(
+              instrumento.codigo,
+              style: const TextStyle(
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+                fontSize: 12,
               ),
-              child: Text(
-                widget.existing != null ? 'Actualizar' : 'Agregar',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: TextField(
+              controller: controller,
+              focusNode: focusNode,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              textInputAction: TextInputAction.next,
+              onSubmitted: (_) => onSubmitted(),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+              ),
+              decoration: InputDecoration(
+                hintText: '0,00',
+                hintStyle: TextStyle(color: Colors.grey[700]),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                filled: true,
+                fillColor: const Color(0xFF0F172A),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide.none,
                 ),
               ),
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 40,
+            child: Text(
+              instrumento.defaultUnit,
+              style: TextStyle(
+                fontSize: 11,
+                color: Colors.grey[500],
+              ),
+              textAlign: TextAlign.center,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
         ],
       ),
     );
-  }
-
-  bool _canSave() {
-    return _selectedInstrumento != null && _valueController.text.isNotEmpty;
-  }
-
-  Future<void> _pickDateTime() async {
-    final date = await showDatePicker(
-      context: context,
-      initialDate: _measuredAt,
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
-    );
-    if (date != null && mounted) {
-      final time = await showTimePicker(
-        context: context,
-        initialTime: TimeOfDay.fromDateTime(_measuredAt),
-      );
-      if (time != null) {
-        setState(() {
-          _measuredAt = DateTime(
-            date.year, date.month, date.day, time.hour, time.minute,
-          );
-        });
-      }
-    }
-  }
-
-  void _save() {
-    final lectura = Lectura.fromForm(
-      clientRowId: widget.existing?.clientRowId ?? DateTime.now().millisecondsSinceEpoch,
-      instrumentCode: _selectedInstrumento!.codigo,
-      parameter: _selectedInstrumento!.defaultParameter,
-      unit: _selectedInstrumento!.defaultUnit,
-      rawValue: _valueController.text,
-      measuredAt: _measuredAt,
-      notes: _notesController.text.isNotEmpty ? _notesController.text : null,
-    );
-    widget.onSave(lectura);
-  }
-
-  String _formatDateTime(DateTime dt) {
-    return '${dt.day.toString().padLeft(2, '0')}/'
-        '${dt.month.toString().padLeft(2, '0')}/'
-        '${dt.year} '
-        '${dt.hour.toString().padLeft(2, '0')}:'
-        '${dt.minute.toString().padLeft(2, '0')}';
   }
 }

@@ -189,8 +189,9 @@ class CatalogRepository extends ChangeNotifier {
   /// Casagrande = piezómetro + subfamilia CASAGRANDE
   List<Instrumento> casagrande() =>
       _byCode.values.where((i) =>
-          i.familia == FamiliaInstrumento.piezometro &&
-          i.subfamilia == 'CASAGRANDE'
+          i.familia == FamiliaInstrumento.casagrande ||
+          (i.familia == FamiliaInstrumento.piezometro &&
+          i.subfamilia == 'CASAGRANDE')
       ).toList();
 
   List<Instrumento> freatimetros() =>

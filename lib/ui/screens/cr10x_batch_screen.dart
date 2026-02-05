@@ -117,6 +117,26 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
           ),
           const SizedBox(height: 12),
 
+          // Uniaxiales
+          _FamilyCard(
+            title: 'Uniaxiales',
+            subtitle: 'Juntas uniaxiales',
+            icon: Icons.linear_scale_rounded,
+            color: const Color(0xFF06B6D4),
+            onTap: () => _selectFamily(TipoPlanilla.cr10xUniaxiales),
+          ),
+          const SizedBox(height: 12),
+
+          // Clinómetros
+          _FamilyCard(
+            title: 'Clinómetros',
+            subtitle: 'Muro colado',
+            icon: Icons.rotate_right_rounded,
+            color: const Color(0xFF6366F1),
+            onTap: () => _selectFamily(TipoPlanilla.cr10xClinometros),
+          ),
+          const SizedBox(height: 12),
+
           // Termómetros
           _FamilyCard(
             title: 'Termómetros',
@@ -124,6 +144,26 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
             icon: Icons.thermostat_rounded,
             color: const Color(0xFFF97316),
             onTap: () => _selectFamily(TipoPlanilla.cr10xTermometros),
+          ),
+          const SizedBox(height: 12),
+
+          // Celdas de presión
+          _FamilyCard(
+            title: 'Celdas de presión',
+            subtitle: 'TE, TG',
+            icon: Icons.compress_rounded,
+            color: const Color(0xFF10B981),
+            onTap: () => _selectFamily(TipoPlanilla.cr10xCeldasPresion),
+          ),
+          const SizedBox(height: 12),
+
+          // Barómetro
+          _FamilyCard(
+            title: 'Barómetro',
+            subtitle: 'Presión atmosférica',
+            icon: Icons.air_rounded,
+            color: const Color(0xFF0EA5E9),
+            onTap: () => _selectFamily(TipoPlanilla.cr10xBarometro),
           ),
         ],
       ),
@@ -329,8 +369,20 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
       case TipoPlanilla.cr10xTriaxiales:
         return catalog.byFamilia(FamiliaInstrumento.triaxial);
 
+      case TipoPlanilla.cr10xUniaxiales:
+        return catalog.byFamilia(FamiliaInstrumento.uniaxial);
+
       case TipoPlanilla.cr10xTermometros:
         return catalog.byFamilia(FamiliaInstrumento.termometro);
+
+      case TipoPlanilla.cr10xClinometros:
+        return catalog.byFamilia(FamiliaInstrumento.clinometro);
+
+      case TipoPlanilla.cr10xBarometro:
+        return catalog.byFamilia(FamiliaInstrumento.barometro);
+
+      case TipoPlanilla.cr10xCeldasPresion:
+        return catalog.byFamilia(FamiliaInstrumento.celdaPresion);
 
       default:
         return [];
@@ -449,8 +501,8 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
         final lectura = Lectura.fromForm(
           clientRowId: clientRowId++,
           instrumentCode: inst.codigo,
-          parameter: inst.defaultParameter,
-          unit: inst.defaultUnit,
+          parameter: inst.ingestaParameter ?? inst.defaultParameter,
+          unit: inst.ingestaParameter != null ? inst.ingestaUnit : inst.defaultUnit,
           rawValue: controller.text,
           measuredAt: _batchDateTime,
         );
@@ -485,8 +537,8 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
         final lectura = Lectura.fromForm(
           clientRowId: clientRowId++,
           instrumentCode: inst.codigo,
-          parameter: inst.defaultParameter,
-          unit: inst.defaultUnit,
+          parameter: inst.ingestaParameter ?? inst.defaultParameter,
+          unit: inst.ingestaParameter != null ? inst.ingestaUnit : inst.defaultUnit,
           rawValue: controller.text,
           measuredAt: _batchDateTime,
         );

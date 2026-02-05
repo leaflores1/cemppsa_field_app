@@ -8,7 +8,9 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 
 import '../api/api_client.dart';
+import '../data/models/instrumento.dart';
 import '../data/models/planilla.dart';
+import '../repositories/catalogo_repository.dart';
 import '../repositories/planilla_repository.dart';
 
 /// Estado de conexión con el backend
@@ -95,8 +97,22 @@ class SyncService extends ChangeNotifier {
   // ENVÍO DE PLANILLA
   // ===========================================================================
 
-  Future<bool> sendPlanilla(Planilla planilla) async {
+  Future<bool> sendPlanilla(
+    Planilla planilla, {
+    CatalogRepository? catalog,
+  }) async {
     final requestBody = planilla.toSyncRequest();
+    if (catalog != null) {
+      final preflightError = _applyCatalogOverrides(
+        requestBody: requestBody,
+        catalog: catalog,
+      );
+      if (preflightError != null) {
+        _lastError = preflightError;
+        planilla.errorMessage = preflightError;
+        return false;
+      }
+    }
     _normalizeAforadoresPayload(planilla, requestBody);
     debugPrint(
       'SyncService.sendPlanilla: batch_uuid=${planilla.batchUuid} '
@@ -159,7 +175,10 @@ class SyncService extends ChangeNotifier {
   // SYNC MASIVO
   // ===========================================================================
 
-  Future<SyncResult> syncAll(PlanillaRepository repository) async {
+  Future<SyncResult> syncAll(
+    PlanillaRepository repository, {
+    CatalogRepository? catalog,
+  }) async {
     if (_status == ConnectionStatus.syncing) {
       return SyncResult(
         sent: 0,
@@ -183,6 +202,10 @@ class SyncService extends ChangeNotifier {
       );
     }
 
+    if (catalog != null) {
+      await catalog.syncFromBackend();
+    }
+
     _status = ConnectionStatus.syncing;
 
     _pendingCount = pendientes.length;
@@ -201,7 +224,7 @@ class SyncService extends ChangeNotifier {
       await repository.save(planilla);
       notifyListeners();
 
-      final success = await sendPlanilla(planilla);
+      final success = await sendPlanilla(planilla, catalog: catalog);
 
       if (success) {
         planilla.marcarEnviada();
@@ -329,15 +352,80 @@ class SyncService extends ChangeNotifier {
             normalized == 'nivel' ||
             normalized == 'nivel_msnm' ||
             normalized == 'nivel-msnm') {
-          entry['parameter'] = 'NIVEL_MSNM';
+          entry['parameter'] = 'ALTURA_MM';
+        } else if (normalized == 'caudal' || normalized == 'q') {
+          entry['parameter'] = 'CAUDAL_LS';
+        } else if (normalized == 'tiempo' ||
+            normalized == 'seg' ||
+            normalized == 'segundos' ||
+            normalized == 'tiempo_s') {
+          entry['parameter'] = 'TIEMPO_S';
         }
       }
       final parameterValue = entry['parameter'];
-      if (parameterValue is String &&
-          parameterValue.trim().toUpperCase() == 'NIVEL_MSNM') {
-        entry['unit'] = 'msnm';
+      if (parameterValue is String) {
+        switch (parameterValue.trim().toUpperCase()) {
+          case 'ALTURA_MM':
+            entry['unit'] = 'mm';
+            break;
+          case 'CAUDAL_LS':
+            entry['unit'] = 'l/s';
+            break;
+          case 'TIEMPO_S':
+            entry['unit'] = 's';
+            break;
+          default:
+            break;
+        }
       }
     }
+  }
+
+  String? _applyCatalogOverrides({
+    required Map<String, dynamic> requestBody,
+    required CatalogRepository catalog,
+  }) {
+    final readings = requestBody['readings'];
+    if (readings is! List) {
+      return null;
+    }
+
+    final missing = <String>{};
+
+    for (final entry in readings) {
+      if (entry is! Map) continue;
+      final code = entry['instrument_code'];
+      if (code is! String) continue;
+
+      final catalogInst = catalog.byCode(code);
+      if (catalogInst == null) {
+        missing.add(code);
+      }
+      final inst = catalogInst ?? Instrumento.fromCode(code);
+
+      final parameter = inst.ingestaParameter ?? inst.defaultParameter;
+      if (parameter.isNotEmpty) {
+        entry['parameter'] = parameter;
+      }
+
+      final unit =
+          inst.ingestaParameter != null ? inst.ingestaUnit : inst.defaultUnit;
+      if (unit == null || unit.trim().isEmpty) {
+        entry.remove('unit');
+      } else {
+        entry['unit'] = unit;
+      }
+    }
+
+    if (missing.isNotEmpty) {
+      final list = missing.toList()..sort();
+      debugPrint(
+        'SyncService: instrumentos no encontrados en catálogo (se envían igual): '
+        '${list.join(', ')}',
+      );
+    }
+
+    return null;
   }
 
   String _normalizeAforadorInstrumentCode(String code) {
