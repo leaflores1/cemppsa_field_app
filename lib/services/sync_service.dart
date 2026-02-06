@@ -508,6 +508,8 @@ class SyncService extends ChangeNotifier {
         return 'freatimetros';
       case TipoPlanilla.aforadores:
         return 'aforadores';
+      case TipoPlanilla.triaxiales:
+        return 'triaxiales';
       default:
         // Fallback for generic manual if any
         return 'general_app'; 

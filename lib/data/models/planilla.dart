@@ -63,6 +63,9 @@ enum TipoPlanilla {
   /// Sismos (lectura manual)
   sismos('SISMOS', 'Sismos'),
 
+  /// Triaxiales (3 ejes X, Y, Z - lectura manual)
+  triaxiales('TRIAXIALES', 'Triaxiales'),
+
   /// Planilla mixta o genérica
   general('GENERAL', 'General');
 

@@ -14,7 +14,6 @@ import '../../data/models/planilla.dart';
 import '../../repositories/catalogo_repository.dart';
 import '../../repositories/planilla_repository.dart';
 import '../../data/models/schema_model.dart';
-import '../../data/models/schema_model.dart';
 import '../../core/config.dart';
 import '../../services/sync_service.dart'; // [NEW] Import
 
@@ -143,6 +142,18 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
             ? _loadedSchema!.variables.first.unit 
             : null;
 
+        // Triaxiales: mostrar 3 campos (X, Y, Z) en lugar de 1
+        if (_selectedTipo == TipoPlanilla.triaxiales && inst.familia == FamiliaInstrumento.triaxial) {
+          return _TriaxialInputRow(
+            instrumento: inst,
+            controllerX: _getController('${inst.codigo}X'),
+            controllerY: _getController('${inst.codigo}Y'),
+            controllerZ: _getController('${inst.codigo}Z'),
+            customUnit: unit,
+            onSave: (valX, valY, valZ) => _saveTriaxialReading(inst, valX, valY, valZ),
+          );
+        }
+
         return _InstrumentInputRow(
           instrumento: inst,
           controller: _getController(inst.codigo),
@@ -252,6 +263,69 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('${inst.codigo} guardado en borrador'),
+          duration: const Duration(milliseconds: 800),
+          backgroundColor: const Color(0xFF3B82F6),
+        ),
+      );
+    }
+  }
+
+  // [NEW] Triaxial Reading Save (X, Y, Z)
+  Future<void> _saveTriaxialReading(Instrumento inst, String rawValueX, String rawValueY, String rawValueZ) async {
+    if (rawValueX.isEmpty && rawValueY.isEmpty && rawValueZ.isEmpty) return;
+
+    if (_currentPlanilla == null) return;
+    
+    // Para cada eje (X, Y, Z), crear/actualizar una lectura
+    // Códigos: J1X, J1Y, J1Z
+    final axes = [
+      ('X', rawValueX),
+      ('Y', rawValueY),
+      ('Z', rawValueZ),
+    ];
+    
+    final variableCode = _loadedSchema?.variables.isNotEmpty == true
+        ? _loadedSchema!.variables.first.code
+        : (inst.ingestaParameter ?? inst.defaultParameter);
+        
+    final variableUnit = _loadedSchema?.variables.isNotEmpty == true
+        ? _loadedSchema!.variables.first.unit
+        : (inst.ingestaParameter != null ? inst.ingestaUnit : inst.defaultUnit);
+    
+    for (final (axis, rawValue) in axes) {
+      if (rawValue.isEmpty) continue;
+      
+      final axisCode = '${inst.codigo}$axis'; // J1X, J1Y, J1Z
+      
+      // Look for existing reading by axis code
+      final existingIndex = _currentPlanilla!.lecturas.indexWhere((l) => l.instrumentCode == axisCode);
+      int rowId;
+      if (existingIndex >= 0) {
+        rowId = _currentPlanilla!.lecturas[existingIndex].clientRowId;
+        _currentPlanilla!.lecturas.removeAt(existingIndex);
+      } else {
+        rowId = _currentPlanilla!.nextClientRowId;
+      }
+
+      final lectura = Lectura.fromForm(
+        clientRowId: rowId,
+        instrumentCode: axisCode, // J1X, J1Y, J1Z
+        parameter: variableCode,
+        unit: variableUnit,
+        rawValue: rawValue,
+        measuredAt: _batchDateTime,
+      );
+      
+      _currentPlanilla!.agregarLectura(lectura);
+    }
+    
+    _currentPlanilla!.estado = PlanillaEstado.borrador;
+    await context.read<PlanillaRepository>().save(_currentPlanilla!);
+    
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${inst.codigo} (X,Y,Z) guardado en borrador'),
           duration: const Duration(milliseconds: 800),
           backgroundColor: const Color(0xFF3B82F6),
         ),
@@ -535,6 +609,9 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
         return all.where((i) => i.familia == FamiliaInstrumento.aforador).toList();
       case TipoPlanilla.sismos:
          return all.where((i) => i.familia == FamiliaInstrumento.sismos).toList();
+      case TipoPlanilla.triaxiales:
+        // Retornar solo TRIAXIAL base (J1-J15), no los ejes
+        return all.where((i) => i.familia == FamiliaInstrumento.triaxial && RegExp(r'^J\d+$').hasMatch(i.codigo.toUpperCase())).toList();
       default:
         return [];
     }
@@ -579,6 +656,7 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
           _buildOptionButton(Icons.water_drop, 'Freatímetros', TipoPlanilla.freatimetros),
           _buildOptionButton(Icons.speed, 'Aforadores', TipoPlanilla.aforadores),
           _buildOptionButton(Icons.vibration, 'Sismos', TipoPlanilla.sismos),
+          _buildOptionButton(Icons.view_in_ar, 'Triaxiales', TipoPlanilla.triaxiales),
         ],
       ),
     );
@@ -773,6 +851,150 @@ class _InstrumentInputRow extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+// [NEW] _TriaxialInputRow - 3 valores (X, Y, Z)
+class _TriaxialInputRow extends StatelessWidget {
+  final Instrumento instrumento;
+  final TextEditingController controllerX;
+  final TextEditingController controllerY;
+  final TextEditingController controllerZ;
+  final String? customUnit;
+  final Function(String, String, String) onSave;
+
+  const _TriaxialInputRow({
+    required this.instrumento,
+    required this.controllerX,
+    required this.controllerY,
+    required this.controllerZ,
+    required this.onSave,
+    this.customUnit,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E293B),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFF334155), width: 2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Encabezado
+          Text(
+            instrumento.codigo,
+            style: const TextStyle(
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+              fontSize: 14,
+            ),
+          ),
+          const SizedBox(height: 8),
+          
+          // Tres campos: X, Y, Z
+          Row(
+            children: [
+              // Eje X
+              Expanded(
+                child: _TriaxialAxisInput(
+                  label: 'Eje X',
+                  controller: controllerX,
+                  unit: customUnit ?? instrumento.defaultUnit,
+                ),
+              ),
+              const SizedBox(width: 8),
+              
+              // Eje Y
+              Expanded(
+                child: _TriaxialAxisInput(
+                  label: 'Eje Y',
+                  controller: controllerY,
+                  unit: customUnit ?? instrumento.defaultUnit,
+                ),
+              ),
+              const SizedBox(width: 8),
+              
+              // Eje Z
+              Expanded(
+                child: _TriaxialAxisInput(
+                  label: 'Eje Z',
+                  controller: controllerZ,
+                  unit: customUnit ?? instrumento.defaultUnit,
+                ),
+              ),
+              const SizedBox(width: 8),
+              
+              // Botón Guardar
+              IconButton(
+                icon: const Icon(Icons.save_as_outlined, color: Color(0xFF10B981), size: 22),
+                onPressed: () => onSave(controllerX.text, controllerY.text, controllerZ.text),
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                padding: EdgeInsets.zero,
+                tooltip: 'Guardar 3 ejes',
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// [NEW] Triaxial Axis Input - campo para un eje (X, Y, o Z)
+class _TriaxialAxisInput extends StatelessWidget {
+  final String label;
+  final TextEditingController controller;
+  final String unit;
+
+  const _TriaxialAxisInput({
+    required this.label,
+    required this.controller,
+    required this.unit,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w600,
+            color: Colors.grey,
+          ),
+        ),
+        const SizedBox(height: 4),
+        TextField(
+          controller: controller,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+          ),
+          decoration: InputDecoration(
+            hintText: '0,0',
+            hintStyle: TextStyle(color: Colors.grey[800]),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            filled: true,
+            fillColor: const Color(0xFF0F172A),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(6),
+              borderSide: BorderSide.none,
+            ),
+            suffixText: unit,
+            suffixStyle: TextStyle(fontSize: 8, color: Colors.grey[600]),
+          ),
+        ),
+      ],
     );
   }
 }
