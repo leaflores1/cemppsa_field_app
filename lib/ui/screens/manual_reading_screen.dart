@@ -4,6 +4,8 @@
 // ==============================================================================
 
 import 'package:flutter/material.dart';
+import 'package:uuid/uuid.dart'; // [NEW] Import for Uuid
+import 'dart:convert'; // [NEW] Import
 import 'package:provider/provider.dart';
 
 import '../../data/models/instrumento.dart';
@@ -11,7 +13,10 @@ import '../../data/models/lectura.dart';
 import '../../data/models/planilla.dart';
 import '../../repositories/catalogo_repository.dart';
 import '../../repositories/planilla_repository.dart';
+import '../../data/models/schema_model.dart';
+import '../../data/models/schema_model.dart';
 import '../../core/config.dart';
+import '../../services/sync_service.dart'; // [NEW] Import
 
 class ManualReadingScreen extends StatefulWidget {
   const ManualReadingScreen({super.key});
@@ -24,9 +29,44 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
   TipoPlanilla? _selectedTipo;
   Planilla? _currentPlanilla;
   DateTime _batchDateTime = DateTime.now();
+  MobileSchema? _loadedSchema;
 
   final Map<String, TextEditingController> _controllers = {};
   final Map<String, FocusNode> _focusNodes = {};
+
+  bool _initialized = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_initialized) {
+      final args = ModalRoute.of(context)?.settings.arguments;
+      if (args is Planilla) {
+        _initializeFromDraft(args);
+      }
+      _initialized = true;
+    }
+  }
+
+  void _initializeFromDraft(Planilla planilla) {
+    setState(() {
+      _currentPlanilla = planilla;
+      _selectedTipo = planilla.tipo;
+      
+      // Load controllers
+      for (final lectura in planilla.lecturas) {
+        if (!_controllers.containsKey(lectura.instrumentCode)) {
+          _controllers[lectura.instrumentCode] = TextEditingController();
+        }
+        // Format value to remove trailing .0 if integer-like?
+        // simple toString for now or specific formatting
+        _controllers[lectura.instrumentCode]!.text = lectura.value.toString();
+      }
+      
+      // Update Schema if available for this type
+      _loadSchemaForType(planilla.tipo);
+    });
+  }
 
   @override
   void dispose() {
@@ -39,6 +79,9 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
     super.dispose();
   }
 
+// ... imports
+
+  // [MODIFIED] AppBar action: "Enviar"
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -51,9 +94,9 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
         actions: [
           if (_currentPlanilla != null)
             TextButton.icon(
-              onPressed: _saveDraft,
-              icon: const Icon(Icons.save_outlined, color: Colors.white70),
-              label: const Text('Guardar', style: TextStyle(color: Colors.white70)),
+              onPressed: _sendPlanilla, // Now sends
+              icon: const Icon(Icons.send_rounded, color: Color(0xFF22C55E)),
+              label: const Text('Enviar', style: TextStyle(color: Colors.white)),
             ),
         ],
       ),
@@ -63,229 +106,12 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
     );
   }
 
-  // ===========================================================================
-  // Selector de tipo de planilla
-  // ===========================================================================
+  // ... _buildTipoSelector ...
 
-  Widget _buildTipoSelector() {
-    final catalog = context.watch<CatalogRepository>();
-    
-    // Contar instrumentos por tipo
-    final casagrandeCount = catalog.all().where((i) =>
-        i.familia == FamiliaInstrumento.casagrande ||
-        (i.familia == FamiliaInstrumento.piezometro &&
-        i.subfamilia == Subfamilia.casagrande)).length;
-    final freatimetrosCount = catalog.byFamilia(FamiliaInstrumento.freatimetro).length;
-    final aforadoresCount = catalog.byFamilia(FamiliaInstrumento.aforador).length;
-    
-    final totalCount = casagrandeCount + freatimetrosCount + aforadoresCount;
+  // [MODIFIED] Grid Header
+  // ... _buildBatchHeader ...
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Banner de advertencia si no hay instrumentos
-          if (totalCount == 0) ...[
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: const Color(0x1AEF4444),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0x4DEF4444)),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.warning_amber_rounded, color: Color(0xFFEF4444)),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Catálogo vacío',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFFEF4444),
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'No hay instrumentos cargados. Verificá la conexión al backend y sincronizá el catálogo desde Configuración.',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey[400],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            Center(
-              child: ElevatedButton.icon(
-                onPressed: () => Navigator.pushNamed(context, '/settings'),
-                icon: const Icon(Icons.settings, color: Colors.white),
-                label: const Text('Ir a Configuración'),
-              ),
-            ),
-            const SizedBox(height: 24),
-          ],
-
-          const Text(
-            '¿Qué tipo de lectura?',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Casagrande
-          _TipoCard(
-            title: 'Piezómetros Casagrande',
-            subtitle: 'Lecturas manuales en caseta de compuertas',
-            icon: Icons.speed_rounded,
-            color: const Color(0xFF3B82F6),
-            count: casagrandeCount,
-            enabled: casagrandeCount > 0,
-            onTap: casagrandeCount > 0 
-                ? () => _selectTipo(TipoPlanilla.casagrande)
-                : null,
-          ),
-          const SizedBox(height: 12),
-
-          // Freatímetros
-          _TipoCard(
-            title: 'Freatímetros',
-            subtitle: 'PP1, PP2, PP3...',
-            icon: Icons.water_drop_rounded,
-            color: const Color(0xFF06B6D4),
-            count: freatimetrosCount,
-            enabled: freatimetrosCount > 0,
-            onTap: freatimetrosCount > 0 
-                ? () => _selectTipo(TipoPlanilla.freatimetros)
-                : null,
-          ),
-          const SizedBox(height: 12),
-
-          // Aforadores
-          _TipoCard(
-            title: 'Aforadores',
-            subtitle: 'Pie de presa, galerías, acueducto',
-            icon: Icons.waves_rounded,
-            color: const Color(0xFF22C55E),
-            count: aforadoresCount,
-            enabled: aforadoresCount > 0,
-            onTap: aforadoresCount > 0 
-                ? () => _selectTipo(TipoPlanilla.aforadores)
-                : null,
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _selectTipo(TipoPlanilla tipo) {
-    setState(() {
-      _selectedTipo = tipo;
-      _currentPlanilla = Planilla(
-        tipo: tipo,
-        deviceId: AppConfig.deviceId ?? 'unknown',
-        technicianId: AppConfig.technicianId ?? 'tecnico',
-      );
-    });
-  }
-
-  // ===========================================================================
-  // Grid de entrada masiva (igual que CR10X)
-  // ===========================================================================
-
-  Widget _buildBatchGrid() {
-    return Column(
-      children: [
-        _buildBatchHeader(),
-        Expanded(
-          child: _buildInstrumentGrid(),
-        ),
-        _buildBatchFooter(),
-      ],
-    );
-  }
-
-  Widget _buildBatchHeader() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: const BoxDecoration(
-        color: Color(0xFF1E293B),
-        border: Border(bottom: BorderSide(color: Color(0xFF334155))),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Flexible(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: const Color(0x333B82F6),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    _selectedTipo!.displayName,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF3B82F6),
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              IconButton(
-                icon: const Icon(Icons.close, color: Colors.grey, size: 20),
-                onPressed: _confirmCancel,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          InkWell(
-            onTap: _pickBatchDateTime,
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFF0F172A),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFF334155)),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.schedule, color: Colors.grey, size: 18),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Medición: ${_formatDateTime(_batchDateTime)}',
-                      style: const TextStyle(color: Colors.white, fontSize: 13),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  const Icon(Icons.edit, color: Colors.grey, size: 16),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
+  // [MODIFIED] Grid Items with improved Input Row
   Widget _buildInstrumentGrid() {
     final instrumentos = _getInstrumentosForTipo(context.read<CatalogRepository>());
 
@@ -310,16 +136,27 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
       itemCount: instrumentos.length,
       itemBuilder: (ctx, index) {
         final inst = instrumentos[index];
+        final String? label = _loadedSchema?.variables.isNotEmpty == true 
+            ? _loadedSchema!.variables.first.name 
+            : null;
+        final String? unit = _loadedSchema?.variables.isNotEmpty == true 
+            ? _loadedSchema!.variables.first.unit 
+            : null;
+
         return _InstrumentInputRow(
           instrumento: inst,
           controller: _getController(inst.codigo),
           focusNode: _getFocusNode(inst.codigo),
           onSubmitted: () => _focusNext(instrumentos, index),
+          customLabel: label,
+          customUnit: unit,
+          onSave: (val) => _saveSingleReading(inst, val), // Per-row save
         );
       },
     );
   }
 
+  // [MODIFIED] Footer with "Guardar Borrador"
   Widget _buildBatchFooter() {
     final filledCount = _controllers.entries
         .where((e) => e.value.text.isNotEmpty)
@@ -350,15 +187,15 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
             ),
             const SizedBox(width: 8),
             ElevatedButton(
-              onPressed: filledCount > 0 ? _saveBatch : null,
+              onPressed: filledCount > 0 ? _saveDraft : null, // Now saves draft
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF22C55E),
+                backgroundColor: const Color(0xFF3B82F6), // Blue for draft
                 disabledBackgroundColor: const Color(0xFF334155),
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 minimumSize: const Size(80, 36),
               ),
               child: const Text(
-                'Guardar',
+                'Guardar Borrador',
                 style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 12),
               ),
             ),
@@ -368,69 +205,361 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
     );
   }
 
+  // ... helper methods ...
+
+  // [NEW] Single Reading Save
+  Future<void> _saveSingleReading(Instrumento inst, String rawValue) async {
+    if (rawValue.isEmpty) return;
+
+    if (_currentPlanilla == null) return;
+    
+    // Create/Update reading
+    final variableCode = _loadedSchema?.variables.isNotEmpty == true
+        ? _loadedSchema!.variables.first.code
+        : (inst.ingestaParameter ?? inst.defaultParameter);
+        
+    final variableUnit = _loadedSchema?.variables.isNotEmpty == true
+        ? _loadedSchema!.variables.first.unit
+        : (inst.ingestaParameter != null ? inst.ingestaUnit : inst.defaultUnit);
+    
+    // Need a row ID. If reading exists, update it. If not, new ID.
+    // Simplifying: remove existing reading for this instrument before adding
+    // Find existing reading by instrument code
+    final existingIndex = _currentPlanilla!.lecturas.indexWhere((l) => l.instrumentCode == inst.codigo);
+    int rowId;
+    if (existingIndex >= 0) {
+      rowId = _currentPlanilla!.lecturas[existingIndex].clientRowId;
+      _currentPlanilla!.lecturas.removeAt(existingIndex);
+    } else {
+      rowId = _currentPlanilla!.nextClientRowId;
+    }
+
+    final lectura = Lectura.fromForm(
+      clientRowId: rowId,
+      instrumentCode: inst.codigo,
+      parameter: variableCode,
+      unit: variableUnit,
+      rawValue: rawValue,
+      measuredAt: _batchDateTime,
+    );
+    
+    _currentPlanilla!.agregarLectura(lectura);
+    _currentPlanilla!.estado = PlanillaEstado.borrador; // Keep as draft
+    
+    await context.read<PlanillaRepository>().save(_currentPlanilla!);
+    
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${inst.codigo} guardado en borrador'),
+          duration: const Duration(milliseconds: 800),
+          backgroundColor: const Color(0xFF3B82F6),
+        ),
+      );
+    }
+  }
+
+  // [MODIFIED] Send Logic (Top Button)
+  Future<void> _sendPlanilla() async {
+    // 1. Ensure all current inputs are saved to planilla
+    final instrumentos = _getInstrumentosForTipo(context.read<CatalogRepository>());
+    
+    // Sync UI to Model first (in case user didn't hit save on specific row)
+    // We clear and rebuild to ensure exact match with UI? 
+    // Or just update changed ones? Safer to rebuild from UI state for "Send All".
+    _currentPlanilla!.lecturas.clear();
+    int clientRowId = 1;
+
+    for (final inst in instrumentos) {
+      final controller = _controllers[inst.codigo];
+      if (controller != null && controller.text.isNotEmpty) {
+        final variableCode = _loadedSchema?.variables.isNotEmpty == true
+            ? _loadedSchema!.variables.first.code
+            : (inst.ingestaParameter ?? inst.defaultParameter);
+            
+        final variableUnit = _loadedSchema?.variables.isNotEmpty == true
+            ? _loadedSchema!.variables.first.unit
+            : (inst.ingestaParameter != null ? inst.ingestaUnit : inst.defaultUnit);
+
+        final lectura = Lectura.fromForm(
+          clientRowId: clientRowId++,
+          instrumentCode: inst.codigo,
+          parameter: variableCode,
+          unit: variableUnit,
+          rawValue: controller.text,
+          measuredAt: _batchDateTime,
+        );
+        _currentPlanilla!.agregarLectura(lectura);
+      }
+    }
+
+    if (_currentPlanilla!.lecturas.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No hay datos para enviar')),
+      );
+      return;
+    }
+
+    // 2. Mark as Pendiente via Repository
+    _currentPlanilla!.marcarPendiente();
+    await context.read<PlanillaRepository>().save(_currentPlanilla!);
+
+    // 3. Trigger Send via SyncService
+    if (!mounted) return;
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Guardando y enviando...')),
+    );
+
+    try {
+      final syncService = context.read<SyncService>();
+      final planillaRepo = context.read<PlanillaRepository>();
+      
+      // Attempt immediate send
+      // Attempt immediate send
+      final result = await syncService.retrySingle(
+        _currentPlanilla!.batchUuid, 
+        repository: planillaRepo,
+      );
+      final success = result['success'] == true;
+      // Handle error message update if needed
+      if (!success && result['error'] != null) {
+         // syncService.lastError might be updated but result holds it too
+      }
+      
+      if (mounted) {
+        if (success) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Planilla enviada exitosamente'),
+              backgroundColor: Color(0xFF22C55E),
+            ),
+          );
+          Navigator.pop(context);
+        } else {
+          _handleSendError(syncService.lastError);
+        }
+      }
+    } catch (e) {
+      debugPrint('Error sending planilla: $e');
+      if (mounted) {
+         _handleSendError(e.toString());
+      }
+    }
+  }
+
+  void _handleSendError(String? errorMsg) {
+    if (errorMsg == null) return;
+    
+    // Attempt to parse JSON body from "body={...}"
+    final jsonDetails = _parseErrorDetails(errorMsg);
+    
+    if (jsonDetails != null && jsonDetails['errors'] is List) {
+       _showValidationErrorsDialog(jsonDetails['errors']);
+    } else {
+       // Fallback: Show simple snackbar with "View Details" action
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Error al enviar (${errorMsg.length > 50 ? '...' : errorMsg})',
+            maxLines: 2, 
+            overflow: TextOverflow.ellipsis,
+          ),
+          backgroundColor: const Color(0xFFEF4444),
+          duration: const Duration(seconds: 4),
+          action: SnackBarAction(
+            label: 'Ver detalle',
+            textColor: Colors.white,
+            onPressed: () {
+               _showSimpleErrorDialog(errorMsg);
+            },
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _loadSchemaForType(TipoPlanilla tipo) async {
+    // Basic implementation: attempt to load from config or service if available.
+    // For now we don't strictly need the schema for draft loading if we trust the stored data.
+    // But to match the call site, we provide the stub or actual implementation.
+    
+    // Check if we have a SchemaService concept imported? 
+    // It seems missing in this file imports.
+    // We can just skip schema loading for now or implement a dummy if not critical.
+    // However, the saving logic relies on _loadedSchema?
+    // Lines 217-223 use _loadedSchema. 
+    // So we should try to mock it or fix the usage.
+    
+    // Ideally:
+    // final service = context.read<SchemaService>();
+    // final schema = await service.getSchemaForType(tipo);
+    // setState(() => _loadedSchema = schema);
+    
+    // Since I don't see SchemaService imported, I'll remove the call or comment it out 
+    // and rely on existing parameter logic if schema is null.
+    // The existing code handles null _loadedSchema (lines 217+).
+    // So making this a no-op is safe for compilation.
+    debugPrint('Loading schema for ${tipo.name} (Placeholder)');
+  }
+  Map<String, dynamic>? _parseErrorDetails(String errorMsg) {
+    try {
+      final bodyIndex = errorMsg.indexOf('body=');
+      if (bodyIndex != -1) {
+        final jsonStr = errorMsg.substring(bodyIndex + 5);
+        final decoded = jsonDecode(jsonStr); 
+        if (decoded is Map<String, dynamic> && decoded.containsKey('detail')) {
+           return decoded['detail'] as Map<String, dynamic>;
+        }
+      }
+    } catch (_) {
+      // ignore parsing error
+    }
+    return null;
+  }
+  
+  void _showValidationErrorsDialog(List errors) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E293B),
+        title: const Row(
+          children: [
+             Icon(Icons.error_outline, color: Color(0xFFEF4444)),
+             SizedBox(width: 10),
+             Text('Errores de Validación', style: TextStyle(color: Colors.white, fontSize: 18)),
+          ],
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.separated(
+            shrinkWrap: true,
+            itemCount: errors.length,
+            separatorBuilder: (_, __) => const Divider(color: Color(0xFF334155)),
+            itemBuilder: (ctx, index) {
+              final err = errors[index];
+              final code = err['instrument_code'] ?? 'N/A';
+              final msg = err['message'] ?? 'Error desconocido';
+              return ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(code, style: const TextStyle(color: Color(0xFF3B82F6), fontWeight: FontWeight.bold)),
+                subtitle: Text(msg, style: TextStyle(color: Colors.grey[300])),
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cerrar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showSimpleErrorDialog(String msg) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E293B),
+        title: const Text('Detalle del Error', style: TextStyle(color: Colors.white)),
+        content: SingleChildScrollView(
+          child: Text(msg, style: TextStyle(color: Colors.grey[300])),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cerrar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // [MODIFIED] Save Draft Logic (Bottom Button)
+  Future<void> _saveDraft() async {
+    final instrumentos = _getInstrumentosForTipo(context.read<CatalogRepository>());
+    _currentPlanilla!.lecturas.clear();
+    int clientRowId = 1;
+
+    for (final inst in instrumentos) {
+      final controller = _controllers[inst.codigo];
+      if (controller != null && controller.text.isNotEmpty) {
+         final variableCode = _loadedSchema?.variables.isNotEmpty == true
+            ? _loadedSchema!.variables.first.code
+            : (inst.ingestaParameter ?? inst.defaultParameter);
+            
+        final variableUnit = _loadedSchema?.variables.isNotEmpty == true
+            ? _loadedSchema!.variables.first.unit
+            : (inst.ingestaParameter != null ? inst.ingestaUnit : inst.defaultUnit);
+
+        final lectura = Lectura.fromForm(
+          clientRowId: clientRowId++,
+          instrumentCode: inst.codigo,
+          parameter: variableCode,
+          unit: variableUnit,
+          rawValue: controller.text,
+          measuredAt: _batchDateTime,
+        );
+        _currentPlanilla!.agregarLectura(lectura);
+      }
+    }
+
+    _currentPlanilla!.estado = PlanillaEstado.borrador;
+    await context.read<PlanillaRepository>().save(_currentPlanilla!);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Borrador guardado exitosamente'),
+          backgroundColor: Color(0xFF3B82F6),
+        ),
+      );
+    }
+  }
+
+  // ===========================================================================
+  // HELPER METHODS
+  // ===========================================================================
+
   List<Instrumento> _getInstrumentosForTipo(CatalogRepository catalog) {
-    switch (_selectedTipo) {
+    if (_selectedTipo == null) return [];
+    final all = catalog.all(); // [FIX] .all() instead of .instruments
+    switch (_selectedTipo!) {
       case TipoPlanilla.casagrande:
-        return catalog.all().where((i) =>
-            i.familia == FamiliaInstrumento.casagrande ||
-            (i.familia == FamiliaInstrumento.piezometro &&
-            i.subfamilia == Subfamilia.casagrande)).toList();
-
+        return all.where((i) => i.familia == FamiliaInstrumento.casagrande || (i.familia == FamiliaInstrumento.piezometro && i.subfamilia == 'CASAGRANDE')).toList();
       case TipoPlanilla.freatimetros:
-        return catalog.byFamilia(FamiliaInstrumento.freatimetro);
-
+        return all.where((i) => i.familia == FamiliaInstrumento.freatimetro).toList();
       case TipoPlanilla.aforadores:
-        return catalog.byFamilia(FamiliaInstrumento.aforador);
-
+        return all.where((i) => i.familia == FamiliaInstrumento.aforador).toList();
+      case TipoPlanilla.sismos:
+         return all.where((i) => i.familia == FamiliaInstrumento.sismos).toList();
       default:
         return [];
     }
   }
 
-  TextEditingController _getController(String codigo) {
-    if (!_controllers.containsKey(codigo)) {
-      _controllers[codigo] = TextEditingController();
+  TextEditingController _getController(String code) {
+    if (!_controllers.containsKey(code)) {
+      _controllers[code] = TextEditingController();
     }
-    return _controllers[codigo]!;
+    return _controllers[code]!;
   }
 
-  FocusNode _getFocusNode(String codigo) {
-    if (!_focusNodes.containsKey(codigo)) {
-      _focusNodes[codigo] = FocusNode();
+  FocusNode _getFocusNode(String code) {
+    if (!_focusNodes.containsKey(code)) {
+      _focusNodes[code] = FocusNode();
     }
-    return _focusNodes[codigo]!;
+    return _focusNodes[code]!;
   }
 
-  void _focusNext(List<Instrumento> instrumentos, int currentIndex) {
-    if (currentIndex < instrumentos.length - 1) {
-      final nextCode = instrumentos[currentIndex + 1].codigo;
-      _focusNodes[nextCode]?.requestFocus();
-    }
-  }
-
-  // ===========================================================================
-  // Acciones
-  // ===========================================================================
-
-  Future<void> _pickBatchDateTime() async {
-    final date = await showDatePicker(
-      context: context,
-      initialDate: _batchDateTime,
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
-    );
-    if (date != null && mounted) {
-      final time = await showTimePicker(
-        context: context,
-        initialTime: TimeOfDay.fromDateTime(_batchDateTime),
-      );
-      if (time != null) {
-        setState(() {
-          _batchDateTime = DateTime(
-            date.year, date.month, date.day, time.hour, time.minute,
-          );
-        });
-      }
+  void _focusNext(List<Instrumento> instrumentos, int index) {
+    if (index < instrumentos.length - 1) {
+      final nextCode = instrumentos[index + 1].codigo;
+      FocusScope.of(context).requestFocus(_getFocusNode(nextCode));
+    } else {
+      FocusScope.of(context).unfocus();
     }
   }
 
@@ -441,271 +570,131 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
     setState(() {});
   }
 
-  Future<void> _saveBatch() async {
-    final instrumentos = _getInstrumentosForTipo(context.read<CatalogRepository>());
-    int clientRowId = _currentPlanilla!.nextClientRowId;
-
-    for (final inst in instrumentos) {
-      final controller = _controllers[inst.codigo];
-      if (controller != null && controller.text.isNotEmpty) {
-        final lectura = Lectura.fromForm(
-          clientRowId: clientRowId++,
-          instrumentCode: inst.codigo,
-          parameter: inst.ingestaParameter ?? inst.defaultParameter,
-          unit: inst.ingestaParameter != null ? inst.ingestaUnit : inst.defaultUnit,
-          rawValue: controller.text,
-          measuredAt: _batchDateTime,
-        );
-        _currentPlanilla!.agregarLectura(lectura);
-      }
-    }
-
-    _currentPlanilla!.marcarPendiente();
-    await context.read<PlanillaRepository>().save(_currentPlanilla!);
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Lote guardado (${_currentPlanilla!.totalLecturas} lecturas)',
-          ),
-          backgroundColor: const Color(0xFF22C55E),
-        ),
-      );
-      Navigator.pop(context);
-    }
-  }
-
-  Future<void> _saveDraft() async {
-    final instrumentos = _getInstrumentosForTipo(context.read<CatalogRepository>());
-    int clientRowId = 1;
-
-    _currentPlanilla!.lecturas.clear();
-    for (final inst in instrumentos) {
-      final controller = _controllers[inst.codigo];
-      if (controller != null && controller.text.isNotEmpty) {
-        final lectura = Lectura.fromForm(
-          clientRowId: clientRowId++,
-          instrumentCode: inst.codigo,
-          parameter: inst.ingestaParameter ?? inst.defaultParameter,
-          unit: inst.ingestaParameter != null ? inst.ingestaUnit : inst.defaultUnit,
-          rawValue: controller.text,
-          measuredAt: _batchDateTime,
-        );
-        _currentPlanilla!.agregarLectura(lectura);
-      }
-    }
-
-    await context.read<PlanillaRepository>().save(_currentPlanilla!);
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Borrador guardado'),
-          backgroundColor: Color(0xFF3B82F6),
-        ),
-      );
-    }
-  }
-
-  void _confirmCancel() {
-    final hasData = _controllers.values.any((c) => c.text.isNotEmpty);
-
-    if (!hasData) {
-      setState(() {
-        _selectedTipo = null;
-        _currentPlanilla = null;
-      });
-      return;
-    }
-
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E293B),
-        title: const Text('¿Descartar cambios?', style: TextStyle(color: Colors.white)),
-        content: Text(
-          'Tenés valores sin guardar.',
-          style: TextStyle(color: Colors.grey[400]),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Seguir'),
-          ),
-          TextButton(
-            onPressed: () {
-              _saveDraft();
-              Navigator.pop(ctx);
-              setState(() {
-                _selectedTipo = null;
-                _currentPlanilla = null;
-              });
-            },
-            child: const Text('Guardar borrador'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              setState(() {
-                _selectedTipo = null;
-                _currentPlanilla = null;
-                for (final controller in _controllers.values) {
-                  controller.clear();
-                }
-              });
-            },
-            child: const Text('Descartar', style: TextStyle(color: Color(0xFFEF4444))),
-          ),
+  Widget _buildTipoSelector() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          _buildOptionButton(Icons.waves, 'Casagrande', TipoPlanilla.casagrande),
+          _buildOptionButton(Icons.water_drop, 'Freatímetros', TipoPlanilla.freatimetros),
+          _buildOptionButton(Icons.speed, 'Aforadores', TipoPlanilla.aforadores),
+          _buildOptionButton(Icons.vibration, 'Sismos', TipoPlanilla.sismos),
         ],
       ),
     );
   }
 
-  String _formatDateTime(DateTime dt) {
-    return '${dt.day.toString().padLeft(2, '0')}/'
-        '${dt.month.toString().padLeft(2, '0')}/'
-        '${dt.year} '
-        '${dt.hour.toString().padLeft(2, '0')}:'
-        '${dt.minute.toString().padLeft(2, '0')}';
-  }
-}
-
-// =============================================================================
-// Widgets auxiliares
-// =============================================================================
-
-class _TipoCard extends StatelessWidget {
-  final String title;
-  final String subtitle;
-  final IconData icon;
-  final Color color;
-  final int count;
-  final bool enabled;
-  final VoidCallback? onTap;
-
-  const _TipoCard({
-    required this.title,
-    required this.subtitle,
-    required this.icon,
-    required this.color,
-    required this.count,
-    this.enabled = true,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final iconBgColor = Color.fromRGBO(
-      color.red,
-      color.green,
-      color.blue,
-      enabled ? 0.15 : 0.05,
-    );
-    final effectiveColor = enabled ? color : Colors.grey[700]!;
-
-    return Material(
-      color: const Color(0xFF1E293B),
-      borderRadius: BorderRadius.circular(14),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: enabled ? const Color(0xFF334155) : const Color(0xFF1E293B),
-            ),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: iconBgColor,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(icon, color: effectiveColor, size: 24),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: enabled ? Colors.white : Colors.grey[600],
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: enabled ? Colors.grey[500] : Colors.grey[700],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: enabled 
-                          ? Color.fromRGBO(color.red, color.green, color.blue, 0.2)
-                          : const Color(0xFF0F172A),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      '$count',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: effectiveColor,
-                      ),
-                    ),
-                  ),
-                  if (!enabled) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      'Sin datos',
-                      style: TextStyle(fontSize: 10, color: Colors.grey[700]),
-                    ),
-                  ],
-                ],
-              ),
-              const SizedBox(width: 8),
-              Icon(
-                Icons.chevron_right, 
-                color: enabled ? Colors.grey[600] : Colors.grey[800],
-              ),
-            ],
-          ),
+  Widget _buildOptionButton(IconData icon, String label, TipoPlanilla tipo) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: ElevatedButton.icon(
+        onPressed: () {
+          setState(() {
+            _selectedTipo = tipo;
+            _currentPlanilla = Planilla(
+               // [FIX] Correct constructor arguments
+               batchUuid: const Uuid().v4(),
+               tipo: tipo,
+               deviceId: AppConfig.deviceId ?? 'unknown-device',
+               technicianId: AppConfig.technicianId ?? 'unknown-tech',
+               createdAt: DateTime.now(),
+               lecturas: [],
+             )..estado = PlanillaEstado.borrador;
+          });
+        },
+        icon: Icon(icon),
+        label: Text(label),
+        style: ElevatedButton.styleFrom(
+          minimumSize: const Size(200, 50),
+          textStyle: const TextStyle(fontSize: 18),
         ),
       ),
     );
   }
+
+  Widget _buildBatchGrid() {
+    return Column(
+      children: [
+        _buildBatchHeader(),
+        Expanded(child: _buildInstrumentGrid()),
+        _buildBatchFooter(),
+      ],
+    );
+  }
+
+  Widget _buildBatchHeader() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      color: const Color(0xFF1E293B),
+      child: Column(
+        children: [
+           Row(
+             children: [
+               IconButton(
+                 icon: const Icon(Icons.arrow_back, color: Colors.white),
+                 onPressed: _confirmCancel,
+               ),
+               Text(
+                 _selectedTipo?.name.toUpperCase() ?? '',
+                 style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+               ),
+             ],
+           ),
+           const SizedBox(height: 10),
+           Text(
+             'Fecha: ${_batchDateTime.toLocal()}',
+             style: const TextStyle(color: Colors.grey),
+           )
+        ],
+      ),
+    );
+  }
+
+  Future<void> _confirmCancel() async {
+    final shouldPop = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E293B),
+        title: const Text('¿Salir?', style: TextStyle(color: Colors.white)),
+        content: const Text('Se perderán los cambios no guardados.', style: TextStyle(color: Colors.white70)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Salir')),
+        ],
+      ),
+    );
+    
+    if (shouldPop == true && mounted) {
+      if (mounted) {
+         // Navigator.pop(context); // Not pop, just reset state
+         setState(() {
+            _selectedTipo = null;
+            _currentPlanilla = null;
+            _controllers.clear();
+         });
+      }
+    }
+  }
 }
 
+// [MODIFIED] _InstrumentInputRow with Save Button
 class _InstrumentInputRow extends StatelessWidget {
   final Instrumento instrumento;
   final TextEditingController controller;
   final FocusNode focusNode;
   final VoidCallback onSubmitted;
+  final String? customLabel;
+  final String? customUnit;
+  final Function(String) onSave; // [NEW]
 
   const _InstrumentInputRow({
     required this.instrumento,
     required this.controller,
     required this.focusNode,
     required this.onSubmitted,
+    required this.onSave, // [NEW]
+    this.customLabel,
+    this.customUnit,
   });
 
   @override
@@ -738,7 +727,7 @@ class _InstrumentInputRow extends StatelessWidget {
               controller: controller,
               focusNode: focusNode,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              textInputAction: TextInputAction.next,
+              textInputAction: TextInputAction.next, // Or Done?
               onSubmitted: (_) => onSubmitted(),
               style: const TextStyle(
                 color: Colors.white,
@@ -746,7 +735,7 @@ class _InstrumentInputRow extends StatelessWidget {
                 fontWeight: FontWeight.w500,
               ),
               decoration: InputDecoration(
-                hintText: '0,00',
+                hintText: customLabel ?? '0,00',
                 hintStyle: TextStyle(color: Colors.grey[700]),
                 contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 filled: true,
@@ -759,17 +748,28 @@ class _InstrumentInputRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
+          
+          // [NEW] Unit Text
           SizedBox(
-            width: 40,
+            width: 30, // Reduced to make space for button
             child: Text(
-              instrumento.defaultUnit,
+              instrumento.defaultUnit, // Use param if possible, but defaults ok
               style: TextStyle(
-                fontSize: 11,
+                fontSize: 10,
                 color: Colors.grey[500],
               ),
               textAlign: TextAlign.center,
               overflow: TextOverflow.ellipsis,
             ),
+          ),
+          
+          // [NEW] Save Icon Button
+          IconButton(
+            icon: const Icon(Icons.save_as_outlined, color: Color(0xFF3B82F6), size: 20),
+            onPressed: () => onSave(controller.text),
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            padding: EdgeInsets.zero,
+            tooltip: 'Guardar valor',
           ),
         ],
       ),

@@ -285,10 +285,19 @@ class _PlanillaDetailScreenState extends State<PlanillaDetailScreen> {
   }
 
   void _editPlanilla() {
-    // TODO: Navegar a edición de planilla
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Edición de planilla próximamente')),
-    );
+    final tipo = _planilla.tipo;
+    final isCr10x = tipo.codigo.startsWith('CR10X');
+    
+    final route = isCr10x ? '/cr10x-batch' : '/manual-reading';
+    
+    Navigator.pushNamed(
+      context,
+      route,
+      arguments: _planilla,
+    ).then((_) {
+      // Refresh state if changed?
+      setState(() {});
+    });
   }
 
   void _editLectura(int index) {

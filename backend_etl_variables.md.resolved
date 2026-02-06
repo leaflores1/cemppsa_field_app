@@ -1,0 +1,44 @@
+# Variables Iniciales para ETL (Bronze -> Silver)
+
+Este documento detalla las variables "crudas" (Raw) que deben ingresar a la tabla `medicion_bronze` para que el servicio ETL ([etl_bronze_silver.py](file:///c:/Users/leani/cemppsa-sistema/backend/app/services/etl_bronze_silver.py)) pueda procesarlas y calcular los valores finales en `medicion_silver`.
+
+## Regla General
+El ETL dispara el cálculo cuando detecta un registro en **Bronze** con estado `PENDIENTE`. La fórmula específica que se ejecuta depende de la **Familia** del instrumento y la **Variable** ingresada.
+
+---
+
+## Tabla de Variables por Familia
+
+| Familia | Variable Esperada (Código) | Unidad Típica | Descripción | Resultado en Silver |
+| :--- | :--- | :--- | :--- | :--- |
+| **PIEZOMETRO** | `LECTURA` o `LECTURA_CR10X` | Hz, Digits | Lectura cruda de cuerda vibrante. | `NIVEL_MSNM` (Cota) |
+| **CASAGRANDE** | `PROFUNDIDAD` o `PROFUNDIDAD_M` | m | Profundidad desde boca de pozo. | `NIVEL_PIEZ` (Cota) |
+| **FREATIMETRO** | `PROFUNDIDAD` o `PROFUNDIDAD_M` | m | Profundidad desde boca de pozo. | `NIVEL_MSNM` (Cota) |
+| **AFORADOR** | `LECTURA` o `LECTURA_MANUAL` | cm / m | Altura de lámina de agua. | `CAUDAL` (l/s o m3/h) |
+| **ASENTIMETRO** | `LECTURA` o `LECTURA_LU` | LU | Lectura en Unidades. | `ASENTAMIENTO_MM` |
+| **CELDA_PRESION** | `LECTURA` | Hz / Digits | Lectura cruda. | `PRESION_KG_CM2` |
+| **CLINOMETRO** | `LECTURA_MV` | mV | Lectura en milivoltios. | `DESPLAZAMIENTO` |
+| **TERMOMETRO** | `TEMPERATURA` | °C | Temperatura directa. | `TEMPERATURA` (Directo) |
+| **NIVEL_EMBALSE** | `NIVEL_MSNM` | msnm | Cota de embalse. | `NIVEL_EMBALSE` (Directo) |
+| **BAROMETRO** | `PRESION` | hPa / mbar | Presión atmosférica. | `PRESION_MBAR` (Directo) |
+
+## Casos Especiales (Juntas Triaxiales/Uniaxiales)
+
+Estas familias requieren múltiples variables por medición si se miden varios ejes.
+
+| Familia | Variable Entrada | Descripción | Resultado |
+| :--- | :--- | :--- | :--- |
+| **TRIAXIAL** | `PERIODO_X` | Periodo Eje X | `DESPLAZAMIENTO_X` |
+| **TRIAXIAL** | `PERIODO_Y` | Periodo Eje Y | `DESPLAZAMIENTO_Y` |
+| **TRIAXIAL** | `PERIODO_Z` | Periodo Eje Z | `DESPLAZAMIENTO_Z` |
+| **TRIAXIAL** | `TEMPERATURA` | Temperatura | `TEMPERATURA` |
+
+> **Nota:** La App Móvil envía datos etiquetados con la variable que retorna el endpoint `/catalog/mobile/schema`. El backend se encarga de que esa variable coincida con esta tabla.
+
+## Flujo de Proceso
+
+1.  **Ingreso**: La App inserta en `medicion_bronze` con la "Variable Esperada".
+2.  **ETL**: Detecta la variable.
+3.  **Lookup**: Busca parámetros de calibración vigentes para el instrumento (Constantes, Cotas, etc.).
+4.  **Cálculo**: Aplica la fórmula (ej: Polinomio, Lineal, Cuerda Vibrante).
+5.  **Salida**: Inserta en `medicion_silver` con la variable de "Resultado".

@@ -60,6 +60,9 @@ enum TipoPlanilla {
   /// CR10X Celdas de Presión (carga contingencia)
   cr10xCeldasPresion('CR10X_CELDA', 'CR10X Celdas de Presión'),
 
+  /// Sismos (lectura manual)
+  sismos('SISMOS', 'Sismos'),
+
   /// Planilla mixta o genérica
   general('GENERAL', 'General');
 

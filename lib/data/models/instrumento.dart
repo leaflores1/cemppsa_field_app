@@ -20,7 +20,8 @@ enum FamiliaInstrumento {
   limnimetro('LIMNIMETRO', 'Limnimetro'),
   barometro('BAROMETRO', 'Barómetro'),
   convergencia('CONVERGENCIA', 'Convergencia'),
-  embalse('EMBALSE', 'Embalse');
+  embalse('EMBALSE', 'Embalse'),
+  sismos('SISMOS', 'Sismos');
 
   final String backendValue;
   final String displayName;
@@ -122,6 +123,8 @@ class Subfamilia {
   static const String ejeE = 'EJE_E';
   static const String ejeF = 'EJE_F';
   static const String ejeG = 'EJE_G';
+  // New: E1 explicitly requested
+  static const String ejeE1 = 'EJE_E1';
 
   // Aforadores
   static const String piePresa = 'PIE_PRESA';
@@ -140,12 +143,23 @@ class Subfamilia {
       return casagrande;
     }
 
-    // Por eje
+    // Por eje (Piezómetros & Asentímetros)
+    // Asentímetros: AD -> EJE_D, AE/AE1 -> EJE_E1
+    if (upper.startsWith('AD')) return ejeD;
+    if (upper.startsWith('AE')) return ejeE1; 
+
+    // Piezómetros
     if (upper.startsWith('PA')) return ejeA;
     if (upper.startsWith('PB')) return ejeB;
     if (upper.startsWith('PC')) return ejeC;
     if (upper.startsWith('PD')) return ejeD;
+    
+    // Logic for E vs E1: 
+    // Usually PE is E, but user asked for E1 specifically for some instruments?
+    // Let's assume PE1... -> EJE_E1, PE... -> EJE_E
+    if (upper.startsWith('PE1')) return ejeE1;
     if (upper.startsWith('PE')) return ejeE;
+    
     if (upper.startsWith('PF')) return ejeF;
     if (upper.startsWith('PG')) return ejeG;
 
@@ -201,24 +215,37 @@ class Instrumento {
 
   /// Constructor desde respuesta del catálogo del backend
   factory Instrumento.fromJson(Map<String, dynamic> json) {
-    final familiaStr = json['familia'] as String? ?? 'PIEZOMETRO';
+    var familiaStr = json['familia'] as String? ?? 'PIEZOMETRO';
+    
+    // Check if we should override based on code pattern
+    // This fixes cases where backend might send generic PIEZOMETRO or null for special types
+    // or if the enum mapping defaults to Piezometro.
+    final codigo = json['codigo'] as String;
+    final backendFam = FamiliaInstrumento.fromBackend(familiaStr);
+    final inferredFam = FamiliaInstrumento.inferFromCode(codigo);
+    
+    final finalFam = (backendFam == FamiliaInstrumento.piezometro && 
+                      inferredFam != FamiliaInstrumento.piezometro)
+        ? inferredFam
+        : backendFam;
+
     final defaultParam = json['default_parameter'] as String?;
     final defaultUnit = json['default_unit'] as String?;
 
     return Instrumento(
       idInstrumento: json['id_instrumento'] as int?,
-      codigo: json['codigo'] as String,
+      codigo: codigo,
       nombre: json['nombre'] as String?,
-      familia: FamiliaInstrumento.fromBackend(familiaStr),
-      subfamilia: json['subfamilia'] as String?,
+      familia: finalFam,
+      subfamilia: (json['subfamilia'] as String?) ?? Subfamilia.inferFromCode(codigo),
       activo: json['activo'] as bool? ?? true,
       // Usar defaults del backend si están disponibles
       defaultParameter: defaultParam?.trim().isNotEmpty == true
           ? defaultParam!.trim()
-          : _inferDefaultParameter(familiaStr),
+          : _inferDefaultParameter(finalFam.backendValue),
       defaultUnit: defaultUnit?.trim().isNotEmpty == true
           ? defaultUnit!.trim()
-          : _inferDefaultUnit(familiaStr),
+          : _inferDefaultUnit(finalFam.backendValue),
     );
   }
 
@@ -271,33 +298,36 @@ class Instrumento {
       case FamiliaInstrumento.piezometro:
         return 'LECTURA_CR10X';
       case FamiliaInstrumento.casagrande:
-        return 'LECTURA';
+        return 'PROFUNDIDAD_M';
       case FamiliaInstrumento.freatimetro:
         return 'PROFUNDIDAD_M';
       case FamiliaInstrumento.aforador:
-        return 'ALTURA_MM';
+        return 'LECTURA_MANUAL';
       case FamiliaInstrumento.asentimetro:
         return 'LECTURA_LU';
       case FamiliaInstrumento.celdaPresion:
-        return 'LECTURA_CR10X';
+        return 'LECTURA';
       case FamiliaInstrumento.triaxial:
         final axis = _inferAxisFromCode();
-        return axis != null ? 'EJE_$axis' : 'EJE_X';
+        if (axis == 'T') return 'TEMPERATURA';
+        return axis != null ? 'PERIODO_$axis' : 'PERIODO_X';
       case FamiliaInstrumento.uniaxial:
         return 'LECTURA_MM';
       case FamiliaInstrumento.termometro:
-        return 'LECTURA_CR10X';
+        return 'TEMPERATURA';
       case FamiliaInstrumento.clinometro:
         return 'LECTURA_MV';
       case FamiliaInstrumento.barometro:
-        return 'PRESION_MBAR';
+        return 'PRESION';
       case FamiliaInstrumento.juntaPerimetral:
         return 'LECTURA_MM';
       case FamiliaInstrumento.limnimetro:
       case FamiliaInstrumento.embalse:
-        return 'NIVEL_EMBALSE';
+        return 'NIVEL_MSNM';
       case FamiliaInstrumento.convergencia:
         return 'CONVERGENCIA_MM';
+      case FamiliaInstrumento.sismos:
+        return 'MAGNITUD';
     }
   }
 
@@ -307,26 +337,36 @@ class Instrumento {
     switch (familia) {
       case FamiliaInstrumento.piezometro:
       case FamiliaInstrumento.celdaPresion:
-      case FamiliaInstrumento.termometro:
         return 'Hz';
+      case FamiliaInstrumento.termometro:
+        return '°C';
       case FamiliaInstrumento.asentimetro:
         return 'LU';
       case FamiliaInstrumento.clinometro:
         return 'mV';
       case FamiliaInstrumento.freatimetro:
+      case FamiliaInstrumento.casagrande:
         return 'm';
       case FamiliaInstrumento.aforador:
-        return 'mm';
+        return 'cm'; // Default manual reading unit
       case FamiliaInstrumento.barometro:
-        return 'mbar';
+        return 'hPa';
+      case FamiliaInstrumento.embalse:
+      case FamiliaInstrumento.limnimetro:
+        return 'msnm';
+      case FamiliaInstrumento.sismos:
+        return 'Ric'; // Richter? Or just leave null. Backend sismos table has 'magnitud' float.
       default:
-        return null;
+        return null; // Envia null o no envia
     }
   }
 
   String? _inferAxisFromCode() {
     final normalized = codigo.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
-    final match = RegExp(r'([XYZ])$').firstMatch(normalized);
+    
+    // Check for Temperature (T) or Axis (X, Y, Z) at end only if preceded by number? 
+    // Usually J01X, J01Y, J01Z, J01T
+    final match = RegExp(r'([XYZT])$').firstMatch(normalized);
     return match?.group(1);
   }
 

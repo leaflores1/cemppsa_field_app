@@ -11,6 +11,8 @@ import '../../data/models/lectura.dart';
 import '../../data/models/planilla.dart';
 import '../../repositories/catalogo_repository.dart';
 import '../../repositories/planilla_repository.dart';
+import '../../services/sync_service.dart'; // [NEW]
+import 'dart:convert'; // [NEW]
 import '../../core/config.dart';
 
 class CR10XBatchScreen extends StatefulWidget {
@@ -29,6 +31,54 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
   // Controladores para entrada rápida en grid
   final Map<String, TextEditingController> _controllers = {};
   final Map<String, FocusNode> _focusNodes = {};
+
+  bool _initialized = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_initialized) {
+      final args = ModalRoute.of(context)?.settings.arguments;
+      if (args is Planilla) {
+        _initializeFromDraft(args);
+      }
+      _initialized = true;
+    }
+  }
+
+  void _initializeFromDraft(Planilla planilla) {
+    setState(() {
+      _currentPlanilla = planilla;
+      _selectedTipo = planilla.tipo;
+      // Infer axis or other properties if needed?
+      // CR10X types: Piezometers have Axis. 
+      // If Piezometer, we might need to set _selectedEje?
+      // But _currentPlanilla doesn't store 'Eje' explicitly, it's in the instrument code prefix maybe or subfamilia.
+      // We can iterate readings to see instruments, query catalog, get subfamilia 'EJE_A'.
+      
+      _loadControllersFromDraft(planilla);
+    });
+  }
+
+  void _loadControllersFromDraft(Planilla planilla) {
+    // Attempt to infer EJE if piezometers
+    if (planilla.tipo == TipoPlanilla.cr10xPiezometros && planilla.lecturas.isNotEmpty) {
+      // Find first instrument
+      final code = planilla.lecturas.first.instrumentCode;
+      final catalog = context.read<CatalogRepository>();
+      final inst = catalog.byCode(code);
+      if (inst != null && (inst.subfamilia?.startsWith('EJE_') ?? false)) {
+        _selectedEje = inst.subfamilia?.split('_').last;
+      }
+    }
+
+    for (final lectura in planilla.lecturas) {
+      if (!_controllers.containsKey(lectura.instrumentCode)) {
+        _controllers[lectura.instrumentCode] = TextEditingController();
+      }
+      _controllers[lectura.instrumentCode]!.text = lectura.value.toString();
+    }
+  }
 
   @override
   void dispose() {
@@ -53,10 +103,16 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
         actions: [
           if (_currentPlanilla != null)
             TextButton.icon(
-              onPressed: _saveDraft,
-              icon: const Icon(Icons.save_outlined, color: Colors.white70, size: 18),
-              label: const Text('Guardar', style: TextStyle(color: Colors.white70, fontSize: 12)),
+              onPressed: _sendPlanilla, // [MODIFIED] Now triggers Send
+              icon: const Icon(Icons.send, color: Color(0xFF22C55E), size: 18),
+              label: const Text('Enviar', style: TextStyle(color: Color(0xFF22C55E), fontWeight: FontWeight.bold, fontSize: 13)),
+              style: TextButton.styleFrom(
+                backgroundColor: const Color(0xFF22C55E).withOpacity(0.1),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              ),
             ),
+          const SizedBox(width: 8),
         ],
       ),
       body: _selectedTipo == null
@@ -192,8 +248,9 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
         // Header con fecha global
         _buildBatchHeader(),
 
-        // Selector de eje (para piezómetros)
-        if (_selectedTipo == TipoPlanilla.cr10xPiezometros)
+        // Selector de eje (para piezómetros y asentímetros)
+        if (_selectedTipo == TipoPlanilla.cr10xPiezometros || 
+            _selectedTipo == TipoPlanilla.cr10xAsentimetros)
           _buildEjeSelector(),
 
         // Grid de instrumentos
@@ -279,7 +336,14 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
   }
 
   Widget _buildEjeSelector() {
-    final ejes = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
+    // Define axes based on type
+    final List<String> ejes;
+    if (_selectedTipo == TipoPlanilla.cr10xAsentimetros) {
+      ejes = ['D', 'E1']; // Asentímetros only D & E1
+    } else {
+      // Piezometers
+      ejes = ['A', 'B', 'C', 'D', 'E', 'E1', 'F', 'G'];
+    }
 
     return Container(
       height: 50,
@@ -317,6 +381,26 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
   Widget _buildInstrumentGrid() {
     final instrumentos = _getInstrumentosForGrid();
 
+    // Require axis selection for Piezo & Asentimetro
+    final needsAxis = _selectedTipo == TipoPlanilla.cr10xPiezometros || 
+                      _selectedTipo == TipoPlanilla.cr10xAsentimetros;
+
+    if (needsAxis && _selectedEje == null) {
+       return Center(
+         child: Column(
+           mainAxisAlignment: MainAxisAlignment.center,
+           children: [
+             Icon(Icons.arrow_upward, size: 48, color: Colors.grey[700]),
+             const SizedBox(height: 16),
+             Text(
+               'Seleccioná un eje arriba',
+               style: TextStyle(color: Colors.grey[500]),
+             ),
+           ],
+         ),
+       );
+    }
+    
     if (instrumentos.isEmpty) {
       return Center(
         child: Column(
@@ -325,9 +409,7 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
             Icon(Icons.touch_app, size: 48, color: Colors.grey[700]),
             const SizedBox(height: 16),
             Text(
-              _selectedTipo == TipoPlanilla.cr10xPiezometros
-                  ? 'Seleccioná un eje arriba'
-                  : 'Sin instrumentos disponibles',
+              'Sin instrumentos disponibles',
               style: TextStyle(color: Colors.grey[500]),
             ),
           ],
@@ -345,6 +427,7 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
           controller: _getController(inst.codigo),
           focusNode: _getFocusNode(inst.codigo),
           onSubmitted: () => _focusNext(instrumentos, index),
+          onSave: (val) => _saveSingleReading(inst, val),
         );
       },
     );
@@ -355,18 +438,27 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
 
     switch (_selectedTipo) {
       case TipoPlanilla.cr10xPiezometros:
+      case TipoPlanilla.cr10xAsentimetros:
         if (_selectedEje == null) return [];
         final subfamilia = 'EJE_${_selectedEje!}';
-        return catalog.codigosPorSubfamilia(subfamilia)
+        final filtered = catalog.codigosPorSubfamilia(subfamilia)
             .map((c) => catalog.byCode(c))
             .where((i) => i != null && !i.esManual)
             .cast<Instrumento>()
             .toList();
-
-      case TipoPlanilla.cr10xAsentimetros:
-        return catalog.byFamilia(FamiliaInstrumento.asentimetro);
+        
+        // Additional filter by family to distinguish Piezo vs Asentimetro (both use EJE_D)
+        // EJE_D can contain both PA... and AD...
+        // So we strictly filter by selected family type
+        final targetFamily = _selectedTipo == TipoPlanilla.cr10xPiezometros
+            ? FamiliaInstrumento.piezometro
+            : FamiliaInstrumento.asentimetro;
+            
+        return filtered.where((i) => i.familia == targetFamily).toList();
 
       case TipoPlanilla.cr10xTriaxiales:
+        // Ensure all axes shown. Logic already groups nothing, just returns all.
+        // It should match JxxX, JxxY, JxxZ etc.
         return catalog.byFamilia(FamiliaInstrumento.triaxial);
 
       case TipoPlanilla.cr10xUniaxiales:
@@ -440,15 +532,15 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
             ),
             const SizedBox(width: 8),
             ElevatedButton(
-              onPressed: filledCount > 0 ? _saveBatch : null,
+              onPressed: filledCount > 0 ? _saveDraft : null, // [MODIFIED]
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF22C55E),
+                backgroundColor: const Color(0xFF3B82F6), // [MODIFIED] Blue
                 disabledBackgroundColor: const Color(0xFF334155),
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 minimumSize: const Size(80, 36),
               ),
               child: const Text(
-                'Guardar',
+                'Guardar Borrador', // [MODIFIED]
                 style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 12),
               ),
             ),
@@ -461,6 +553,54 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
   // ===========================================================================
   // Acciones
   // ===========================================================================
+
+  // [NEW] Single Reading Save
+  Future<void> _saveSingleReading(Instrumento inst, String rawValue) async {
+    if (rawValue.isEmpty) return;
+
+    if (_currentPlanilla == null) return;
+    
+    // Ensure we don't duplicate logic but we do need a 'clientRowId'.
+    // In batch logic, we usually rebuilt the whole list.
+    // For single save, we want to update or add.
+    
+    final parameter = inst.ingestaParameter ?? inst.defaultParameter;
+    
+    // Check if exists
+    final existingIndex = _currentPlanilla!.lecturas.indexWhere(
+      (l) => l.instrumentCode == inst.codigo && l.parameter == parameter
+    );
+
+    final lectura = Lectura.fromForm(
+      clientRowId: existingIndex >= 0 
+          ? _currentPlanilla!.lecturas[existingIndex].clientRowId 
+          : _currentPlanilla!.nextClientRowId,
+      instrumentCode: inst.codigo,
+      parameter: parameter,
+      unit: inst.ingestaParameter != null ? inst.ingestaUnit : inst.defaultUnit,
+      rawValue: rawValue,
+      measuredAt: _batchDateTime,
+    );
+
+    if (existingIndex >= 0) {
+      _currentPlanilla!.lecturas[existingIndex] = lectura;
+    } else {
+      _currentPlanilla!.agregarLectura(lectura);
+    }
+    
+    _currentPlanilla!.estado = PlanillaEstado.borrador;
+    await context.read<PlanillaRepository>().save(_currentPlanilla!);
+
+    if (mounted) {
+       ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Lectura de ${inst.codigo} guardada'),
+          backgroundColor: const Color(0xFF3B82F6),
+          duration: const Duration(milliseconds: 1500),
+        ),
+      );
+    }
+  }
 
   Future<void> _pickBatchDateTime() async {
     final date = await showDatePicker(
@@ -491,10 +631,24 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
     setState(() {});
   }
 
-  Future<void> _saveBatch() async {
-    final instrumentos = _getInstrumentosForGrid();
-    int clientRowId = _currentPlanilla!.nextClientRowId;
+  Future<void> _sendPlanilla() async {
+    // 1. Validate if empty
+    final instruments = _getInstrumentosForGrid();
+    final hasValues = _controllers.values.any((c) => c.text.isNotEmpty);
 
+    if (!hasValues && _currentPlanilla?.lecturas.isEmpty == true) {
+       ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No hay datos para enviar')),
+      );
+      return;
+    }
+
+    // 2. Save local pending
+    // Rebuild readings from form to ensure latest values
+    final instrumentos = _getInstrumentosForGrid();
+    int clientRowId = 1;
+    _currentPlanilla!.lecturas.clear(); 
+    
     for (final inst in instrumentos) {
       final controller = _controllers[inst.codigo];
       if (controller != null && controller.text.isNotEmpty) {
@@ -513,23 +667,81 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
     _currentPlanilla!.marcarPendiente();
     await context.read<PlanillaRepository>().save(_currentPlanilla!);
 
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Lote guardado (${_currentPlanilla!.totalLecturas} lecturas)',
-          ),
-          backgroundColor: const Color(0xFF22C55E),
-        ),
+    // 3. Trigger Send via SyncService
+    if (!mounted) return;
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Enviando planilla...')),
+    );
+
+    try {
+      // Assuming SyncService is available via import (added previously)
+      // Since it's a static method or singleton depending on implementation.
+      // Checking import: 'import '../../services/sync_service.dart';'
+      // ManualReadingScreen used: final syncService = context.read<SyncService>(); but Step 283 showed it's a class with methods.
+      // Let's use Provider as likely setup.
+      final syncService = context.read<SyncService>();
+      final result = await syncService.retrySingle(
+        _currentPlanilla!.batchUuid,
+        repository: context.read<PlanillaRepository>(),
       );
-      Navigator.pop(context);
+      final success = result['success'] == true;
+      final errorMsg = result['error'] as String?;
+
+      if (!mounted) return;
+
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Planilla enviada exitosamente'),
+            backgroundColor: Color(0xFF22C55E),
+          ),
+        );
+        Navigator.pop(context);
+      } else {
+        // Parse error details if available (422)
+        if (errorMsg != null && errorMsg.contains('body=')) {
+           _parseErrorDetails(errorMsg);
+        } else {
+           _showSimpleErrorDialog(errorMsg ?? 'Error desconocido');
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        _showSimpleErrorDialog('Error de conexión: $e');
+      }
     }
+  }
+  
+  void _parseErrorDetails(String errorMsg) {
+      final bodyIndex = errorMsg.indexOf('body=');
+      if (bodyIndex != -1) {
+        final jsonStr = errorMsg.substring(bodyIndex + 5);
+        try {
+          final decoded = jsonDecode(jsonStr); 
+          if (decoded is Map<String, dynamic> && decoded.containsKey('detail')) {
+            final detail = decoded['detail'];
+            if (detail is Map && detail.containsKey('errors')) {
+               final errorsList = detail['errors'];
+               if (errorsList is List) {
+                 _showValidationErrorsDialog(errorsList);
+                 return;
+               }
+            }
+          }
+        } catch (_) {
+          // Fallback
+        }
+      }
+      _showSimpleErrorDialog(errorMsg);
   }
 
   Future<void> _saveDraft() async {
     final instrumentos = _getInstrumentosForGrid();
     int clientRowId = 1;
 
+    // Reset and rebuild to ensure consistency or update existing?
+    // For 'Save Draft' button usually means 'Save All Current State'.
     _currentPlanilla!.lecturas.clear();
     for (final inst in instrumentos) {
       final controller = _controllers[inst.codigo];
@@ -545,13 +757,14 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
         _currentPlanilla!.agregarLectura(lectura);
       }
     }
-
+    
+    _currentPlanilla!.estado = PlanillaEstado.borrador;
     await context.read<PlanillaRepository>().save(_currentPlanilla!);
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Borrador guardado'),
+          content: Text('Borrador guardado (local)'),
           backgroundColor: Color(0xFF3B82F6),
         ),
       );
@@ -609,6 +822,69 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
               });
             },
             child: const Text('Descartar', style: TextStyle(color: Color(0xFFEF4444))),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ===========================================================================
+  // Dialogs
+  // ===========================================================================
+
+  void _showValidationErrorsDialog(List errors) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E293B),
+        title: const Row(
+          children: [
+             Icon(Icons.error_outline, color: Color(0xFFEF4444)),
+             SizedBox(width: 10),
+             Text('Errores de Validación', style: TextStyle(color: Colors.white, fontSize: 18)),
+          ],
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.separated(
+            shrinkWrap: true,
+            itemCount: errors.length,
+            separatorBuilder: (_, __) => const Divider(color: Color(0xFF334155)),
+            itemBuilder: (ctx, index) {
+              final err = errors[index];
+              final code = err['instrument_code'] ?? 'N/A';
+              final msg = err['message'] ?? 'Error desconocido';
+              return ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(code, style: const TextStyle(color: Color(0xFF3B82F6), fontWeight: FontWeight.bold)),
+                subtitle: Text(msg, style: TextStyle(color: Colors.grey[300])),
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cerrar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showSimpleErrorDialog(String msg) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E293B),
+        title: const Text('Detalle del Error', style: TextStyle(color: Colors.white)),
+        content: SingleChildScrollView(
+          child: Text(msg, style: TextStyle(color: Colors.grey[300])),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cerrar'),
           ),
         ],
       ),
@@ -710,12 +986,14 @@ class _InstrumentInputRow extends StatelessWidget {
   final TextEditingController controller;
   final FocusNode focusNode;
   final VoidCallback onSubmitted;
+  final Function(String) onSave; // [NEW]
 
   const _InstrumentInputRow({
     required this.instrumento,
     required this.controller,
     required this.focusNode,
     required this.onSubmitted,
+    required this.onSave, // [NEW]
   });
 
   @override
@@ -773,7 +1051,7 @@ class _InstrumentInputRow extends StatelessWidget {
           const SizedBox(width: 8),
           // Unidad
           SizedBox(
-            width: 40,
+            width: 30, // Reduced
             child: Text(
               instrumento.defaultUnit,
               style: TextStyle(
@@ -783,6 +1061,14 @@ class _InstrumentInputRow extends StatelessWidget {
               textAlign: TextAlign.center,
               overflow: TextOverflow.ellipsis,
             ),
+          ),
+          // [NEW] Save Icon Button
+          IconButton(
+            icon: const Icon(Icons.save_as_outlined, color: Color(0xFF3B82F6), size: 20),
+            onPressed: () => onSave(controller.text),
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            padding: EdgeInsets.zero,
+            tooltip: 'Guardar valor',
           ),
         ],
       ),

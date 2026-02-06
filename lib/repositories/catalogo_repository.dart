@@ -9,6 +9,7 @@ import 'package:http/http.dart' as http;
 import 'package:hive_flutter/hive_flutter.dart';
 
 import '../data/models/instrumento.dart';
+import '../data/models/schema_model.dart';
 
 class CatalogRepository extends ChangeNotifier {
   static const String _boxName = 'catalog_v3';
@@ -237,5 +238,54 @@ class CatalogRepository extends ChangeNotifier {
         .where((i) => i.subfamilia == subfamilia)
         .map((i) => i.codigo)
         .toList();
+  }
+  // ===========================================================================
+  // Mobile Schema (Planillas)
+  // ===========================================================================
+
+  Future<MobileSchema?> fetchMobileSchema(String familyId) async {
+    final cacheKey = 'schema_$familyId';
+
+    // 1. Try Online
+    if (_baseUrl != null) {
+      try {
+        final uri = Uri.parse('$_baseUrl/api/v1/catalog/mobile/schema?familia=$familyId');
+        debugPrint('Fetching schema: $uri');
+        
+        final response = await http.get(uri).timeout(const Duration(seconds: 10));
+        
+        if (response.statusCode == 200) {
+          final json = jsonDecode(utf8.decode(response.bodyBytes));
+          final schema = MobileSchema.fromJson(json);
+          
+          // Cache it
+          // Store complete JSON object to avoid serialization issues
+          await _box.put(cacheKey, json);
+          return schema;
+        } else {
+          debugPrint('Error fetching schema ($familyId): ${response.statusCode}');
+        }
+      } catch (e) {
+        debugPrint('Network error for schema ($familyId): $e');
+      }
+    }
+
+    // 2. Fallback to Cache
+    if (_box.containsKey(cacheKey)) {
+      try {
+        final cached = _box.get(cacheKey);
+        // Ensure it's a Map<String, dynamic>
+        // Hive stores Map<dynamic, dynamic> sometimes
+        final Map<String, dynamic> jsonMap = 
+            cached is Map ? jsonDecode(jsonEncode(cached)) : Map<String, dynamic>.from(cached);
+            
+        debugPrint('Loaded schema from cache: $familyId');
+        return MobileSchema.fromJson(jsonMap);
+      } catch (e) {
+        debugPrint('Cache parsing error ($familyId): $e');
+      }
+    }
+
+    return null;
   }
 }

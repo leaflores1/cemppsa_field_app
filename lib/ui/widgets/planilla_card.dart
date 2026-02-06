@@ -269,6 +269,11 @@ class _TipoIcon extends StatelessWidget {
           icon: Icons.compress_rounded,
           color: const Color(0xFF10B981),
         );
+      case TipoPlanilla.sismos:
+        return _TipoConfig(
+          icon: Icons.vibration_rounded,
+          color: const Color(0xFFE11D48),
+        );
       case TipoPlanilla.general:
         return _TipoConfig(
           icon: Icons.description_outlined,

@@ -10,9 +10,9 @@ class ApiConfig {
   /// - Local: 'http://10.0.2.2:8000' (emulador Android)
   /// - Local: 'http://localhost:8000' (web/desktop)
   /// - Producción: 'https://api.cemppsa.com'
-  /// 'http://192.168.113.135:8000'
+  /// 'http://192.168.113.103:8000'
   /// 'http://192.168.100.112:8000'
-  static const String baseUrl = 'http://192.168.113.103:8000'; 
+  static const String baseUrl = 'http://192.168.100.112:8000'; 
 
   /// Endpoints de la API
   static const String healthEndpoint = '/health';

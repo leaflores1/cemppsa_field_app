@@ -1,0 +1,68 @@
+# Referencia de Payload para App Móvil (POST)
+
+Este documento detalla estrictamente los campos requeridos para el endpoint de envío de datos. El incumplimiento de estos tipos de datos resultará en `422 Unprocessable Entity` o `400 Bad Request`.
+
+**Endpoint:** `POST /api/v1/operaciones/planillas/confirm`
+
+---
+
+## Estructura del JSON (Root)
+
+| Campo | Tipo | Requerido | Descripción | Ejemplo |
+| :--- | :--- | :--- | :--- | :--- |
+| `lote_uuid` | tring (UUID) | **Sí** | Identificador único del lote generado por la App. | `"550e8400-e29b-41d4-a716-446655440000"` |
+| `familia_id` | String | **Sí** | ID de la familia (debe coincidir con la selección del catálogo). | `"piezometros"` |
+| `archivo_origen`| String | No | Nombre de archivo referencial (útil para auditoría). | `"batch_20231027.json"` |
+| [rows](file:///c:/Users/leani/cemppsa-sistema/backend/app/services/sismos_parser.py#216-298) | Array[Object]| **Sí** | Lista de objetos, donde cada objeto es una medición en un timestamp. | `[{...}, {...}]` |
+
+## Estructura de [rows](file:///c:/Users/leani/cemppsa-sistema/backend/app/services/sismos_parser.py#216-298) (Objetos dentro del Array)
+
+Cada objeto en [rows](file:///c:/Users/leani/cemppsa-sistema/backend/app/services/sismos_parser.py#216-298) representa un momento en el tiempo (`fecha`) y las lecturas de uno o más instrumentos.
+
+| Campo (Key) | Tipo | Requerido | Descripción | Validación |
+| :--- | :--- | :--- | :--- | :--- |
+| `fecha` | String | **Sí** | Fecha y hora de la medición. | Formato **ISO 8601**. Ej: `"2023-10-27T14:30:00"` |
+| `[CODIGO_INST]` | Float / Number | No* | La llave debe ser el **CÓDIGO EXACTO** del instrumento. | Debe ser un número (float/int). Si se envía como String numérico (ej: "12.5") suele aceptarse, pero preferir Number. |
+
+> (*) Al menos un campo de instrumento es requerido por fila.
+
+---
+
+## Ejemplo Valido
+
+```json
+{
+  "lote_uuid": "c0a80121-7b3b-4c1c-8c1c-123456789abc",
+  "familia_id": "piezometros",
+  "archivo_origen": "carga_manual_tablet_01.json",
+  "rows": [
+    {
+      "fecha": "2023-10-27T10:00:00",
+      "PZ-01": 1540.23,
+      "PZ-02": 1538.10
+    },
+    {
+      "fecha": "2023-10-27T10:15:00",
+      "PZ-01": 1540.25
+    }
+  ]
+}
+```
+
+## Errores Comunes para Evitar
+
+1.  **Fecha Mal Formateada**:
+    *   ❌ `"27-10-2023 10:00"` (No estándar)
+    *   ✅ `"2023-10-27T10:00:00"` (ISO 8601)
+
+2.  **Código de Instrumento Incorrecto**:
+    *   ❌ `"Piezometro 01"` (Nombre)
+    *   ✅ `"PZ-01"` (Código)
+    *   *Nota: La app debe obtener los códigos válidos del endpoint `/catalog/mobile/schema`.*
+
+3.  **Valores No Numéricos**:
+    *   ❌ `"PZ-01": "Sin Datos"`
+    *   ✅ `"PZ-01": null` (o simplemente no incluir la llave en ese objeto)
+
+4.  **Familia ID Incorrecto**:
+    *   El `familia_id` debe ser exactamente uno de los definidos en el sistema (ej: `piezometros`, `freatimetros`, `aforadores`).
