@@ -41,12 +41,15 @@ enum FamiliaInstrumento {
     final upper = code.toUpperCase();
 
     // Casagrande (lecturas manuales en cámara de compuertas)
-    // Ahora es familia propia si empieza con PC y 2 dígitos
-    if (RegExp(r'^PC\d{2}').hasMatch(upper)) {
+    // Solo PC01-PC26 y PC*SEC (con SEC sufijo)
+    if (RegExp(r'^PC\d{2}(SEC)?$').hasMatch(upper) && 
+        (int.tryParse(upper.substring(2, 4)) ?? 0) <= 26) {
       return FamiliaInstrumento.casagrande;
     }
 
     // Piezómetros de cuerda vibrante (P + letra de eje)
+    // Incluye: PA, PB, PC (solo PC31+), PD, PE, PF, PG
+    // PC31, PC41, PC43, PC45, PC48, etc. son piezómetros del Eje C
     if (RegExp(r'^P[ABCDEFG]').hasMatch(upper)) {
       return FamiliaInstrumento.piezometro;
     }
@@ -71,8 +74,9 @@ enum FamiliaInstrumento {
       return FamiliaInstrumento.asentimetro;
     }
 
-    // Triaxiales
-    if (RegExp(r'^J\d+[XYZ]?').hasMatch(upper)) {
+    // Triaxiales (formato: J + número + opcional [XYZ])
+    // Ejemplos: J1, J2, J1X, J1Y, J1Z, etc.
+    if (RegExp(r'^J\d+[XYZ]?$').hasMatch(upper)) {
       return FamiliaInstrumento.triaxial;
     }
 
@@ -111,6 +115,30 @@ enum FamiliaInstrumento {
   }
 }
 
+/// Utilidades para códigos de instrumento
+class CodigoHelper {
+  /// Canonicaliza código de instrumento.
+  /// 
+  /// Elimina variantes para formato uniforme:
+  /// - PC-05 → PC05
+  /// - AE1-41 → AE141
+  /// - PP7* → PP7
+  static String canonicalize(String codigo) {
+    var canonical = codigo.toUpperCase();
+    
+    // Remover guiones y asteriscos
+    canonical = canonical.replaceAll('-', '').replaceAll('*', '');
+    
+    return canonical;
+  }
+  
+  /// Compara dos códigos ignorando variantes
+  static bool codigoMatch(String codigo1, String codigo2) {
+    return canonicalize(codigo1) == canonicalize(codigo2);
+  }
+}
+
+
 /// Subfamilias comunes (para clasificación más fina)
 /// Corresponde al campo `subfamilia` VARCHAR(50) del backend
 class Subfamilia {
@@ -138,8 +166,9 @@ class Subfamilia {
   static String? inferFromCode(String code) {
     final upper = code.toUpperCase();
 
-    // Piezómetros Casagrande (lectura manual)
-    if (RegExp(r'^PC\d{2}').hasMatch(upper) && !RegExp(r'^PC\d{3}').hasMatch(upper)) {
+    // Piezómetros Casagrande (lectura manual) - Solo PC01-PC26
+    if (RegExp(r'^PC\d{2}(SEC)?$').hasMatch(upper) && 
+        (int.tryParse(upper.substring(2, 4)) ?? 0) <= 26) {
       return casagrande;
     }
 
@@ -151,7 +180,7 @@ class Subfamilia {
     // Piezómetros
     if (upper.startsWith('PA')) return ejeA;
     if (upper.startsWith('PB')) return ejeB;
-    if (upper.startsWith('PC')) return ejeC;
+    if (upper.startsWith('PC')) return ejeC;  // PC31, PC41, etc. → EJE_C
     if (upper.startsWith('PD')) return ejeD;
     
     // Logic for E vs E1: 

@@ -3,6 +3,8 @@
 // Alineado con: backend LecturaAppRequest (POST /api/v1/ingesta/planillas)
 // ==============================================================================
 
+import 'instrumento.dart';
+
 /// Lectura individual cruda para Bronze.
 ///
 /// Este modelo representa UNA medición tal como se envía al backend.
@@ -67,10 +69,13 @@ class Lectura {
     // Normalizar valor: coma → punto
     final normalizedValue = rawValue.replaceAll(',', '.').trim();
     final parsedValue = double.tryParse(normalizedValue) ?? 0.0;
+    
+    // Canonicalizar código del instrumento (PC-05 → PC05)
+    final canonicalCode = CodigoHelper.canonicalize(instrumentCode.toUpperCase().trim());
 
     return Lectura(
       clientRowId: clientRowId,
-      instrumentCode: instrumentCode.toUpperCase().trim(),
+      instrumentCode: canonicalCode,
       parameter: parameter?.toLowerCase().trim(),
       unit: unit?.trim(),
       value: parsedValue,
@@ -83,7 +88,7 @@ class Lectura {
   Map<String, dynamic> toJson() {
     return {
       'client_row_id': clientRowId,
-      'instrument_code': instrumentCode,
+      'instrument_code': instrumentCode, // Ya canonicalizado en constructor
       if (parameter != null) 'parameter': parameter,
       if (unit != null) 'unit': unit,
       'value': value,
