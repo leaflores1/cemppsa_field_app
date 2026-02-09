@@ -25,7 +25,8 @@ class _PlanillaDetailScreenState extends State<PlanillaDetailScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+    final args =
+        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
     if (args != null) {
       _planilla = args['planilla'] as Planilla;
       _editable = args['editable'] as bool? ?? false;
@@ -57,7 +58,8 @@ class _PlanillaDetailScreenState extends State<PlanillaDetailScreen> {
                 value: 'export',
                 child: Row(
                   children: [
-                    Icon(Icons.file_download_outlined, color: Colors.grey, size: 20),
+                    Icon(Icons.file_download_outlined,
+                        color: Colors.grey, size: 20),
                     SizedBox(width: 12),
                     Text('Exportar', style: TextStyle(color: Colors.white)),
                   ],
@@ -68,9 +70,11 @@ class _PlanillaDetailScreenState extends State<PlanillaDetailScreen> {
                   value: 'delete',
                   child: Row(
                     children: [
-                      Icon(Icons.delete_outline, color: Color(0xFFEF4444), size: 20),
+                      Icon(Icons.delete_outline,
+                          color: Color(0xFFEF4444), size: 20),
                       SizedBox(width: 12),
-                      Text('Eliminar', style: TextStyle(color: Color(0xFFEF4444))),
+                      Text('Eliminar',
+                          style: TextStyle(color: Color(0xFFEF4444))),
                     ],
                   ),
                 ),
@@ -85,9 +89,8 @@ class _PlanillaDetailScreenState extends State<PlanillaDetailScreen> {
 
           // Lista de lecturas
           Expanded(
-            child: _planilla.isEmpty
-                ? _buildEmptyState()
-                : _buildLecturasList(),
+            child:
+                _planilla.isEmpty ? _buildEmptyState() : _buildLecturasList(),
           ),
         ],
       ),
@@ -139,7 +142,7 @@ class _PlanillaDetailScreenState extends State<PlanillaDetailScreen> {
           ),
           const SizedBox(height: 8),
 
-          // Fecha de creación
+          // Fecha de creacion
           Row(
             children: [
               Icon(Icons.calendar_today, size: 16, color: Colors.grey[600]),
@@ -172,11 +175,13 @@ class _PlanillaDetailScreenState extends State<PlanillaDetailScreen> {
               decoration: BoxDecoration(
                 color: const Color(0xFFEF4444).withOpacity(0.1),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: const Color(0xFFEF4444).withOpacity(0.3)),
+                border:
+                    Border.all(color: const Color(0xFFEF4444).withOpacity(0.3)),
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.error_outline, color: Color(0xFFEF4444), size: 18),
+                  const Icon(Icons.error_outline,
+                      color: Color(0xFFEF4444), size: 18),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -213,12 +218,6 @@ class _PlanillaDetailScreenState extends State<PlanillaDetailScreen> {
   }
 
   Widget _buildLecturasList() {
-    // Agrupar por instrumento
-    final grouped = <String, List<Lectura>>{};
-    for (final l in _planilla.lecturas) {
-      grouped.putIfAbsent(l.instrumentCode, () => []).add(l);
-    }
-
     return ListView.builder(
       padding: const EdgeInsets.all(16),
       itemCount: _planilla.lecturas.length,
@@ -274,7 +273,8 @@ class _PlanillaDetailScreenState extends State<PlanillaDetailScreen> {
                   icon: const Icon(Icons.sync, color: Colors.white),
                   label: const Text(
                     'Ir a sincronizar',
-                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                    style: TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.w600),
                   ),
                 ),
               ),
@@ -287,9 +287,9 @@ class _PlanillaDetailScreenState extends State<PlanillaDetailScreen> {
   void _editPlanilla() {
     final tipo = _planilla.tipo;
     final isCr10x = tipo.codigo.startsWith('CR10X');
-    
+
     final route = isCr10x ? '/cr10x-batch' : '/manual-reading';
-    
+
     Navigator.pushNamed(
       context,
       route,
@@ -300,11 +300,121 @@ class _PlanillaDetailScreenState extends State<PlanillaDetailScreen> {
     });
   }
 
-  void _editLectura(int index) {
-    // TODO: Abrir bottom sheet de edición
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Edición de lectura próximamente')),
+  Future<void> _editLectura(int index) async {
+    final planillaRepo = context.read<PlanillaRepository>();
+    final lectura = _planilla.lecturas[index];
+    final valueController = TextEditingController(
+      text: lectura.value.toString(),
     );
+    final notesController = TextEditingController(
+      text: lectura.notes ?? '',
+    );
+
+    final updated = await showModalBottomSheet<Lectura>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF1E293B),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: EdgeInsets.only(
+            left: 16,
+            right: 16,
+            top: 16,
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Editar ${lectura.instrumentCode}',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: valueController,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                  labelText: 'Valor',
+                  labelStyle: TextStyle(color: Colors.grey),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: notesController,
+                maxLines: 3,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                  labelText: 'Notas (opcional)',
+                  labelStyle: TextStyle(color: Colors.grey),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      child: const Text('Cancelar'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () {
+                        final normalized =
+                            valueController.text.replaceAll(',', '.').trim();
+                        final parsed = double.tryParse(normalized);
+                        if (parsed == null) {
+                          ScaffoldMessenger.of(ctx).showSnackBar(
+                            const SnackBar(
+                              content: Text('Valor numerico invalido'),
+                            ),
+                          );
+                          return;
+                        }
+                        final notes = notesController.text.trim();
+                        Navigator.pop(
+                          ctx,
+                          lectura.copyWith(
+                            value: parsed,
+                            notes: notes.isEmpty ? null : notes,
+                          ),
+                        );
+                      },
+                      child: const Text('Guardar'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    valueController.dispose();
+    notesController.dispose();
+
+    if (updated == null) return;
+
+    _planilla.lecturas[index] = updated;
+    if (_planilla.estado != PlanillaEstado.enviada) {
+      _planilla.estado = PlanillaEstado.borrador;
+    }
+
+    await planillaRepo.save(_planilla);
+    if (!mounted) return;
+    setState(() {});
   }
 
   void _handleMenuAction(String action) {
@@ -331,9 +441,10 @@ class _PlanillaDetailScreenState extends State<PlanillaDetailScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1E293B),
-        title: const Text('¿Eliminar planilla?', style: TextStyle(color: Colors.white)),
+        title: const Text('Eliminar planilla?',
+            style: TextStyle(color: Colors.white)),
         content: Text(
-          'Esta acción no se puede deshacer.',
+          'Esta accion no se puede deshacer.',
           style: TextStyle(color: Colors.grey[400]),
         ),
         actions: [
@@ -343,19 +454,21 @@ class _PlanillaDetailScreenState extends State<PlanillaDetailScreen> {
           ),
           TextButton(
             onPressed: () async {
-              await context.read<PlanillaRepository>().delete(_planilla.batchUuid);
-              if (mounted) {
-                Navigator.pop(ctx);
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Planilla eliminada'),
-                    backgroundColor: Color(0xFFEF4444),
-                  ),
-                );
-              }
+              final messenger = ScaffoldMessenger.of(context);
+              final repo = context.read<PlanillaRepository>();
+              await repo.delete(_planilla.batchUuid);
+              if (!mounted || !ctx.mounted) return;
+              Navigator.pop(ctx);
+              Navigator.pop(context);
+              messenger.showSnackBar(
+                const SnackBar(
+                  content: Text('Planilla eliminada'),
+                  backgroundColor: Color(0xFFEF4444),
+                ),
+              );
             },
-            child: const Text('Eliminar', style: TextStyle(color: Color(0xFFEF4444))),
+            child: const Text('Eliminar',
+                style: TextStyle(color: Color(0xFFEF4444))),
           ),
         ],
       ),
@@ -409,7 +522,7 @@ class _LecturaRow extends StatelessWidget {
       ),
       child: Row(
         children: [
-          // Código de instrumento
+          // Codigo de instrumento
           Container(
             width: 60,
             padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
@@ -444,7 +557,7 @@ class _LecturaRow extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  '${lectura.parameter} • ${_formatTime(lectura.measuredAt)}',
+                  '${lectura.parameter} - ${_formatTime(lectura.measuredAt)}',
                   style: TextStyle(
                     fontSize: 11,
                     color: Colors.grey[500],
@@ -467,7 +580,8 @@ class _LecturaRow extends StatelessWidget {
           // Edit button
           if (onEdit != null)
             IconButton(
-              icon: Icon(Icons.edit_outlined, size: 18, color: Colors.grey[500]),
+              icon:
+                  Icon(Icons.edit_outlined, size: 18, color: Colors.grey[500]),
               onPressed: onEdit,
               visualDensity: VisualDensity.compact,
             ),

@@ -54,7 +54,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Sincronizando ${planillaRepo.pendientes.length} planillas...'),
+        content: Text(
+            'Sincronizando ${planillaRepo.pendientes.length} planillas...'),
         backgroundColor: const Color(0xFF3B82F6),
       ),
     );
@@ -115,13 +116,11 @@ class _HomeScreenState extends State<HomeScreen> {
                     _FlowCard(
                       title: 'CR10X',
                       subtitle: 'Piezómetros · Asentímetros · Clinometros',
-                      description:
-                          'Inspección manual del datalogger CR10X',
+                      description: 'Inspección manual del datalogger CR10X',
                       icon: Icons.backup_table_rounded,
                       color: const Color(0xFFF59E0B),
                       isSecondary: true,
-                      onTap: () =>
-                          Navigator.pushNamed(context, '/cr10x-batch'),
+                      onTap: () => Navigator.pushNamed(context, '/cr10x-batch'),
                     ),
                   ],
                 ),
@@ -171,8 +170,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: _QuickActionCard(
                         icon: Icons.file_download_outlined,
                         label: 'Exportar',
-                        onTap: () =>
-                            Navigator.pushNamed(context, '/export'),
+                        onTap: () => Navigator.pushNamed(context, '/export'),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -180,8 +178,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: _QuickActionCard(
                         icon: Icons.settings_outlined,
                         label: 'Ajustes',
-                        onTap: () =>
-                            Navigator.pushNamed(context, '/settings'),
+                        onTap: () => Navigator.pushNamed(context, '/settings'),
                       ),
                     ),
                   ],
@@ -267,7 +264,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 value: repo.borradores.length.toString(),
                 icon: Icons.edit_outlined,
                 color: const Color(0xFF94A3B8),
-                onTap: () {},
+                onTap: () => Navigator.pushNamed(context, '/drafts'),
               ),
               _divider(),
               _StatTile(
@@ -275,7 +272,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 value: repo.pendientes.length.toString(),
                 icon: Icons.schedule_outlined,
                 color: const Color(0xFFF59E0B),
-                onTap: () {},
+                onTap: () => Navigator.pushNamed(context, '/pending'),
               ),
               _divider(),
               _StatTile(
@@ -283,7 +280,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 value: repo.enviadas.length.toString(),
                 icon: Icons.check_circle_outline,
                 color: const Color(0xFF22C55E),
-                onTap: () {},
+                onTap: () => Navigator.pushNamed(context, '/sent'),
               ),
             ],
           ),
@@ -417,15 +414,14 @@ class _FlowCard extends StatelessWidget {
                   children: [
                     Text(title,
                         style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600)),
+                            color: Colors.white, fontWeight: FontWeight.w600)),
                     const SizedBox(height: 4),
                     Text(subtitle,
                         style: TextStyle(color: color, fontSize: 13)),
                     const SizedBox(height: 4),
                     Text(description,
-                        style: const TextStyle(
-                            color: Colors.grey, fontSize: 12)),
+                        style:
+                            const TextStyle(color: Colors.grey, fontSize: 12)),
                   ],
                 ),
               ),
@@ -464,12 +460,9 @@ class _StatTile extends StatelessWidget {
             const SizedBox(height: 8),
             Text(value,
                 style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: color)),
+                    fontSize: 20, fontWeight: FontWeight.bold, color: color)),
             Text(label,
-                style:
-                    const TextStyle(fontSize: 11, color: Colors.grey)),
+                style: const TextStyle(fontSize: 11, color: Colors.grey)),
             const SizedBox(height: 16),
           ],
         ),
@@ -503,8 +496,7 @@ class _QuickActionCard extends StatelessWidget {
               Icon(icon, color: Colors.grey),
               const SizedBox(height: 8),
               Text(label,
-                  style:
-                      const TextStyle(fontSize: 12, color: Colors.grey)),
+                  style: const TextStyle(fontSize: 12, color: Colors.grey)),
             ],
           ),
         ),

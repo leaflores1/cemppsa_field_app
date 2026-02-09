@@ -49,9 +49,13 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
 
   void _initializeFromDraft(Planilla planilla) {
     setState(() {
+      _disposeInputs();
       _currentPlanilla = planilla;
       _selectedTipo = planilla.tipo;
-      
+      if (planilla.lecturas.isNotEmpty) {
+        _batchDateTime = planilla.lecturas.first.measuredAt;
+      }
+
       // Load controllers
       for (final lectura in planilla.lecturas) {
         if (!_controllers.containsKey(lectura.instrumentCode)) {
@@ -61,21 +65,25 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
         // simple toString for now or specific formatting
         _controllers[lectura.instrumentCode]!.text = lectura.value.toString();
       }
-      
-      // Update Schema if available for this type
-      _loadSchemaForType(planilla.tipo);
     });
+    _loadSchemaForType(planilla.tipo);
   }
 
   @override
   void dispose() {
+    _disposeInputs();
+    super.dispose();
+  }
+
+  void _disposeInputs() {
     for (final controller in _controllers.values) {
       controller.dispose();
     }
     for (final node in _focusNodes.values) {
       node.dispose();
     }
-    super.dispose();
+    _controllers.clear();
+    _focusNodes.clear();
   }
 
 // ... imports
@@ -95,13 +103,12 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
             TextButton.icon(
               onPressed: _sendPlanilla, // Now sends
               icon: const Icon(Icons.send_rounded, color: Color(0xFF22C55E)),
-              label: const Text('Enviar', style: TextStyle(color: Colors.white)),
+              label:
+                  const Text('Enviar', style: TextStyle(color: Colors.white)),
             ),
         ],
       ),
-      body: _selectedTipo == null
-          ? _buildTipoSelector()
-          : _buildBatchGrid(),
+      body: _selectedTipo == null ? _buildTipoSelector() : _buildBatchGrid(),
     );
   }
 
@@ -112,7 +119,8 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
 
   // [MODIFIED] Grid Items with improved Input Row
   Widget _buildInstrumentGrid() {
-    final instrumentos = _getInstrumentosForTipo(context.read<CatalogRepository>());
+    final instrumentos =
+        _getInstrumentosForTipo(context.read<CatalogRepository>());
 
     if (instrumentos.isEmpty) {
       return Center(
@@ -135,22 +143,21 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
       itemCount: instrumentos.length,
       itemBuilder: (ctx, index) {
         final inst = instrumentos[index];
-        final String? label = _loadedSchema?.variables.isNotEmpty == true 
-            ? _loadedSchema!.variables.first.name 
-            : null;
-        final String? unit = _loadedSchema?.variables.isNotEmpty == true 
-            ? _loadedSchema!.variables.first.unit 
-            : null;
+        final schemaVariable = _defaultSchemaVariable();
+        final String? label = schemaVariable?.name;
+        final String? unit = schemaVariable?.unit;
 
         // Triaxiales: mostrar 3 campos (X, Y, Z) en lugar de 1
-        if (_selectedTipo == TipoPlanilla.triaxiales && inst.familia == FamiliaInstrumento.triaxial) {
+        if (_selectedTipo == TipoPlanilla.triaxiales &&
+            inst.familia == FamiliaInstrumento.triaxial) {
           return _TriaxialInputRow(
             instrumento: inst,
             controllerX: _getController('${inst.codigo}X'),
             controllerY: _getController('${inst.codigo}Y'),
             controllerZ: _getController('${inst.codigo}Z'),
             customUnit: unit,
-            onSave: (valX, valY, valZ) => _saveTriaxialReading(inst, valX, valY, valZ),
+            onSave: (valX, valY, valZ) =>
+                _saveTriaxialReading(inst, valX, valY, valZ),
           );
         }
 
@@ -169,9 +176,8 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
 
   // [MODIFIED] Footer with "Guardar Borrador"
   Widget _buildBatchFooter() {
-    final filledCount = _controllers.entries
-        .where((e) => e.value.text.isNotEmpty)
-        .length;
+    final filledCount =
+        _controllers.entries.where((e) => e.value.text.isNotEmpty).length;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -191,10 +197,12 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
               onPressed: _clearAll,
               style: OutlinedButton.styleFrom(
                 side: const BorderSide(color: Color(0xFF334155)),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 minimumSize: const Size(70, 36),
               ),
-              child: const Text('Limpiar', style: TextStyle(color: Colors.grey, fontSize: 12)),
+              child: const Text('Limpiar',
+                  style: TextStyle(color: Colors.grey, fontSize: 12)),
             ),
             const SizedBox(width: 8),
             ElevatedButton(
@@ -202,12 +210,16 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF3B82F6), // Blue for draft
                 disabledBackgroundColor: const Color(0xFF334155),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 minimumSize: const Size(80, 36),
               ),
               child: const Text(
                 'Guardar Borrador',
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 12),
+                style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12),
               ),
             ),
           ],
@@ -218,47 +230,117 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
 
   // ... helper methods ...
 
-  // [NEW] Single Reading Save
-  Future<void> _saveSingleReading(Instrumento inst, String rawValue) async {
-    if (rawValue.isEmpty) return;
+  SchemaVariable? _defaultSchemaVariable() {
+    final schema = _loadedSchema;
+    if (schema == null || schema.variables.isEmpty) {
+      return null;
+    }
+    for (final variable in schema.variables) {
+      if (variable.isDefault) {
+        return variable;
+      }
+    }
+    return schema.variables.first;
+  }
 
+  String _resolveVariableCode(Instrumento inst, {String? axis}) {
+    if (_selectedTipo == TipoPlanilla.triaxiales && axis != null) {
+      return 'PERIODO_$axis';
+    }
+    final schemaVariable = _defaultSchemaVariable();
+    if (schemaVariable != null && schemaVariable.code.trim().isNotEmpty) {
+      return schemaVariable.code;
+    }
+    return inst.ingestaParameter ?? inst.defaultParameter;
+  }
+
+  String? _resolveVariableUnit(Instrumento inst) {
+    final schemaVariable = _defaultSchemaVariable();
+    if (schemaVariable != null && schemaVariable.unit.trim().isNotEmpty) {
+      return schemaVariable.unit;
+    }
+    return inst.ingestaParameter != null ? inst.ingestaUnit : inst.defaultUnit;
+  }
+
+  void _upsertReading({
+    required String instrumentCode,
+    required String parameter,
+    required String rawValue,
+    String? unit,
+  }) {
     if (_currentPlanilla == null) return;
-    
-    // Create/Update reading
-    final variableCode = _loadedSchema?.variables.isNotEmpty == true
-        ? _loadedSchema!.variables.first.code
-        : (inst.ingestaParameter ?? inst.defaultParameter);
-        
-    final variableUnit = _loadedSchema?.variables.isNotEmpty == true
-        ? _loadedSchema!.variables.first.unit
-        : (inst.ingestaParameter != null ? inst.ingestaUnit : inst.defaultUnit);
-    
-    // Need a row ID. If reading exists, update it. If not, new ID.
-    // Simplifying: remove existing reading for this instrument before adding
-    // Find existing reading by instrument code
-    final existingIndex = _currentPlanilla!.lecturas.indexWhere((l) => l.instrumentCode == inst.codigo);
-    int rowId;
+    final normalizedValue = rawValue.trim();
+    if (normalizedValue.isEmpty) return;
+
+    final existingIndex = _currentPlanilla!.lecturas.indexWhere(
+      (l) => l.instrumentCode == instrumentCode,
+    );
+    final rowId = existingIndex >= 0
+        ? _currentPlanilla!.lecturas[existingIndex].clientRowId
+        : _currentPlanilla!.nextClientRowId;
+
     if (existingIndex >= 0) {
-      rowId = _currentPlanilla!.lecturas[existingIndex].clientRowId;
       _currentPlanilla!.lecturas.removeAt(existingIndex);
-    } else {
-      rowId = _currentPlanilla!.nextClientRowId;
     }
 
     final lectura = Lectura.fromForm(
       clientRowId: rowId,
-      instrumentCode: inst.codigo,
-      parameter: variableCode,
-      unit: variableUnit,
-      rawValue: rawValue,
+      instrumentCode: instrumentCode,
+      parameter: parameter,
+      unit: unit,
+      rawValue: normalizedValue,
       measuredAt: _batchDateTime,
     );
-    
+
     _currentPlanilla!.agregarLectura(lectura);
-    _currentPlanilla!.estado = PlanillaEstado.borrador; // Keep as draft
-    
+  }
+
+  void _syncPlanillaFromInputs(List<Instrumento> instrumentos) {
+    if (_currentPlanilla == null) return;
+    _currentPlanilla!.lecturas.clear();
+
+    for (final inst in instrumentos) {
+      if (_selectedTipo == TipoPlanilla.triaxiales &&
+          inst.familia == FamiliaInstrumento.triaxial) {
+        final axisValues = <String, String>{
+          'X': _controllers['${inst.codigo}X']?.text ?? '',
+          'Y': _controllers['${inst.codigo}Y']?.text ?? '',
+          'Z': _controllers['${inst.codigo}Z']?.text ?? '',
+        };
+        for (final entry in axisValues.entries) {
+          _upsertReading(
+            instrumentCode: '${inst.codigo}${entry.key}',
+            parameter: _resolveVariableCode(inst, axis: entry.key),
+            unit: _resolveVariableUnit(inst),
+            rawValue: entry.value,
+          );
+        }
+        continue;
+      }
+
+      _upsertReading(
+        instrumentCode: inst.codigo,
+        parameter: _resolveVariableCode(inst),
+        unit: _resolveVariableUnit(inst),
+        rawValue: _controllers[inst.codigo]?.text ?? '',
+      );
+    }
+  }
+
+  // [NEW] Single Reading Save
+  Future<void> _saveSingleReading(Instrumento inst, String rawValue) async {
+    if (_currentPlanilla == null || rawValue.trim().isEmpty) return;
+
+    _upsertReading(
+      instrumentCode: inst.codigo,
+      parameter: _resolveVariableCode(inst),
+      unit: _resolveVariableUnit(inst),
+      rawValue: rawValue,
+    );
+    _currentPlanilla!.estado = PlanillaEstado.borrador;
+
     await context.read<PlanillaRepository>().save(_currentPlanilla!);
-    
+
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -271,57 +353,32 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
   }
 
   // [NEW] Triaxial Reading Save (X, Y, Z)
-  Future<void> _saveTriaxialReading(Instrumento inst, String rawValueX, String rawValueY, String rawValueZ) async {
-    if (rawValueX.isEmpty && rawValueY.isEmpty && rawValueZ.isEmpty) return;
-
+  Future<void> _saveTriaxialReading(
+    Instrumento inst,
+    String rawValueX,
+    String rawValueY,
+    String rawValueZ,
+  ) async {
     if (_currentPlanilla == null) return;
-    
-    // Para cada eje (X, Y, Z), crear/actualizar una lectura
-    // Códigos: J1X, J1Y, J1Z
-    final axes = [
-      ('X', rawValueX),
-      ('Y', rawValueY),
-      ('Z', rawValueZ),
-    ];
-    
-    final variableCode = _loadedSchema?.variables.isNotEmpty == true
-        ? _loadedSchema!.variables.first.code
-        : (inst.ingestaParameter ?? inst.defaultParameter);
-        
-    final variableUnit = _loadedSchema?.variables.isNotEmpty == true
-        ? _loadedSchema!.variables.first.unit
-        : (inst.ingestaParameter != null ? inst.ingestaUnit : inst.defaultUnit);
-    
-    for (final (axis, rawValue) in axes) {
-      if (rawValue.isEmpty) continue;
-      
-      final axisCode = '${inst.codigo}$axis'; // J1X, J1Y, J1Z
-      
-      // Look for existing reading by axis code
-      final existingIndex = _currentPlanilla!.lecturas.indexWhere((l) => l.instrumentCode == axisCode);
-      int rowId;
-      if (existingIndex >= 0) {
-        rowId = _currentPlanilla!.lecturas[existingIndex].clientRowId;
-        _currentPlanilla!.lecturas.removeAt(existingIndex);
-      } else {
-        rowId = _currentPlanilla!.nextClientRowId;
-      }
+    final axisValues = <String, String>{
+      'X': rawValueX,
+      'Y': rawValueY,
+      'Z': rawValueZ,
+    };
+    if (axisValues.values.every((v) => v.trim().isEmpty)) return;
 
-      final lectura = Lectura.fromForm(
-        clientRowId: rowId,
-        instrumentCode: axisCode, // J1X, J1Y, J1Z
-        parameter: variableCode,
-        unit: variableUnit,
-        rawValue: rawValue,
-        measuredAt: _batchDateTime,
+    for (final entry in axisValues.entries) {
+      _upsertReading(
+        instrumentCode: '${inst.codigo}${entry.key}',
+        parameter: _resolveVariableCode(inst, axis: entry.key),
+        unit: _resolveVariableUnit(inst),
+        rawValue: entry.value,
       );
-      
-      _currentPlanilla!.agregarLectura(lectura);
     }
-    
+
     _currentPlanilla!.estado = PlanillaEstado.borrador;
     await context.read<PlanillaRepository>().save(_currentPlanilla!);
-    
+
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -335,37 +392,11 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
 
   // [MODIFIED] Send Logic (Top Button)
   Future<void> _sendPlanilla() async {
-    // 1. Ensure all current inputs are saved to planilla
-    final instrumentos = _getInstrumentosForTipo(context.read<CatalogRepository>());
-    
-    // Sync UI to Model first (in case user didn't hit save on specific row)
-    // We clear and rebuild to ensure exact match with UI? 
-    // Or just update changed ones? Safer to rebuild from UI state for "Send All".
-    _currentPlanilla!.lecturas.clear();
-    int clientRowId = 1;
+    if (_currentPlanilla == null) return;
 
-    for (final inst in instrumentos) {
-      final controller = _controllers[inst.codigo];
-      if (controller != null && controller.text.isNotEmpty) {
-        final variableCode = _loadedSchema?.variables.isNotEmpty == true
-            ? _loadedSchema!.variables.first.code
-            : (inst.ingestaParameter ?? inst.defaultParameter);
-            
-        final variableUnit = _loadedSchema?.variables.isNotEmpty == true
-            ? _loadedSchema!.variables.first.unit
-            : (inst.ingestaParameter != null ? inst.ingestaUnit : inst.defaultUnit);
-
-        final lectura = Lectura.fromForm(
-          clientRowId: clientRowId++,
-          instrumentCode: inst.codigo,
-          parameter: variableCode,
-          unit: variableUnit,
-          rawValue: controller.text,
-          measuredAt: _batchDateTime,
-        );
-        _currentPlanilla!.agregarLectura(lectura);
-      }
-    }
+    final catalog = context.read<CatalogRepository>();
+    final instrumentos = _getInstrumentosForTipo(catalog);
+    _syncPlanillaFromInputs(instrumentos);
 
     if (_currentPlanilla!.lecturas.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -374,13 +405,10 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
       return;
     }
 
-    // 2. Mark as Pendiente via Repository
     _currentPlanilla!.marcarPendiente();
     await context.read<PlanillaRepository>().save(_currentPlanilla!);
 
-    // 3. Trigger Send via SyncService
     if (!mounted) return;
-    
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Guardando y enviando...')),
     );
@@ -388,55 +416,51 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
     try {
       final syncService = context.read<SyncService>();
       final planillaRepo = context.read<PlanillaRepository>();
-      
-      // Attempt immediate send
-      // Attempt immediate send
+
       final result = await syncService.retrySingle(
-        _currentPlanilla!.batchUuid, 
+        _currentPlanilla!.batchUuid,
         repository: planillaRepo,
+        catalog: catalog,
       );
       final success = result['success'] == true;
-      // Handle error message update if needed
-      if (!success && result['error'] != null) {
-         // syncService.lastError might be updated but result holds it too
+
+      if (!mounted) return;
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Planilla enviada exitosamente'),
+            backgroundColor: Color(0xFF22C55E),
+          ),
+        );
+        Navigator.pop(context);
+        return;
       }
-      
-      if (mounted) {
-        if (success) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Planilla enviada exitosamente'),
-              backgroundColor: Color(0xFF22C55E),
-            ),
-          );
-          Navigator.pop(context);
-        } else {
-          _handleSendError(syncService.lastError);
-        }
-      }
+
+      final error = (result['error'] ?? syncService.lastError)?.toString();
+      _handleSendError(error);
     } catch (e) {
       debugPrint('Error sending planilla: $e');
       if (mounted) {
-         _handleSendError(e.toString());
+        _handleSendError(e.toString());
       }
     }
   }
 
   void _handleSendError(String? errorMsg) {
     if (errorMsg == null) return;
-    
+
     // Attempt to parse JSON body from "body={...}"
     final jsonDetails = _parseErrorDetails(errorMsg);
-    
+
     if (jsonDetails != null && jsonDetails['errors'] is List) {
-       _showValidationErrorsDialog(jsonDetails['errors']);
+      _showValidationErrorsDialog(jsonDetails['errors']);
     } else {
-       // Fallback: Show simple snackbar with "View Details" action
+      // Fallback: Show simple snackbar with "View Details" action
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             'Error al enviar (${errorMsg.length > 50 ? '...' : errorMsg})',
-            maxLines: 2, 
+            maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),
           backgroundColor: const Color(0xFFEF4444),
@@ -445,7 +469,7 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
             label: 'Ver detalle',
             textColor: Colors.white,
             onPressed: () {
-               _showSimpleErrorDialog(errorMsg);
+              _showSimpleErrorDialog(errorMsg);
             },
           ),
         ),
@@ -454,36 +478,44 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
   }
 
   Future<void> _loadSchemaForType(TipoPlanilla tipo) async {
-    // Basic implementation: attempt to load from config or service if available.
-    // For now we don't strictly need the schema for draft loading if we trust the stored data.
-    // But to match the call site, we provide the stub or actual implementation.
-    
-    // Check if we have a SchemaService concept imported? 
-    // It seems missing in this file imports.
-    // We can just skip schema loading for now or implement a dummy if not critical.
-    // However, the saving logic relies on _loadedSchema?
-    // Lines 217-223 use _loadedSchema. 
-    // So we should try to mock it or fix the usage.
-    
-    // Ideally:
-    // final service = context.read<SchemaService>();
-    // final schema = await service.getSchemaForType(tipo);
-    // setState(() => _loadedSchema = schema);
-    
-    // Since I don't see SchemaService imported, I'll remove the call or comment it out 
-    // and rely on existing parameter logic if schema is null.
-    // The existing code handles null _loadedSchema (lines 217+).
-    // So making this a no-op is safe for compilation.
-    debugPrint('Loading schema for ${tipo.name} (Placeholder)');
+    final familyId = _mapTipoToSchemaFamilyId(tipo);
+    if (familyId == null) {
+      if (!mounted) return;
+      setState(() => _loadedSchema = null);
+      return;
+    }
+
+    final schema =
+        await context.read<CatalogRepository>().fetchMobileSchema(familyId);
+    if (!mounted) return;
+    setState(() => _loadedSchema = schema);
   }
+
+  String? _mapTipoToSchemaFamilyId(TipoPlanilla tipo) {
+    switch (tipo) {
+      case TipoPlanilla.casagrande:
+        return 'piezometros_casagrande';
+      case TipoPlanilla.freatimetros:
+        return 'freatimetros';
+      case TipoPlanilla.aforadores:
+        return 'aforadores';
+      case TipoPlanilla.sismos:
+        return 'sismos';
+      case TipoPlanilla.triaxiales:
+        return 'triaxiales';
+      default:
+        return null;
+    }
+  }
+
   Map<String, dynamic>? _parseErrorDetails(String errorMsg) {
     try {
       final bodyIndex = errorMsg.indexOf('body=');
       if (bodyIndex != -1) {
         final jsonStr = errorMsg.substring(bodyIndex + 5);
-        final decoded = jsonDecode(jsonStr); 
+        final decoded = jsonDecode(jsonStr);
         if (decoded is Map<String, dynamic> && decoded.containsKey('detail')) {
-           return decoded['detail'] as Map<String, dynamic>;
+          return decoded['detail'] as Map<String, dynamic>;
         }
       }
     } catch (_) {
@@ -491,7 +523,7 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
     }
     return null;
   }
-  
+
   void _showValidationErrorsDialog(List errors) {
     showDialog(
       context: context,
@@ -499,9 +531,10 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
         backgroundColor: const Color(0xFF1E293B),
         title: const Row(
           children: [
-             Icon(Icons.error_outline, color: Color(0xFFEF4444)),
-             SizedBox(width: 10),
-             Text('Errores de Validación', style: TextStyle(color: Colors.white, fontSize: 18)),
+            Icon(Icons.error_outline, color: Color(0xFFEF4444)),
+            SizedBox(width: 10),
+            Text('Errores de Validación',
+                style: TextStyle(color: Colors.white, fontSize: 18)),
           ],
         ),
         content: SizedBox(
@@ -509,14 +542,17 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
           child: ListView.separated(
             shrinkWrap: true,
             itemCount: errors.length,
-            separatorBuilder: (_, __) => const Divider(color: Color(0xFF334155)),
+            separatorBuilder: (_, __) =>
+                const Divider(color: Color(0xFF334155)),
             itemBuilder: (ctx, index) {
               final err = errors[index];
               final code = err['instrument_code'] ?? 'N/A';
               final msg = err['message'] ?? 'Error desconocido';
               return ListTile(
                 contentPadding: EdgeInsets.zero,
-                title: Text(code, style: const TextStyle(color: Color(0xFF3B82F6), fontWeight: FontWeight.bold)),
+                title: Text(code,
+                    style: const TextStyle(
+                        color: Color(0xFF3B82F6), fontWeight: FontWeight.bold)),
                 subtitle: Text(msg, style: TextStyle(color: Colors.grey[300])),
               );
             },
@@ -537,7 +573,8 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1E293B),
-        title: const Text('Detalle del Error', style: TextStyle(color: Colors.white)),
+        title: const Text('Detalle del Error',
+            style: TextStyle(color: Colors.white)),
         content: SingleChildScrollView(
           child: Text(msg, style: TextStyle(color: Colors.grey[300])),
         ),
@@ -553,32 +590,10 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
 
   // [MODIFIED] Save Draft Logic (Bottom Button)
   Future<void> _saveDraft() async {
-    final instrumentos = _getInstrumentosForTipo(context.read<CatalogRepository>());
-    _currentPlanilla!.lecturas.clear();
-    int clientRowId = 1;
-
-    for (final inst in instrumentos) {
-      final controller = _controllers[inst.codigo];
-      if (controller != null && controller.text.isNotEmpty) {
-         final variableCode = _loadedSchema?.variables.isNotEmpty == true
-            ? _loadedSchema!.variables.first.code
-            : (inst.ingestaParameter ?? inst.defaultParameter);
-            
-        final variableUnit = _loadedSchema?.variables.isNotEmpty == true
-            ? _loadedSchema!.variables.first.unit
-            : (inst.ingestaParameter != null ? inst.ingestaUnit : inst.defaultUnit);
-
-        final lectura = Lectura.fromForm(
-          clientRowId: clientRowId++,
-          instrumentCode: inst.codigo,
-          parameter: variableCode,
-          unit: variableUnit,
-          rawValue: controller.text,
-          measuredAt: _batchDateTime,
-        );
-        _currentPlanilla!.agregarLectura(lectura);
-      }
-    }
+    if (_currentPlanilla == null) return;
+    final instrumentos =
+        _getInstrumentosForTipo(context.read<CatalogRepository>());
+    _syncPlanillaFromInputs(instrumentos);
 
     _currentPlanilla!.estado = PlanillaEstado.borrador;
     await context.read<PlanillaRepository>().save(_currentPlanilla!);
@@ -599,22 +614,61 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
 
   List<Instrumento> _getInstrumentosForTipo(CatalogRepository catalog) {
     if (_selectedTipo == null) return [];
-    final all = catalog.all(); // [FIX] .all() instead of .instruments
+    final all = catalog.all();
+    List<Instrumento> instrumentos;
+
     switch (_selectedTipo!) {
       case TipoPlanilla.casagrande:
-        return all.where((i) => i.familia == FamiliaInstrumento.casagrande || (i.familia == FamiliaInstrumento.piezometro && i.subfamilia == 'CASAGRANDE')).toList();
+        instrumentos = all
+            .where(
+              (i) =>
+                  i.familia == FamiliaInstrumento.casagrande ||
+                  (i.familia == FamiliaInstrumento.piezometro &&
+                      i.subfamilia == 'CASAGRANDE'),
+            )
+            .toList();
+        break;
       case TipoPlanilla.freatimetros:
-        return all.where((i) => i.familia == FamiliaInstrumento.freatimetro).toList();
+        instrumentos = all
+            .where((i) => i.familia == FamiliaInstrumento.freatimetro)
+            .toList();
+        break;
       case TipoPlanilla.aforadores:
-        return all.where((i) => i.familia == FamiliaInstrumento.aforador).toList();
+        instrumentos =
+            all.where((i) => i.familia == FamiliaInstrumento.aforador).toList();
+        break;
       case TipoPlanilla.sismos:
-         return all.where((i) => i.familia == FamiliaInstrumento.sismos).toList();
+        instrumentos =
+            all.where((i) => i.familia == FamiliaInstrumento.sismos).toList();
+        break;
       case TipoPlanilla.triaxiales:
-        // Retornar solo TRIAXIAL base (J1-J15), no los ejes
-        return all.where((i) => i.familia == FamiliaInstrumento.triaxial && RegExp(r'^J\d+$').hasMatch(i.codigo.toUpperCase())).toList();
+        instrumentos = all
+            .where(
+              (i) =>
+                  i.familia == FamiliaInstrumento.triaxial &&
+                  RegExp(r'^J\d+$').hasMatch(i.codigo.toUpperCase()),
+            )
+            .toList();
+        if (instrumentos.isEmpty) {
+          // Fallback si el catálogo trae J1X/J1Y/J1Z en lugar de J1 base.
+          final bases = <String>{};
+          for (final i
+              in all.where((x) => x.familia == FamiliaInstrumento.triaxial)) {
+            final match =
+                RegExp(r'^(J\d+)[XYZT]$').firstMatch(i.codigo.toUpperCase());
+            if (match != null) {
+              bases.add(match.group(1)!);
+            }
+          }
+          instrumentos = bases.map(Instrumento.fromCode).toList();
+        }
+        break;
       default:
         return [];
     }
+
+    instrumentos.sort((a, b) => a.codigo.compareTo(b.codigo));
+    return instrumentos;
   }
 
   TextEditingController _getController(String code) {
@@ -652,11 +706,15 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          _buildOptionButton(Icons.waves, 'Casagrande', TipoPlanilla.casagrande),
-          _buildOptionButton(Icons.water_drop, 'Freatímetros', TipoPlanilla.freatimetros),
-          _buildOptionButton(Icons.speed, 'Aforadores', TipoPlanilla.aforadores),
+          _buildOptionButton(
+              Icons.waves, 'Casagrande', TipoPlanilla.casagrande),
+          _buildOptionButton(
+              Icons.water_drop, 'Freatímetros', TipoPlanilla.freatimetros),
+          _buildOptionButton(
+              Icons.speed, 'Aforadores', TipoPlanilla.aforadores),
           _buildOptionButton(Icons.vibration, 'Sismos', TipoPlanilla.sismos),
-          _buildOptionButton(Icons.view_in_ar, 'Triaxiales', TipoPlanilla.triaxiales),
+          _buildOptionButton(
+              Icons.view_in_ar, 'Triaxiales', TipoPlanilla.triaxiales),
         ],
       ),
     );
@@ -666,19 +724,23 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8.0),
       child: ElevatedButton.icon(
-        onPressed: () {
+        onPressed: () async {
           setState(() {
+            _disposeInputs();
             _selectedTipo = tipo;
+            _batchDateTime = DateTime.now();
             _currentPlanilla = Planilla(
-               // [FIX] Correct constructor arguments
-               batchUuid: const Uuid().v4(),
-               tipo: tipo,
-               deviceId: AppConfig.deviceId ?? 'unknown-device',
-               technicianId: AppConfig.technicianId ?? 'unknown-tech',
-               createdAt: DateTime.now(),
-               lecturas: [],
-             )..estado = PlanillaEstado.borrador;
+              // [FIX] Correct constructor arguments
+              batchUuid: const Uuid().v4(),
+              tipo: tipo,
+              deviceId: AppConfig.deviceId ?? 'unknown-device',
+              technicianId: AppConfig.technicianId ?? 'unknown-tech',
+              createdAt: DateTime.now(),
+              lecturas: [],
+            )..estado = PlanillaEstado.borrador;
+            _loadedSchema = null;
           });
+          await _loadSchemaForType(tipo);
         },
         icon: Icon(icon),
         label: Text(label),
@@ -706,23 +768,26 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
       color: const Color(0xFF1E293B),
       child: Column(
         children: [
-           Row(
-             children: [
-               IconButton(
-                 icon: const Icon(Icons.arrow_back, color: Colors.white),
-                 onPressed: _confirmCancel,
-               ),
-               Text(
-                 _selectedTipo?.name.toUpperCase() ?? '',
-                 style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-               ),
-             ],
-           ),
-           const SizedBox(height: 10),
-           Text(
-             'Fecha: ${_batchDateTime.toLocal()}',
-             style: const TextStyle(color: Colors.grey),
-           )
+          Row(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.arrow_back, color: Colors.white),
+                onPressed: _confirmCancel,
+              ),
+              Text(
+                _selectedTipo?.displayName ?? '',
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Fecha: ${_formatDateTime(_batchDateTime)}',
+            style: const TextStyle(color: Colors.grey),
+          )
         ],
       ),
     );
@@ -734,24 +799,36 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1E293B),
         title: const Text('¿Salir?', style: TextStyle(color: Colors.white)),
-        content: const Text('Se perderán los cambios no guardados.', style: TextStyle(color: Colors.white70)),
+        content: const Text('Se perderán los cambios no guardados.',
+            style: TextStyle(color: Colors.white70)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Salir')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Salir')),
         ],
       ),
     );
-    
+
     if (shouldPop == true && mounted) {
-      if (mounted) {
-         // Navigator.pop(context); // Not pop, just reset state
-         setState(() {
-            _selectedTipo = null;
-            _currentPlanilla = null;
-            _controllers.clear();
-         });
-      }
+      setState(() {
+        _disposeInputs();
+        _batchDateTime = DateTime.now();
+        _selectedTipo = null;
+        _currentPlanilla = null;
+        _loadedSchema = null;
+      });
     }
+  }
+
+  String _formatDateTime(DateTime dt) {
+    return '${dt.day.toString().padLeft(2, '0')}/'
+        '${dt.month.toString().padLeft(2, '0')}/'
+        '${dt.year} '
+        '${dt.hour.toString().padLeft(2, '0')}:'
+        '${dt.minute.toString().padLeft(2, '0')}';
   }
 }
 
@@ -804,7 +881,8 @@ class _InstrumentInputRow extends StatelessWidget {
             child: TextField(
               controller: controller,
               focusNode: focusNode,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
               textInputAction: TextInputAction.next, // Or Done?
               onSubmitted: (_) => onSubmitted(),
               style: const TextStyle(
@@ -815,7 +893,8 @@ class _InstrumentInputRow extends StatelessWidget {
               decoration: InputDecoration(
                 hintText: customLabel ?? '0,00',
                 hintStyle: TextStyle(color: Colors.grey[700]),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 filled: true,
                 fillColor: const Color(0xFF0F172A),
                 border: OutlineInputBorder(
@@ -826,12 +905,12 @@ class _InstrumentInputRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          
+
           // [NEW] Unit Text
           SizedBox(
             width: 30, // Reduced to make space for button
             child: Text(
-              instrumento.defaultUnit, // Use param if possible, but defaults ok
+              customUnit ?? instrumento.defaultUnit,
               style: TextStyle(
                 fontSize: 10,
                 color: Colors.grey[500],
@@ -840,10 +919,11 @@ class _InstrumentInputRow extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          
+
           // [NEW] Save Icon Button
           IconButton(
-            icon: const Icon(Icons.save_as_outlined, color: Color(0xFF3B82F6), size: 20),
+            icon: const Icon(Icons.save_as_outlined,
+                color: Color(0xFF3B82F6), size: 20),
             onPressed: () => onSave(controller.text),
             constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
             padding: EdgeInsets.zero,
@@ -896,7 +976,7 @@ class _TriaxialInputRow extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          
+
           // Tres campos: X, Y, Z
           Row(
             children: [
@@ -909,7 +989,7 @@ class _TriaxialInputRow extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              
+
               // Eje Y
               Expanded(
                 child: _TriaxialAxisInput(
@@ -919,7 +999,7 @@ class _TriaxialInputRow extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              
+
               // Eje Z
               Expanded(
                 child: _TriaxialAxisInput(
@@ -929,11 +1009,13 @@ class _TriaxialInputRow extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              
+
               // Botón Guardar
               IconButton(
-                icon: const Icon(Icons.save_as_outlined, color: Color(0xFF10B981), size: 22),
-                onPressed: () => onSave(controllerX.text, controllerY.text, controllerZ.text),
+                icon: const Icon(Icons.save_as_outlined,
+                    color: Color(0xFF10B981), size: 22),
+                onPressed: () => onSave(
+                    controllerX.text, controllerY.text, controllerZ.text),
                 constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                 padding: EdgeInsets.zero,
                 tooltip: 'Guardar 3 ejes',
@@ -983,7 +1065,8 @@ class _TriaxialAxisInput extends StatelessWidget {
           decoration: InputDecoration(
             hintText: '0,0',
             hintStyle: TextStyle(color: Colors.grey[800]),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
             filled: true,
             fillColor: const Color(0xFF0F172A),
             border: OutlineInputBorder(

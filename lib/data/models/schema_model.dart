@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 class MobileSchema {
   final String familia;
   final List<SchemaInstrument> instruments;

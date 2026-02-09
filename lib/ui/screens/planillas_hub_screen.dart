@@ -20,11 +20,45 @@ class PlanillasHubScreen extends StatefulWidget {
 class _PlanillasHubScreenState extends State<PlanillasHubScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  bool _tabInitialized = false;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_tabInitialized) return;
+
+    final route = ModalRoute.of(context)?.settings;
+    final args = route?.arguments;
+    int initialTab = 0;
+
+    if (args is Map<String, dynamic> && args['tab'] is int) {
+      initialTab = args['tab'] as int;
+    } else {
+      switch (route?.name) {
+        case '/pending':
+          initialTab = 1;
+          break;
+        case '/sent':
+          initialTab = 2;
+          break;
+        case '/drafts':
+        default:
+          initialTab = 0;
+      }
+    }
+
+    if (initialTab < 0) initialTab = 0;
+    if (initialTab >= _tabController.length) {
+      initialTab = _tabController.length - 1;
+    }
+    _tabController.index = initialTab;
+    _tabInitialized = true;
   }
 
   @override
@@ -54,9 +88,12 @@ class _PlanillasHubScreenState extends State<PlanillasHubScreen>
                 unselectedLabelColor: Colors.grey[500],
                 labelPadding: const EdgeInsets.symmetric(horizontal: 8),
                 tabs: [
-                  _buildTab('Borrador', repo.borradores.length, const Color(0xFF94A3B8)),
-                  _buildTab('Pendiente', repo.pendientes.length, const Color(0xFFF59E0B)),
-                  _buildTab('Enviada', repo.enviadas.length, const Color(0xFF22C55E)),
+                  _buildTab('Borrador', repo.borradores.length,
+                      const Color(0xFF94A3B8)),
+                  _buildTab('Pendiente', repo.pendientes.length,
+                      const Color(0xFFF59E0B)),
+                  _buildTab(
+                      'Enviada', repo.enviadas.length, const Color(0xFF22C55E)),
                 ],
               );
             },
@@ -80,7 +117,8 @@ class _PlanillasHubScreenState extends State<PlanillasHubScreen>
                 planillas: repo.pendientes,
                 emptyIcon: Icons.schedule_outlined,
                 emptyTitle: 'Sin pendientes',
-                emptySubtitle: 'Las planillas listas para enviar aparecerán aquí',
+                emptySubtitle:
+                    'Las planillas listas para enviar aparecerán aquí',
                 onTap: (p) => _openDetail(p, editable: false),
                 onRetry: (p) => _retrySend(p),
               ),
@@ -157,7 +195,8 @@ class _PlanillasHubScreenState extends State<PlanillasHubScreen>
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1E293B),
-        title: const Text('¿Eliminar planilla?', style: TextStyle(color: Colors.white)),
+        title: const Text('¿Eliminar planilla?',
+            style: TextStyle(color: Colors.white)),
         content: Text(
           '${planilla.tipo.displayName}\n${planilla.totalLecturas} lecturas',
           style: TextStyle(color: Colors.grey[400]),
@@ -169,18 +208,21 @@ class _PlanillasHubScreenState extends State<PlanillasHubScreen>
           ),
           TextButton(
             onPressed: () async {
-              await context.read<PlanillaRepository>().delete(planilla.batchUuid);
-              if (mounted) {
-                Navigator.pop(ctx);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Planilla eliminada'),
-                    backgroundColor: Color(0xFFEF4444),
-                  ),
-                );
-              }
+              final messenger = ScaffoldMessenger.of(context);
+              await context
+                  .read<PlanillaRepository>()
+                  .delete(planilla.batchUuid);
+              if (!mounted || !ctx.mounted) return;
+              Navigator.pop(ctx);
+              messenger.showSnackBar(
+                const SnackBar(
+                  content: Text('Planilla eliminada'),
+                  backgroundColor: Color(0xFFEF4444),
+                ),
+              );
             },
-            child: const Text('Eliminar', style: TextStyle(color: Color(0xFFEF4444))),
+            child: const Text('Eliminar',
+                style: TextStyle(color: Color(0xFFEF4444))),
           ),
         ],
       ),

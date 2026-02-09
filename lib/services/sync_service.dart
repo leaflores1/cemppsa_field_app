@@ -112,11 +112,6 @@ class SyncService extends ChangeNotifier {
         planilla.errorMessage = preflightError;
         return false;
       }
-      if (preflightError != null) {
-        _lastError = preflightError;
-        planilla.errorMessage = preflightError;
-        return false;
-      }
     }
 
     // [MODIFIED] Check for Manual Types to use "Operaciones" flow
@@ -267,8 +262,6 @@ class SyncService extends ChangeNotifier {
   // ===========================================================================
   // REINTENTO INDIVIDUAL
   // ===========================================================================
-
-
 
   String _stringifyResponse(dynamic value) {
     if (value == null) {
@@ -443,8 +436,15 @@ class SyncService extends ChangeNotifier {
   /// }
   Future<bool> _sendManualPlanilla(Planilla planilla) async {
     final rows = _buildManualRows(planilla);
+    if (rows.isEmpty) {
+      _lastError = 'Planilla manual sin lecturas válidas';
+      planilla.errorMessage = _lastError;
+      return false;
+    }
+
     final familiaId = _mapTipoToFamiliaId(planilla.tipo);
-    final archivoOrigen = 'app_${planilla.batchUuid}_${DateTime.now().millisecondsSinceEpoch}.json';
+    final archivoOrigen =
+        'app_${planilla.batchUuid}_${DateTime.now().millisecondsSinceEpoch}.json';
 
     final payload = {
       'lote_uuid': planilla.batchUuid,
@@ -453,7 +453,8 @@ class SyncService extends ChangeNotifier {
       'rows': rows,
     };
 
-    debugPrint('SyncService._sendManualPlanilla: Sending to operations/confirm...');
+    debugPrint(
+        'SyncService._sendManualPlanilla: Sending to operations/confirm...');
 
     final response = await _api.post(
       '/api/v1/operaciones/planillas/confirm',
@@ -490,20 +491,23 @@ class SyncService extends ChangeNotifier {
       if (!grouped.containsKey(ts)) {
         grouped[ts] = {'fecha': ts};
       }
-      
+
       // Add Value
       // Backend expects "CODE": value.
       // Lectura model stores value as double.
       grouped[ts]![lectura.instrumentCode] = lectura.value;
     }
 
-    return grouped.values.toList();
+    final rows = grouped.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+
+    return rows.map((entry) => entry.value).toList();
   }
 
   String _mapTipoToFamiliaId(TipoPlanilla tipo) {
     switch (tipo) {
       case TipoPlanilla.casagrande:
-        return 'casagrande'; // Aligned with backend Enum CASAGRANDE
+        return 'piezometros_casagrande';
       case TipoPlanilla.freatimetros:
         return 'freatimetros';
       case TipoPlanilla.aforadores:
@@ -512,10 +516,12 @@ class SyncService extends ChangeNotifier {
         return 'triaxiales';
       default:
         // Fallback for generic manual if any
-        return 'general_app'; 
+        return 'general_app';
     }
   }
-  Future<Map<String, dynamic>> retrySingle(String batchUuid, {
+
+  Future<Map<String, dynamic>> retrySingle(
+    String batchUuid, {
     required PlanillaRepository repository,
     CatalogRepository? catalog,
   }) async {
@@ -526,9 +532,9 @@ class SyncService extends ChangeNotifier {
 
     planilla.marcarEnviando();
     await repository.save(planilla);
-    
+
     final success = await sendPlanilla(planilla, catalog: catalog);
-    
+
     if (success) {
       planilla.marcarEnviada();
       await repository.save(planilla);
@@ -536,12 +542,8 @@ class SyncService extends ChangeNotifier {
     } else {
       planilla.marcarError(_lastError ?? 'Error desconocido');
       await repository.save(planilla);
-      
-      return {
-        'success': false, 
-        'error': _lastError,
-        'planilla': planilla
-      };
+
+      return {'success': false, 'error': _lastError, 'planilla': planilla};
     }
   }
 }

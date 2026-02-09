@@ -10,6 +10,7 @@ import 'package:provider/provider.dart';
 import '../../core/config.dart';
 import '../../repositories/planilla_repository.dart';
 import '../../repositories/catalogo_repository.dart';
+import '../../utils/csv_exporter.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -100,7 +101,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   trailing: TextButton(
                     onPressed: catalog.isSyncing
                         ? null
-                        : () => _refreshCatalog(context, catalog),
+                        : () => _refreshCatalog(catalog),
                     child: const Text('Actualizar'),
                   ),
                 ),
@@ -131,20 +132,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 icon: Icons.cleaning_services_outlined,
                 label: 'Limpiar planillas enviadas',
                 subtitle: 'Elimina planillas enviadas hace más de 30 días',
-                onTap: () => _cleanOldPlanillas(context),
+                onTap: _cleanOldPlanillas,
               ),
               const Divider(color: Color(0xFF334155)),
               _ActionTile(
                 icon: Icons.delete_sweep_outlined,
                 label: 'Limpiar exports antiguos',
-                subtitle: 'Funcionalidad pendiente',
-                onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Limpieza de exports no implementada'),
-                    ),
-                  );
-                },
+                subtitle: 'Elimina CSV exportados hace mas de 30 dias',
+                onTap: _cleanOldExports,
               ),
             ],
           ),
@@ -184,30 +179,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
     Clipboard.setData(ClipboardData(text: text));
   }
 
-  static Future<void> _refreshCatalog(
-    BuildContext context,
-    CatalogRepository catalog,
-  ) async {
+  Future<void> _refreshCatalog(CatalogRepository catalog) async {
     final ok = await catalog.syncFromBackend();
+    if (!mounted) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
           ok ? 'Catálogo actualizado' : 'Error al sincronizar catálogo',
         ),
-        backgroundColor:
-            ok ? const Color(0xFF22C55E) : const Color(0xFFEF4444),
+        backgroundColor: ok ? const Color(0xFF22C55E) : const Color(0xFFEF4444),
       ),
     );
   }
 
-  static Future<void> _cleanOldPlanillas(BuildContext context) async {
+  Future<void> _cleanOldPlanillas() async {
     final repo = context.read<PlanillaRepository>();
     final deleted = await repo.limpiarEnviadas(diasAntiguedad: 30);
+    if (!mounted) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('$deleted planillas eliminadas'),
+        backgroundColor: const Color(0xFF22C55E),
+      ),
+    );
+  }
+
+  Future<void> _cleanOldExports() async {
+    final deleted = await CsvExporter.cleanOldExports(daysOld: 30);
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$deleted exports eliminados'),
         backgroundColor: const Color(0xFF22C55E),
       ),
     );
@@ -329,8 +334,7 @@ class _InfoTile extends StatelessWidget {
                         color: Colors.white)),
                 const SizedBox(height: 4),
                 Text(value,
-                    style:
-                        TextStyle(fontSize: 12, color: Colors.grey[500])),
+                    style: TextStyle(fontSize: 12, color: Colors.grey[500])),
               ],
             ),
           ),
@@ -380,8 +384,7 @@ class _ActionTile extends StatelessWidget {
                           color: Colors.white)),
                   const SizedBox(height: 2),
                   Text(subtitle,
-                      style: TextStyle(
-                          fontSize: 11, color: Colors.grey[600])),
+                      style: TextStyle(fontSize: 11, color: Colors.grey[600])),
                 ],
               ),
             ),

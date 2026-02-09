@@ -26,7 +26,8 @@ class _ExportCsvScreenState extends State<ExportCsvScreen> {
   @override
   Widget build(BuildContext context) {
     // Verificar si viene con una planilla específica
-    final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+    final args =
+        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
     final singlePlanilla = args?['planilla'] as Planilla?;
 
     return Scaffold(
@@ -66,8 +67,8 @@ class _ExportCsvScreenState extends State<ExportCsvScreen> {
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.description_outlined, 
-                      color: Color(0xFF3B82F6)),
+                    const Icon(Icons.description_outlined,
+                        color: Color(0xFF3B82F6)),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
@@ -178,12 +179,13 @@ class _ExportCsvScreenState extends State<ExportCsvScreen> {
               decoration: BoxDecoration(
                 color: const Color(0xFF22C55E).withOpacity(0.1),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFF22C55E).withOpacity(0.3)),
+                border:
+                    Border.all(color: const Color(0xFF22C55E).withOpacity(0.3)),
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.check_circle, 
-                    color: Color(0xFF22C55E), size: 20),
+                  const Icon(Icons.check_circle,
+                      color: Color(0xFF22C55E), size: 20),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
@@ -306,7 +308,8 @@ class _ExportCsvScreenState extends State<ExportCsvScreen> {
                             height: 20,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              valueColor:
+                                  AlwaysStoppedAnimation<Color>(Colors.white),
                             ),
                           )
                         : const Icon(Icons.file_download, color: Colors.white),
@@ -415,15 +418,17 @@ class _ExportCsvScreenState extends State<ExportCsvScreen> {
   }
 
   Future<void> _exportMultiple(List<Planilla> planillas) async {
-    final selected = planillas
-        .where((p) => _selectedIds.contains(p.batchUuid))
-        .toList();
+    final selected =
+        planillas.where((p) => _selectedIds.contains(p.batchUuid)).toList();
 
     setState(() => _exporting = true);
 
     try {
       final path = await CsvExporter.exportMultiple(selected);
-      setState(() => _exporting = false);
+      setState(() {
+        _exporting = false;
+        _lastExportPath = path;
+      });
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
