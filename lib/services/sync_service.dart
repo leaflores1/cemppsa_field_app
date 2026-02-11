@@ -426,7 +426,8 @@ class SyncService extends ChangeNotifier {
   bool _isManualPlanilla(TipoPlanilla tipo) {
     return tipo == TipoPlanilla.casagrande ||
         tipo == TipoPlanilla.freatimetros ||
-        tipo == TipoPlanilla.aforadores;
+        tipo == TipoPlanilla.aforadores ||
+        tipo == TipoPlanilla.drenes;
   }
 
   /// Sends payload to /api/v1/operaciones/planillas/confirm
@@ -517,6 +518,8 @@ class SyncService extends ChangeNotifier {
         return 'freatimetros';
       case TipoPlanilla.aforadores:
         return 'aforadores';
+      case TipoPlanilla.drenes:
+        return 'drenes';
       case TipoPlanilla.triaxiales:
         return 'triaxiales';
       default:

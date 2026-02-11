@@ -28,6 +28,7 @@ dependencies:
 
   # --- Export / apertura de archivos ---
   open_filex: ^4.5.0
+  image_picker: ^1.1.2
 
 dev_dependencies:
   flutter_test:

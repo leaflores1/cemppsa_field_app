@@ -436,6 +436,8 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
         return 'freatimetros';
       case TipoPlanilla.aforadores:
         return 'aforadores';
+      case TipoPlanilla.drenes:
+        return 'drenes';
       default:
         return null;
     }
@@ -567,8 +569,10 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
             .toList();
         break;
       case TipoPlanilla.aforadores:
-        instrumentos =
-            all.where((i) => i.familia == FamiliaInstrumento.aforador).toList();
+        instrumentos = all.where((i) => _isAforadorWithoutDren(i)).toList();
+        break;
+      case TipoPlanilla.drenes:
+        instrumentos = all.where(_isDren).toList();
         break;
       default:
         return [];
@@ -633,7 +637,8 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
               border: Border.all(color: const Color(0xFF334155)),
             ),
             child: const Text(
-              'Carga manual para planillas operativas: Casagrande, Freatimetros y Aforadores.',
+              'Carga manual para planillas operativas: Casagrande, '
+              'Freatimetros, Aforadores y Drenes.',
               style: TextStyle(fontSize: 12, color: Colors.grey),
             ),
           ),
@@ -661,9 +666,27 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
             color: const Color(0xFFF59E0B),
             onTap: () => _selectFamily(TipoPlanilla.aforadores),
           ),
+          const SizedBox(height: 12),
+          _FamilyCard(
+            title: 'Drenes',
+            subtitle: 'Lecturas de drenes (DC)',
+            icon: Icons.filter_alt_rounded,
+            color: const Color(0xFF22C55E),
+            onTap: () => _selectFamily(TipoPlanilla.drenes),
+          ),
         ],
       ),
     );
+  }
+
+  bool _isDren(Instrumento instrumento) {
+    final code = CodigoHelper.canonicalize(instrumento.codigo);
+    return code.startsWith('DC');
+  }
+
+  bool _isAforadorWithoutDren(Instrumento instrumento) {
+    return instrumento.familia == FamiliaInstrumento.aforador &&
+        !_isDren(instrumento);
   }
 
   Future<void> _selectFamily(TipoPlanilla tipo) async {

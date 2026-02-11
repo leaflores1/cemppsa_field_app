@@ -19,6 +19,17 @@ class ApiConfig {
   static const String ingestaEndpoint = '/api/v1/ingesta/planillas';
   static const String catalogEndpoint = '/api/v1/catalog-app/instruments';
   static const String batchesEndpoint = '/api/v1/batches';
+  static const String fotosEndpoint = '/api/v1/fotos';
+  static const String authLoginEndpoint = '/api/v1/auth/login';
+
+  /// Token Bearer opcional para endpoints protegidos
+  /// Si no se configura, las requests se envían sin Authorization.
+  static String? authToken;
+
+  /// Credenciales para sincronización de fotos (backend protegido).
+  /// Recomendado: mover a ajustes/secure storage en próxima iteración.
+  static String fieldAppEmail = 'admin@cemppsa.com';
+  static String fieldAppPassword = 'admin123';
 
   /// Timeouts
   static const Duration connectionTimeout = Duration(seconds: 10);
@@ -48,4 +59,5 @@ class StorageConfig {
   static const String planillasBox = 'planillas';
   static const String catalogBox = 'catalog';
   static const String settingsBox = 'settings';
+  static const String fotosBox = 'fotos_v1';
 }

@@ -120,6 +120,7 @@ class _PlanillasHubScreenState extends State<PlanillasHubScreen>
                 emptySubtitle:
                     'Las planillas listas para enviar aparecerán aquí',
                 onTap: (p) => _openDetail(p, editable: false),
+                onDelete: (p) => _confirmDelete(p),
                 onRetry: (p) => _retrySend(p),
               ),
               _PlanillasList(
@@ -128,6 +129,7 @@ class _PlanillasHubScreenState extends State<PlanillasHubScreen>
                 emptyTitle: 'Sin enviadas',
                 emptySubtitle: 'Las planillas sincronizadas aparecerán aquí',
                 onTap: (p) => _openDetail(p, editable: false),
+                onDelete: (p) => _confirmDelete(p),
               ),
             ],
           );

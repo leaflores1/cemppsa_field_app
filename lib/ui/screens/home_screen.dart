@@ -22,7 +22,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    // Verificar conexión al iniciar
+    // Verificar conexiÃ³n al iniciar
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<SyncService>().checkConnection();
     });
@@ -35,7 +35,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (syncService.isSyncing) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Ya hay una sincronización en curso'),
+          content: Text('Ya hay una sincronizaciÃ³n en curso'),
           backgroundColor: Color(0xFFF59E0B),
         ),
       );
@@ -86,7 +86,7 @@ class _HomeScreenState extends State<HomeScreen> {
           slivers: [
             SliverToBoxAdapter(child: _buildHeader()),
 
-            // Banner de conectividad (fuente única de verdad)
+            // Banner de conectividad (fuente Ãºnica de verdad)
             const SliverToBoxAdapter(
               child: ConnectivityBanner(),
             ),
@@ -105,7 +105,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   children: [
                     _FlowCard(
                       title: 'Lecturas Manuales',
-                      subtitle: 'Casagrande · Freatímetros · Aforadores',
+                      subtitle:
+                          'Casagrande Â· FreatÃ­metros Â· Aforadores Â· Drenes',
                       description: 'Carga manual de instrumentos',
                       icon: Icons.edit_note_rounded,
                       color: const Color(0xFF3B82F6),
@@ -115,12 +116,22 @@ class _HomeScreenState extends State<HomeScreen> {
                     const SizedBox(height: 12),
                     _FlowCard(
                       title: 'CR10X',
-                      subtitle: 'Piezómetros · Asentímetros · Clinometros',
-                      description: 'Inspección manual del datalogger CR10X',
+                      subtitle: 'PiezÃ³metros Â· AsentÃ­metros Â· Clinometros',
+                      description: 'InspecciÃ³n manual del datalogger CR10X',
                       icon: Icons.backup_table_rounded,
                       color: const Color(0xFFF59E0B),
                       isSecondary: true,
                       onTap: () => Navigator.pushNamed(context, '/cr10x-batch'),
+                    ),
+                    const SizedBox(height: 12),
+                    _FlowCard(
+                      title: 'Fotos / Inspeccion',
+                      subtitle: 'Eventos · Mantenimiento · Tormentas',
+                      description: 'Seguimiento fotografico offline-first',
+                      icon: Icons.photo_camera_back_outlined,
+                      color: const Color(0xFF22C55E),
+                      isSecondary: true,
+                      onTap: () => Navigator.pushNamed(context, '/fotos'),
                     ),
                   ],
                 ),
@@ -134,7 +145,7 @@ class _HomeScreenState extends State<HomeScreen> {
               child: _sectionTitleWithAction(
                 context,
                 title: 'MIS PLANILLAS',
-                actionLabel: 'Ver todas →',
+                actionLabel: 'Ver todas â†’',
                 route: '/planillas',
               ),
             ),
@@ -234,7 +245,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
                 Text(
-                  'Sistema de Auscultación',
+                  'Sistema de AuscultaciÃ³n',
                   style: TextStyle(
                     fontSize: 12,
                     color: Colors.grey,
@@ -297,7 +308,7 @@ class _HomeScreenState extends State<HomeScreen> {
           Divider(color: Color(0xFF334155)),
           SizedBox(height: 8),
           Text(
-            'CEMPPSA · Potrerillos · v2.0.0',
+            'CEMPPSA Â· Potrerillos Â· v2.0.0',
             style: TextStyle(fontSize: 11, color: Colors.grey),
           ),
         ],

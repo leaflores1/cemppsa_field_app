@@ -111,8 +111,8 @@ class PlanillaCard extends StatelessWidget {
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.error_outline, 
-                        color: Color(0xFFEF4444), size: 16),
+                      const Icon(Icons.error_outline,
+                          color: Color(0xFFEF4444), size: 16),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
@@ -144,7 +144,8 @@ class PlanillaCard extends StatelessWidget {
                           padding: const EdgeInsets.symmetric(horizontal: 12),
                         ),
                         icon: const Icon(Icons.refresh, size: 16),
-                        label: const Text('Reintentar', style: TextStyle(fontSize: 12)),
+                        label: const Text('Reintentar',
+                            style: TextStyle(fontSize: 12)),
                       ),
                     if (onDelete != null)
                       TextButton.icon(
@@ -154,7 +155,8 @@ class PlanillaCard extends StatelessWidget {
                           padding: const EdgeInsets.symmetric(horizontal: 12),
                         ),
                         icon: const Icon(Icons.delete_outline, size: 16),
-                        label: const Text('Eliminar', style: TextStyle(fontSize: 12)),
+                        label: const Text('Eliminar',
+                            style: TextStyle(fontSize: 12)),
                       ),
                   ],
                 ),
@@ -227,6 +229,11 @@ class _TipoIcon extends StatelessWidget {
       case TipoPlanilla.aforadores:
         return _TipoConfig(
           icon: Icons.waves_rounded,
+          color: const Color(0xFF22C55E),
+        );
+      case TipoPlanilla.drenes:
+        return _TipoConfig(
+          icon: Icons.filter_alt_rounded,
           color: const Color(0xFF22C55E),
         );
       case TipoPlanilla.cr10xPiezometros:

@@ -36,6 +36,9 @@ enum TipoPlanilla {
   /// Aforadores (lectura manual semanal)
   aforadores('AFORADORES', 'Aforadores'),
 
+  /// Drenes (lectura manual semanal)
+  drenes('DRENES', 'Drenes'),
+
   /// CR10X Piezómetros (carga contingencia)
   cr10xPiezometros('CR10X_PIEZ', 'CR10X Piezómetros'),
 
@@ -83,7 +86,7 @@ enum TipoPlanilla {
 }
 
 /// Modelo de Planilla (Batch) para sincronización.
-/// 
+///
 /// Mapea exactamente a `SyncBatchRequest` del backend:
 /// ```json
 /// {
@@ -215,7 +218,8 @@ class Planilla {
 
   /// Actualiza una lectura existente
   void actualizarLectura(Lectura lectura) {
-    final index = lecturas.indexWhere((l) => l.clientRowId == lectura.clientRowId);
+    final index =
+        lecturas.indexWhere((l) => l.clientRowId == lectura.clientRowId);
     if (index >= 0) {
       lecturas[index] = lectura;
     }
@@ -224,7 +228,8 @@ class Planilla {
   /// Obtiene el próximo clientRowId disponible
   int get nextClientRowId {
     if (lecturas.isEmpty) return 1;
-    return lecturas.map((l) => l.clientRowId).reduce((a, b) => a > b ? a : b) + 1;
+    return lecturas.map((l) => l.clientRowId).reduce((a, b) => a > b ? a : b) +
+        1;
   }
 
   // ===========================================================================
@@ -307,7 +312,8 @@ class Planilla {
   }
 
   @override
-  String toString() => 'Planilla($batchUuid, ${tipo.displayName}, $estado, $totalLecturas lecturas)';
+  String toString() =>
+      'Planilla($batchUuid, ${tipo.displayName}, $estado, $totalLecturas lecturas)';
 
   @override
   bool operator ==(Object other) =>

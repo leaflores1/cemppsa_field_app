@@ -15,21 +15,24 @@ import 'core/config.dart';
 // Repositorios
 import 'repositories/catalogo_repository.dart';
 import 'repositories/planilla_repository.dart';
+import 'repositories/foto_repository.dart';
 
 // API
 import 'api/api_client.dart';
 
 // Servicios
 import 'services/sync_service.dart';
+import 'services/foto_sync_service.dart';
 
 // Pantallas
-import 'ui/screens/home_screen.dart';
-import 'ui/screens/manual_reading_screen.dart';
-import 'ui/screens/cr10x_batch_screen.dart';
-import 'ui/screens/planillas_hub_screen.dart';
-import 'ui/screens/planilla_detail_screen.dart';
-import 'ui/screens/export_csv_screen.dart';
-import 'ui/screens/settings_screen.dart';
+import 'package:cemppsa_field_app/ui/screens/home_screen.dart';
+import 'package:cemppsa_field_app/ui/screens/manual_reading_screen.dart';
+import 'package:cemppsa_field_app/ui/screens/cr10x_batch_screen.dart';
+import 'package:cemppsa_field_app/ui/screens/planillas_hub_screen.dart';
+import 'package:cemppsa_field_app/ui/screens/planilla_detail_screen.dart';
+import 'package:cemppsa_field_app/ui/screens/export_csv_screen.dart';
+import 'package:cemppsa_field_app/ui/screens/settings_screen.dart';
+import 'package:cemppsa_field_app/ui/screens/fotos_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -61,16 +64,22 @@ void main() async {
   final planillaRepo = PlanillaRepository();
   await planillaRepo.init();
 
+  final fotoRepo = FotoRepository();
+  await fotoRepo.init();
+
   // Inicializar servicios
   final apiClient = ApiClient(baseUrl: ApiConfig.baseUrl);
   final syncService = SyncService(apiClient: apiClient);
+  final fotoSyncService = FotoSyncService(repository: fotoRepo);
 
   runApp(
     MultiProvider(
       providers: [
         ChangeNotifierProvider.value(value: catalogRepo),
         ChangeNotifierProvider.value(value: planillaRepo),
+        ChangeNotifierProvider.value(value: fotoRepo),
         ChangeNotifierProvider.value(value: syncService),
+        ChangeNotifierProvider.value(value: fotoSyncService),
       ],
       child: const CEMPPSAFieldApp(),
     ),
@@ -94,6 +103,7 @@ class CEMPPSAFieldApp extends StatelessWidget {
         // Flujos de carga de datos
         '/manual-reading': (ctx) => const ManualReadingScreen(),
         '/cr10x-batch': (ctx) => const CR10XBatchScreen(),
+        '/fotos': (ctx) => const FotosScreen(),
 
         // Gestión de planillas
         '/planillas': (ctx) => const PlanillasHubScreen(),
