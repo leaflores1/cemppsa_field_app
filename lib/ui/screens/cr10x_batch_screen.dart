@@ -23,6 +23,19 @@ class CR10XBatchScreen extends StatefulWidget {
 }
 
 class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
+  static const List<String> _triaxAxes = ['X', 'Y', 'Z'];
+  static const Set<String> _ejeCPiezometrosExtras = {
+    'PC05',
+    'PC13',
+    'PC15',
+    'PC16',
+    'PC17',
+    'PC23',
+    'PC25',
+    'PC26',
+  };
+  static const String _tempSuffix = '__temp';
+
   TipoPlanilla? _selectedTipo;
   String? _selectedEje;
   Planilla? _currentPlanilla;
@@ -75,16 +88,55 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
       final inst = catalog.byCode(code);
       if (inst != null && (inst.subfamilia?.startsWith('EJE_') ?? false)) {
         _selectedEje = inst.subfamilia?.split('_').last;
+      } else if (planilla.tipo == TipoPlanilla.cr10xPiezometros &&
+          code.toUpperCase().startsWith('PC')) {
+        _selectedEje = 'C';
       }
     }
 
     for (final lectura in planilla.lecturas) {
-      if (!_controllers.containsKey(lectura.instrumentCode)) {
-        _controllers[lectura.instrumentCode] = TextEditingController();
+      final key = _controllerKeyForDraft(lectura);
+      if (!_controllers.containsKey(key)) {
+        _controllers[key] = TextEditingController();
       }
-      _controllers[lectura.instrumentCode]!.text = lectura.value.toString();
+      _controllers[key]!.text = lectura.value.toString();
     }
   }
+
+  String _tempControllerKey(String codigo) => '$codigo$_tempSuffix';
+
+  String _controllerKeyForDraft(Lectura lectura) {
+    if (_selectedTipo == TipoPlanilla.cr10xTriaxiales) {
+      final normalizedCode = CodigoHelper.canonicalize(lectura.instrumentCode);
+      if (RegExp(r'^[A-Z0-9]+[XYZ]$').hasMatch(normalizedCode)) {
+        return normalizedCode;
+      }
+      final parameter = (lectura.parameter ?? '').trim().toUpperCase();
+      final axisMatch = RegExp(r'PERIODO_([XYZ])$').firstMatch(parameter);
+      if (axisMatch != null) {
+        return '${_triaxBaseCode(normalizedCode)}${axisMatch.group(1)!}';
+      }
+      return normalizedCode;
+    }
+
+    final isAsentimetroTemp = _selectedTipo == TipoPlanilla.cr10xAsentimetros &&
+        (lectura.parameter ?? '').trim().toUpperCase() == 'TEMPERATURA';
+    return isAsentimetroTemp
+        ? _tempControllerKey(lectura.instrumentCode)
+        : lectura.instrumentCode;
+  }
+
+  String _triaxBaseCode(String code) {
+    final normalized = CodigoHelper.canonicalize(code);
+    final axisMatch = RegExp(r'^(J\d+)[XYZT]$').firstMatch(normalized);
+    if (axisMatch != null) {
+      return axisMatch.group(1)!;
+    }
+    return normalized;
+  }
+
+  String _triaxAxisKey(String baseCode, String axis) =>
+      '${_triaxBaseCode(baseCode)}$axis';
 
   @override
   void dispose() {
@@ -450,19 +502,85 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
       );
     }
 
-    return ListView.builder(
+    final list = ListView.builder(
       padding: const EdgeInsets.all(16),
       itemCount: instrumentos.length,
       itemBuilder: (ctx, index) {
         final inst = instrumentos[index];
+        if (_selectedTipo == TipoPlanilla.cr10xTriaxiales) {
+          final baseCode = _triaxBaseCode(inst.codigo);
+          return _TriaxialInputRow(
+            instrumentCode: baseCode,
+            controllerX: _getController(_triaxAxisKey(baseCode, 'X')),
+            controllerY: _getController(_triaxAxisKey(baseCode, 'Y')),
+            controllerZ: _getController(_triaxAxisKey(baseCode, 'Z')),
+            focusNodeX: _getFocusNode(_triaxAxisKey(baseCode, 'X')),
+            focusNodeY: _getFocusNode(_triaxAxisKey(baseCode, 'Y')),
+            focusNodeZ: _getFocusNode(_triaxAxisKey(baseCode, 'Z')),
+            onXSubmitted: () =>
+                _getFocusNode(_triaxAxisKey(baseCode, 'Y')).requestFocus(),
+            onYSubmitted: () =>
+                _getFocusNode(_triaxAxisKey(baseCode, 'Z')).requestFocus(),
+            onZSubmitted: () => _focusNextTriaxial(instrumentos, index),
+            onSave: (x, y, z) => _saveTriaxialReadings(inst, x, y, z),
+          );
+        }
+
+        if (_selectedTipo == TipoPlanilla.cr10xAsentimetros) {
+          return _AsentimetroInputRow(
+            instrumento: inst,
+            luController: _getController(inst.codigo),
+            tempController: _getController(_tempControllerKey(inst.codigo)),
+            luFocusNode: _getFocusNode(inst.codigo),
+            tempFocusNode: _getFocusNode(_tempControllerKey(inst.codigo)),
+            onPrimarySubmitted: () =>
+                _getFocusNode(_tempControllerKey(inst.codigo)).requestFocus(),
+            onTempSubmitted: () => _focusNext(instrumentos, index),
+            onSave: (luValue, tempValue) =>
+                _saveAsentimetroReadings(inst, luValue, tempValue),
+          );
+        }
+
         return _InstrumentInputRow(
           instrumento: inst,
           controller: _getController(inst.codigo),
           focusNode: _getFocusNode(inst.codigo),
           onSubmitted: () => _focusNext(instrumentos, index),
           onSave: (val) => _saveSingleReading(inst, val),
+          unitLabel: _resolveInputUnitLabel(inst),
         );
       },
+    );
+
+    if (_selectedTipo != TipoPlanilla.cr10xTriaxiales) {
+      return list;
+    }
+
+    return Column(
+      children: [
+        Container(
+          margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: const Color(0x1A14B8A6),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0x4D14B8A6)),
+          ),
+          child: const Row(
+            children: [
+              Icon(Icons.info_outline, color: Color(0xFF14B8A6), size: 18),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Cada instrumento triaxial tiene 3 lecturas: Eje X, Eje Y y Eje Z.',
+                  style: TextStyle(color: Colors.white, fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+        ),
+        Expanded(child: list),
+      ],
     );
   }
 
@@ -475,27 +593,35 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
       case TipoPlanilla.cr10xAsentimetros:
         if (_selectedEje == null) return [];
         final subfamilia = 'EJE_${_selectedEje!}';
-        final filtered = catalog
+        final byAxis = catalog
             .codigosPorSubfamilia(subfamilia)
             .map((c) => catalog.byCode(c))
-            .where((i) => i != null && !i.esManual)
+            .where((i) => i != null)
             .cast<Instrumento>()
             .toList();
 
-        // Additional filter by family to distinguish Piezo vs Asentimetro (both use EJE_D)
-        // EJE_D can contain both PA... and AD...
-        // So we strictly filter by selected family type
-        final targetFamily = _selectedTipo == TipoPlanilla.cr10xPiezometros
-            ? FamiliaInstrumento.piezometro
-            : FamiliaInstrumento.asentimetro;
-        instrumentos =
-            filtered.where((i) => i.familia == targetFamily).toList();
+        if (_selectedTipo == TipoPlanilla.cr10xPiezometros) {
+          instrumentos = byAxis
+              .where((i) =>
+                  i.familia == FamiliaInstrumento.piezometro && !i.esManual)
+              .toList();
+          if (_selectedEje == 'C') {
+            _mergeEjeCPiezometroExtras(
+              instrumentos: instrumentos,
+              catalog: catalog,
+              subfamilia: subfamilia,
+            );
+          }
+        } else {
+          instrumentos = byAxis
+              .where((i) =>
+                  i.familia == FamiliaInstrumento.asentimetro && !i.esManual)
+              .toList();
+        }
         break;
 
       case TipoPlanilla.cr10xTriaxiales:
-        // Ensure all axes shown. Logic already groups nothing, just returns all.
-        // It should match JxxX, JxxY, JxxZ etc.
-        instrumentos = catalog.byFamilia(FamiliaInstrumento.triaxial);
+        instrumentos = _getTriaxialBaseInstrumentos(catalog);
         break;
 
       case TipoPlanilla.cr10xUniaxiales:
@@ -522,8 +648,84 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
         return [];
     }
 
-    instrumentos.sort((a, b) => a.codigo.compareTo(b.codigo));
-    return instrumentos;
+    final sorted = List<Instrumento>.from(instrumentos)
+      ..sort((a, b) => a.codigo.compareTo(b.codigo));
+    return sorted;
+  }
+
+  void _mergeEjeCPiezometroExtras({
+    required List<Instrumento> instrumentos,
+    required CatalogRepository catalog,
+    required String subfamilia,
+  }) {
+    final existentes =
+        instrumentos.map((i) => CodigoHelper.canonicalize(i.codigo)).toSet();
+
+    for (final code in _ejeCPiezometrosExtras) {
+      if (existentes.contains(code)) {
+        continue;
+      }
+
+      final existingInCatalog = _findInstrumentByCode(catalog, code);
+      if (existingInCatalog != null) {
+        instrumentos.add(existingInCatalog);
+      } else {
+        instrumentos.add(
+          Instrumento(
+            codigo: code,
+            familia: FamiliaInstrumento.piezometro,
+            subfamilia: subfamilia,
+            defaultParameter: 'LECTURA_CR10X',
+            defaultUnit: 'Hz',
+          ),
+        );
+      }
+      existentes.add(code);
+    }
+  }
+
+  Instrumento? _findInstrumentByCode(CatalogRepository catalog, String code) {
+    final exact = catalog.byCode(code);
+    if (exact != null) {
+      return exact;
+    }
+    for (final inst in catalog.all()) {
+      if (CodigoHelper.codigoMatch(inst.codigo, code)) {
+        return inst;
+      }
+    }
+    return null;
+  }
+
+  List<Instrumento> _getTriaxialBaseInstrumentos(CatalogRepository catalog) {
+    final allTriaxiales =
+        List<Instrumento>.from(catalog.byFamilia(FamiliaInstrumento.triaxial));
+    final byBase = <String, Instrumento>{};
+
+    for (final inst in allTriaxiales) {
+      final base = _triaxBaseCode(inst.codigo);
+      byBase.putIfAbsent(
+        base,
+        () => Instrumento(
+          idInstrumento: inst.idInstrumento,
+          codigo: base,
+          nombre: inst.nombre,
+          familia: FamiliaInstrumento.triaxial,
+          subfamilia: inst.subfamilia,
+          activo: inst.activo,
+          defaultParameter: inst.defaultParameter,
+          defaultUnit: inst.defaultUnit,
+        ),
+      );
+    }
+
+    if (byBase.isEmpty) {
+      return [];
+    }
+
+    final items = byBase.values.toList()
+      ..sort((a, b) => a.codigo.compareTo(b.codigo));
+    return items;
   }
 
   TextEditingController _getController(String codigo) {
@@ -544,6 +746,13 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
     if (currentIndex < instrumentos.length - 1) {
       final nextCode = instrumentos[currentIndex + 1].codigo;
       _focusNodes[nextCode]?.requestFocus();
+    }
+  }
+
+  void _focusNextTriaxial(List<Instrumento> instrumentos, int currentIndex) {
+    if (currentIndex < instrumentos.length - 1) {
+      final nextBase = _triaxBaseCode(instrumentos[currentIndex + 1].codigo);
+      _focusNodes[_triaxAxisKey(nextBase, 'X')]?.requestFocus();
     }
   }
 
@@ -607,7 +816,12 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
   // [NEW] Single Reading Save
   Future<void> _saveSingleReading(Instrumento inst, String rawValue) async {
     if (_currentPlanilla == null || rawValue.trim().isEmpty) return;
-    _upsertReading(instrumento: inst, rawValue: rawValue);
+    _upsertReading(
+      instrumento: inst,
+      rawValue: rawValue,
+      parameter: _resolvePrimaryParameter(inst),
+      unit: _resolvePrimaryUnit(inst),
+    );
 
     _currentPlanilla!.estado = PlanillaEstado.borrador;
     await context.read<PlanillaRepository>().save(_currentPlanilla!);
@@ -616,6 +830,80 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Lectura de ${inst.codigo} guardada'),
+          backgroundColor: const Color(0xFF3B82F6),
+          duration: const Duration(milliseconds: 1500),
+        ),
+      );
+    }
+  }
+
+  Future<void> _saveAsentimetroReadings(
+    Instrumento inst,
+    String rawLuValue,
+    String rawTempValue,
+  ) async {
+    if (_currentPlanilla == null) return;
+    final hasLu = rawLuValue.trim().isNotEmpty;
+    final hasTemp = rawTempValue.trim().isNotEmpty;
+    if (!hasLu && !hasTemp) return;
+
+    _upsertReading(
+      instrumento: inst,
+      rawValue: rawLuValue,
+      parameter: 'LECTURA_LU',
+      unit: 'LU',
+    );
+    _upsertReading(
+      instrumento: inst,
+      rawValue: rawTempValue,
+      parameter: 'TEMPERATURA',
+      unit: '°C',
+    );
+
+    _currentPlanilla!.estado = PlanillaEstado.borrador;
+    await context.read<PlanillaRepository>().save(_currentPlanilla!);
+
+    if (mounted) {
+      final suffix = hasLu && hasTemp ? ' (LU + Temp)' : '';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Lectura de ${inst.codigo}$suffix guardada'),
+          backgroundColor: const Color(0xFF3B82F6),
+          duration: const Duration(milliseconds: 1500),
+        ),
+      );
+    }
+  }
+
+  Future<void> _saveTriaxialReadings(
+    Instrumento inst,
+    String rawX,
+    String rawY,
+    String rawZ,
+  ) async {
+    if (_currentPlanilla == null) return;
+    final values = <String, String>{'X': rawX, 'Y': rawY, 'Z': rawZ};
+    if (values.values.every((v) => v.trim().isEmpty)) return;
+
+    final baseCode = _triaxBaseCode(inst.codigo);
+    for (final axis in _triaxAxes) {
+      _upsertReading(
+        instrumento: inst,
+        instrumentCode: _triaxAxisKey(baseCode, axis),
+        rawValue: values[axis] ?? '',
+        parameter: 'PERIODO_$axis',
+        unit: _resolveTriaxialUnit(inst),
+      );
+    }
+
+    _currentPlanilla!.estado = PlanillaEstado.borrador;
+    await context.read<PlanillaRepository>().save(_currentPlanilla!);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              'Lecturas triaxiales de ${_triaxBaseCode(inst.codigo)} guardadas'),
           backgroundColor: const Color(0xFF3B82F6),
           duration: const Duration(milliseconds: 1500),
         ),
@@ -658,27 +946,34 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
 
   void _upsertReading({
     required Instrumento instrumento,
+    String? instrumentCode,
     required String rawValue,
+    String? parameter,
+    String? unit,
   }) {
     if (_currentPlanilla == null) return;
     final normalizedValue = rawValue.trim();
     if (normalizedValue.isEmpty) return;
+    final resolvedInstrumentCode = instrumentCode ?? instrumento.codigo;
 
-    final parameter =
-        instrumento.ingestaParameter ?? instrumento.defaultParameter;
+    final resolvedParameter =
+        (parameter ?? _resolvePrimaryParameter(instrumento)).trim();
+    if (resolvedParameter.isEmpty) return;
+
+    final normalizedParameter = resolvedParameter.toLowerCase();
     final existingIndex = _currentPlanilla!.lecturas.indexWhere(
-      (l) => l.instrumentCode == instrumento.codigo && l.parameter == parameter,
+      (l) =>
+          l.instrumentCode == resolvedInstrumentCode &&
+          (l.parameter ?? '').toLowerCase() == normalizedParameter,
     );
 
     final lectura = Lectura.fromForm(
       clientRowId: existingIndex >= 0
           ? _currentPlanilla!.lecturas[existingIndex].clientRowId
           : _currentPlanilla!.nextClientRowId,
-      instrumentCode: instrumento.codigo,
-      parameter: parameter,
-      unit: instrumento.ingestaParameter != null
-          ? instrumento.ingestaUnit
-          : instrumento.defaultUnit,
+      instrumentCode: resolvedInstrumentCode,
+      parameter: resolvedParameter,
+      unit: unit ?? _resolvePrimaryUnit(instrumento),
       rawValue: normalizedValue,
       measuredAt: _batchDateTime,
     );
@@ -695,11 +990,81 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
     _currentPlanilla!.lecturas.clear();
 
     for (final inst in instrumentos) {
+      if (_selectedTipo == TipoPlanilla.cr10xTriaxiales) {
+        final baseCode = _triaxBaseCode(inst.codigo);
+        for (final axis in _triaxAxes) {
+          _upsertReading(
+            instrumento: inst,
+            instrumentCode: _triaxAxisKey(baseCode, axis),
+            rawValue: _controllers[_triaxAxisKey(baseCode, axis)]?.text ?? '',
+            parameter: 'PERIODO_$axis',
+            unit: _resolveTriaxialUnit(inst),
+          );
+        }
+        continue;
+      }
+
+      if (_selectedTipo == TipoPlanilla.cr10xAsentimetros) {
+        _upsertReading(
+          instrumento: inst,
+          rawValue: _controllers[inst.codigo]?.text ?? '',
+          parameter: 'LECTURA_LU',
+          unit: 'LU',
+        );
+        _upsertReading(
+          instrumento: inst,
+          rawValue: _controllers[_tempControllerKey(inst.codigo)]?.text ?? '',
+          parameter: 'TEMPERATURA',
+          unit: '°C',
+        );
+        continue;
+      }
+
       _upsertReading(
         instrumento: inst,
         rawValue: _controllers[inst.codigo]?.text ?? '',
+        parameter: _resolvePrimaryParameter(inst),
+        unit: _resolvePrimaryUnit(inst),
       );
     }
+  }
+
+  String _resolvePrimaryParameter(Instrumento instrumento) {
+    if (_selectedTipo == TipoPlanilla.cr10xPiezometros) {
+      return 'LECTURA_CR10X';
+    }
+    if (_selectedTipo == TipoPlanilla.cr10xAsentimetros) {
+      return 'LECTURA_LU';
+    }
+    return instrumento.ingestaParameter ?? instrumento.defaultParameter;
+  }
+
+  String? _resolvePrimaryUnit(Instrumento instrumento) {
+    if (_selectedTipo == TipoPlanilla.cr10xPiezometros) {
+      return 'Hz';
+    }
+    if (_selectedTipo == TipoPlanilla.cr10xAsentimetros) {
+      return 'LU';
+    }
+    return instrumento.ingestaParameter != null
+        ? instrumento.ingestaUnit
+        : instrumento.defaultUnit;
+  }
+
+  String? _resolveTriaxialUnit(Instrumento instrumento) {
+    final unit = instrumento.ingestaUnit;
+    if (unit == null || unit.trim().isEmpty) {
+      return null;
+    }
+    return unit.trim();
+  }
+
+  String _resolveInputUnitLabel(Instrumento instrumento) {
+    final resolved = _resolvePrimaryUnit(instrumento);
+    if (resolved == null || resolved.trim().isEmpty) {
+      return instrumento.defaultUnit;
+    }
+    return resolved;
   }
 
   Future<void> _sendPlanilla() async {
@@ -1037,6 +1402,7 @@ class _InstrumentInputRow extends StatelessWidget {
   final TextEditingController controller;
   final FocusNode focusNode;
   final VoidCallback onSubmitted;
+  final String unitLabel;
   final Function(String) onSave; // [NEW]
 
   const _InstrumentInputRow({
@@ -1044,6 +1410,7 @@ class _InstrumentInputRow extends StatelessWidget {
     required this.controller,
     required this.focusNode,
     required this.onSubmitted,
+    required this.unitLabel,
     required this.onSave, // [NEW]
   });
 
@@ -1106,7 +1473,7 @@ class _InstrumentInputRow extends StatelessWidget {
           SizedBox(
             width: 30, // Reduced
             child: Text(
-              instrumento.defaultUnit,
+              unitLabel,
               style: TextStyle(
                 fontSize: 11,
                 color: Colors.grey[500],
@@ -1125,6 +1492,280 @@ class _InstrumentInputRow extends StatelessWidget {
             tooltip: 'Guardar valor',
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _AsentimetroInputRow extends StatelessWidget {
+  final Instrumento instrumento;
+  final TextEditingController luController;
+  final TextEditingController tempController;
+  final FocusNode luFocusNode;
+  final FocusNode tempFocusNode;
+  final VoidCallback onPrimarySubmitted;
+  final VoidCallback onTempSubmitted;
+  final void Function(String luValue, String tempValue) onSave;
+
+  const _AsentimetroInputRow({
+    required this.instrumento,
+    required this.luController,
+    required this.tempController,
+    required this.luFocusNode,
+    required this.tempFocusNode,
+    required this.onPrimarySubmitted,
+    required this.onTempSubmitted,
+    required this.onSave,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E293B),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFF334155)),
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 62,
+            child: Text(
+              instrumento.codigo,
+              style: const TextStyle(
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+                fontSize: 12,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: TextField(
+              controller: luController,
+              focusNode: luFocusNode,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              textInputAction: TextInputAction.next,
+              onSubmitted: (_) => onPrimarySubmitted(),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+              decoration: InputDecoration(
+                hintText: 'LU',
+                hintStyle: TextStyle(color: Colors.grey[700]),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                filled: true,
+                fillColor: const Color(0xFF0F172A),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: TextField(
+              controller: tempController,
+              focusNode: tempFocusNode,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              textInputAction: TextInputAction.next,
+              onSubmitted: (_) => onTempSubmitted(),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+              decoration: InputDecoration(
+                hintText: 'T (°C)',
+                hintStyle: TextStyle(color: Colors.grey[700]),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                filled: true,
+                fillColor: const Color(0xFF0F172A),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          IconButton(
+            icon: const Icon(Icons.save_as_outlined,
+                color: Color(0xFF3B82F6), size: 20),
+            onPressed: () => onSave(luController.text, tempController.text),
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            padding: EdgeInsets.zero,
+            tooltip: 'Guardar LU + temperatura',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TriaxialInputRow extends StatelessWidget {
+  final String instrumentCode;
+  final TextEditingController controllerX;
+  final TextEditingController controllerY;
+  final TextEditingController controllerZ;
+  final FocusNode focusNodeX;
+  final FocusNode focusNodeY;
+  final FocusNode focusNodeZ;
+  final VoidCallback onXSubmitted;
+  final VoidCallback onYSubmitted;
+  final VoidCallback onZSubmitted;
+  final void Function(String x, String y, String z) onSave;
+
+  const _TriaxialInputRow({
+    required this.instrumentCode,
+    required this.controllerX,
+    required this.controllerY,
+    required this.controllerZ,
+    required this.focusNodeX,
+    required this.focusNodeY,
+    required this.focusNodeZ,
+    required this.onXSubmitted,
+    required this.onYSubmitted,
+    required this.onZSubmitted,
+    required this.onSave,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E293B),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFF334155)),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Text(
+                instrumentCode,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0x1A14B8A6),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0x4D14B8A6)),
+                ),
+                child: const Text(
+                  'Ejes X/Y/Z',
+                  style: TextStyle(
+                    color: Color(0xFF14B8A6),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              const Spacer(),
+              IconButton(
+                icon: const Icon(Icons.save_as_outlined,
+                    color: Color(0xFF3B82F6), size: 20),
+                onPressed: () => onSave(
+                    controllerX.text, controllerY.text, controllerZ.text),
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                padding: EdgeInsets.zero,
+                tooltip: 'Guardar X/Y/Z',
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: _TriaxialAxisField(
+                  axisLabel: 'X',
+                  controller: controllerX,
+                  focusNode: focusNodeX,
+                  onSubmitted: onXSubmitted,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _TriaxialAxisField(
+                  axisLabel: 'Y',
+                  controller: controllerY,
+                  focusNode: focusNodeY,
+                  onSubmitted: onYSubmitted,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _TriaxialAxisField(
+                  axisLabel: 'Z',
+                  controller: controllerZ,
+                  focusNode: focusNodeZ,
+                  onSubmitted: onZSubmitted,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TriaxialAxisField extends StatelessWidget {
+  final String axisLabel;
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final VoidCallback onSubmitted;
+
+  const _TriaxialAxisField({
+    required this.axisLabel,
+    required this.controller,
+    required this.focusNode,
+    required this.onSubmitted,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      focusNode: focusNode,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      textInputAction: TextInputAction.next,
+      onSubmitted: (_) => onSubmitted(),
+      style: const TextStyle(
+        color: Colors.white,
+        fontSize: 14,
+        fontWeight: FontWeight.w500,
+      ),
+      decoration: InputDecoration(
+        labelText: axisLabel,
+        labelStyle: const TextStyle(color: Color(0xFF14B8A6), fontSize: 12),
+        hintText: '0,00',
+        hintStyle: TextStyle(color: Colors.grey[700]),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        filled: true,
+        fillColor: const Color(0xFF0F172A),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide.none,
+        ),
       ),
     );
   }

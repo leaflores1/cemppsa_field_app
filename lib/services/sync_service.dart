@@ -379,18 +379,23 @@ class SyncService extends ChangeNotifier {
         missing.add(code);
       }
       final inst = catalogInst ?? Instrumento.fromCode(code);
+      final currentParameter = (entry['parameter'] as String?)?.trim();
+      final currentUnit = (entry['unit'] as String?)?.trim();
 
       final parameter = inst.ingestaParameter ?? inst.defaultParameter;
-      if (parameter.isNotEmpty) {
+      if ((currentParameter == null || currentParameter.isEmpty) &&
+          parameter.isNotEmpty) {
         entry['parameter'] = parameter;
       }
 
       final unit =
           inst.ingestaParameter != null ? inst.ingestaUnit : inst.defaultUnit;
-      if (unit == null || unit.trim().isEmpty) {
-        entry.remove('unit');
-      } else {
-        entry['unit'] = unit;
+      if (currentUnit == null || currentUnit.isEmpty) {
+        if (unit == null || unit.trim().isEmpty) {
+          entry.remove('unit');
+        } else {
+          entry['unit'] = unit;
+        }
       }
     }
 
