@@ -8,7 +8,9 @@ import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../data/models/foto_inspeccion.dart';
+import '../../data/models/planilla.dart';
 import '../../repositories/foto_repository.dart';
+import '../../repositories/planilla_repository.dart';
 import '../../services/foto_sync_service.dart';
 
 class FotosScreen extends StatefulWidget {
@@ -20,7 +22,6 @@ class FotosScreen extends StatefulWidget {
 
 class _FotosScreenState extends State<FotosScreen> {
   final _picker = ImagePicker();
-  final _loteController = TextEditingController();
   final _ubicacionController = TextEditingController();
   final _comentarioController = TextEditingController();
 
@@ -44,16 +45,37 @@ class _FotosScreenState extends State<FotosScreen> {
 
   @override
   void dispose() {
-    _loteController.dispose();
     _ubicacionController.dispose();
     _comentarioController.dispose();
     super.dispose();
+  }
+
+  String? _resolveAutoLoteUuid(PlanillaRepository repo) {
+    final all = repo.all();
+    if (all.isEmpty) return null;
+
+    final activos = all
+        .where(
+          (planilla) =>
+              planilla.estado == PlanillaEstado.borrador ||
+              planilla.estado == PlanillaEstado.pendiente ||
+              planilla.estado == PlanillaEstado.error,
+        )
+        .toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+    if (activos.isNotEmpty) {
+      return activos.first.batchUuid;
+    }
+    return all.first.batchUuid;
   }
 
   Future<void> _takePhoto() async {
     if (_capturando) return;
     final fotoRepo = context.read<FotoRepository>();
     final fotoSync = context.read<FotoSyncService>();
+    final planillaRepo = context.read<PlanillaRepository>();
+    final autoLoteUuid = _resolveAutoLoteUuid(planillaRepo);
     setState(() {
       _capturando = true;
     });
@@ -69,7 +91,7 @@ class _FotosScreenState extends State<FotosScreen> {
       final foto = FotoInspeccion(
         localPath: destination.path,
         mesOperativo: _mesOperativo,
-        loteUuid: _loteController.text.trim().isEmpty ? null : _loteController.text.trim(),
+        loteUuid: autoLoteUuid,
         eventoCodigo: _eventoCodigo,
         eventoNombre: _eventoNombre,
         ubicacion: _ubicacionController.text.trim().isEmpty
@@ -226,6 +248,7 @@ class _FotosScreenState extends State<FotosScreen> {
   }
 
   Widget _buildTopForm(FotoSyncService sync) {
+    final autoLoteUuid = _resolveAutoLoteUuid(context.watch<PlanillaRepository>());
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
       child: Column(
@@ -249,11 +272,17 @@ class _FotosScreenState extends State<FotosScreen> {
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: TextField(
-                  controller: _loteController,
+                child: InputDecorator(
                   decoration: const InputDecoration(
-                    labelText: 'Lote UUID',
-                    hintText: 'opcional',
+                    labelText: 'Lote (automático)',
+                  ),
+                  child: Text(
+                    autoLoteUuid ?? 'Sin lote activo',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: autoLoteUuid == null ? Colors.grey : Colors.white70,
+                    ),
                   ),
                 ),
               ),
