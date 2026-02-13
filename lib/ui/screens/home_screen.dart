@@ -106,7 +106,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     _FlowCard(
                       title: 'Lecturas Manuales',
                       subtitle:
-                          'Casagrande Â· FreatÃ­metros Â· Aforadores Â· Drenes',
+                          'Casagrande · Freatímetros · Aforadores · Drenes',
                       description: 'Carga manual de instrumentos',
                       icon: Icons.edit_note_rounded,
                       color: const Color(0xFF3B82F6),
@@ -116,8 +116,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     const SizedBox(height: 12),
                     _FlowCard(
                       title: 'CR10X',
-                      subtitle: 'PiezÃ³metros Â· AsentÃ­metros Â· Clinometros',
-                      description: 'InspecciÃ³n manual del datalogger CR10X',
+                      subtitle: 'Piezómetros · Asentímetros · Clinómetros',
+                      description: 'Inspección manual del datalogger CR10X',
                       icon: Icons.backup_table_rounded,
                       color: const Color(0xFFF59E0B),
                       isSecondary: true,
@@ -126,8 +126,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     const SizedBox(height: 12),
                     _FlowCard(
                       title: 'Fotos / Inspeccion',
-                      subtitle: 'Eventos · Mantenimiento · Tormentas',
-                      description: 'Seguimiento fotografico offline-first',
+                      subtitle: 'Eventos · Mantenimiento ',
+                      description: 'Seguimiento fotográfico',
                       icon: Icons.photo_camera_back_outlined,
                       color: const Color(0xFF22C55E),
                       isSecondary: true,
@@ -145,7 +145,7 @@ class _HomeScreenState extends State<HomeScreen> {
               child: _sectionTitleWithAction(
                 context,
                 title: 'MIS PLANILLAS',
-                actionLabel: 'Ver todas â†’',
+                actionLabel: 'Ver todas',
                 route: '/planillas',
               ),
             ),
@@ -237,7 +237,7 @@ class _HomeScreenState extends State<HomeScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'CEMPPSA Field',
+                  'CEMPPSA',
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
@@ -245,7 +245,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
                 Text(
-                  'Sistema de AuscultaciÃ³n',
+                  'Sistema de Auscultación',
                   style: TextStyle(
                     fontSize: 12,
                     color: Colors.grey,
@@ -308,7 +308,7 @@ class _HomeScreenState extends State<HomeScreen> {
           Divider(color: Color(0xFF334155)),
           SizedBox(height: 8),
           Text(
-            'CEMPPSA Â· Potrerillos Â· v2.0.0',
+            'App Móvil v1.0.0',
             style: TextStyle(fontSize: 11, color: Colors.grey),
           ),
         ],
