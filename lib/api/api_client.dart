@@ -15,7 +15,7 @@ import '../core/config.dart';
 /// - No contiene lógica de negocio
 /// - Usado por servicios (SyncService, AuthService, etc.)
 class ApiClient {
-  final String _baseUrl;
+  String _baseUrl;
   final Duration _timeout;
   final Map<String, String> _defaultHeaders;
 
@@ -31,6 +31,12 @@ class ApiClient {
           'Content-Type': 'application/json',
           ...?defaultHeaders,
         };
+
+  String get baseUrl => _baseUrl;
+
+  void setBaseUrl(String url) {
+    _baseUrl = url.endsWith('/') ? url.substring(0, url.length - 1) : url;
+  }
 
   // ===========================================================================
   // HTTP METHODS

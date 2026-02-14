@@ -119,7 +119,7 @@ class _PlanillasHubScreenState extends State<PlanillasHubScreen>
                 emptyTitle: 'Sin pendientes',
                 emptySubtitle:
                     'Las planillas listas para enviar aparecerán aquí',
-                onTap: (p) => _openDetail(p, editable: false),
+                onTap: (p) => _openDetail(p, editable: true),
                 onDelete: (p) => _confirmDelete(p),
                 onRetry: (p) => _retrySend(p),
               ),
@@ -233,7 +233,7 @@ class _PlanillasHubScreenState extends State<PlanillasHubScreen>
 
   void _retrySend(Planilla planilla) {
     final text = planilla.estado == PlanillaEstado.rechazada
-        ? 'La planilla fue rechazada. Revisa los motivos en el detalle.'
+        ? 'La planilla fue rechazada. Abrila, corregila y volvela a marcar como lista.'
         : 'Usá el botón Sincronizar en el inicio para reintentar';
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -283,7 +283,9 @@ class _PlanillasList extends StatelessWidget {
             planilla: planilla,
             onTap: () => onTap(planilla),
             onDelete: onDelete != null ? () => onDelete!(planilla) : null,
-            onRetry: onRetry != null && planilla.estado == PlanillaEstado.error
+            onRetry: onRetry != null &&
+                    (planilla.estado == PlanillaEstado.error ||
+                        planilla.estado == PlanillaEstado.rechazada)
                 ? () => onRetry!(planilla)
                 : null,
           ),

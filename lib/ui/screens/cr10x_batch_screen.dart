@@ -275,6 +275,16 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
           ),
           const SizedBox(height: 12),
 
+          // Limnimetros
+          _FamilyCard(
+            title: 'Limnimetros',
+            subtitle: 'Nivel de agua',
+            icon: Icons.water_rounded,
+            color: const Color(0xFF06B6D4),
+            onTap: () => _selectFamily(TipoPlanilla.cr10xLimnimetros),
+          ),
+          const SizedBox(height: 12),
+
           // Termometros
           _FamilyCard(
             title: 'Termometros',
@@ -635,6 +645,10 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
 
       case TipoPlanilla.cr10xClinometros:
         instrumentos = catalog.byFamilia(FamiliaInstrumento.clinometro);
+        break;
+
+      case TipoPlanilla.cr10xLimnimetros:
+        instrumentos = catalog.byFamilia(FamiliaInstrumento.limnimetro);
         break;
 
       case TipoPlanilla.cr10xBarometro:

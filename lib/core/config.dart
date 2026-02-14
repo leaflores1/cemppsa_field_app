@@ -5,6 +5,10 @@
 
 /// Configuración de la API del backend
 class ApiConfig {
+  static const String defaultBaseUrl = 'http://192.168.100.112:8000';
+  static const String settingsServerUrlKey = 'api_base_url';
+  static String _baseUrl = defaultBaseUrl;
+
   /// URL base del servidor
   /// Cambiar según el entorno:
   /// - Local: 'http://10.0.2.2:8000' (emulador Android)
@@ -12,7 +16,31 @@ class ApiConfig {
   /// - Producción: 'https://api.cemppsa.com'
   /// 'http://192.168.113.103:8000'
   /// 'http://192.168.100.112:8000'
-  static const String baseUrl = 'http://192.168.100.112:8000';
+  static String get baseUrl => _baseUrl;
+
+  static String? normalizeBaseUrl(String raw) {
+    var value = raw.trim();
+    if (value.isEmpty) return null;
+
+    if (!value.startsWith('http://') && !value.startsWith('https://')) {
+      value = 'http://$value';
+    }
+
+    final uri = Uri.tryParse(value);
+    if (uri == null || uri.host.trim().isEmpty) return null;
+
+    if (value.endsWith('/')) {
+      value = value.substring(0, value.length - 1);
+    }
+    return value;
+  }
+
+  static bool setBaseUrl(String raw) {
+    final normalized = normalizeBaseUrl(raw);
+    if (normalized == null) return false;
+    _baseUrl = normalized;
+    return true;
+  }
 
   /// Endpoints de la API
   static const String healthEndpoint = '/health';

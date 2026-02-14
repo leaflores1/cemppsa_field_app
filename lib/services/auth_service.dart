@@ -122,6 +122,10 @@ class AuthService extends ChangeNotifier {
     notifyListeners();
   }
 
+  void updateApiBaseUrl(String baseUrl) {
+    _apiClient.setBaseUrl(baseUrl);
+  }
+
   String _extractErrorMessage(ApiResponse response) {
     if (response.data is Map) {
       final detail = (response.data as Map)['detail'];

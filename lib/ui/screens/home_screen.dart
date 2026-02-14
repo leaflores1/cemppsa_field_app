@@ -10,6 +10,7 @@ import '../../core/config.dart';
 import '../../data/models/planilla.dart';
 import '../../repositories/catalogo_repository.dart';
 import '../../repositories/planilla_repository.dart';
+import '../../services/auth_service.dart';
 import '../../services/sync_service.dart';
 import '../widgets/connectivity_banner.dart';
 
@@ -115,6 +116,37 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Future<void> _confirmLogout() async {
+    final shouldLogout = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E293B),
+        title:
+            const Text('Cerrar sesiÃ³n', style: TextStyle(color: Colors.white)),
+        content: const Text(
+          'Â¿QuerÃ©s cerrar la sesiÃ³n actual?',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Cerrar sesiÃ³n'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldLogout != true || !mounted) return;
+
+    await context.read<AuthService>().logout();
+    if (!mounted) return;
+    Navigator.pushNamedAndRemoveUntil(context, '/', (_) => false);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -154,7 +186,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     const SizedBox(height: 12),
                     _FlowCard(
                       title: 'CR10X',
-                      subtitle: 'Piezómetros · Asentímetros · Clinómetros',
+                      subtitle:
+                          'Piezómetros · Asentímetros · Clinómetros · Limnímetros · Barómetro',
                       description: 'Inspección manual del datalogger CR10X',
                       icon: Icons.backup_table_rounded,
                       color: const Color(0xFFF59E0B),
@@ -296,6 +329,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
               ],
             ),
+          ),
+          IconButton(
+            onPressed: _confirmLogout,
+            icon: const Icon(Icons.logout, color: Colors.white70),
+            tooltip: 'Cerrar sesiÃ³n',
           ),
         ],
       ),

@@ -60,6 +60,9 @@ enum TipoPlanilla {
   /// CR10X Clinómetros (carga contingencia)
   cr10xClinometros('CR10X_CLINO', 'CR10X Clinómetros'),
 
+  /// CR10X Limnímetros (carga contingencia)
+  cr10xLimnimetros('CR10X_LIMN', 'CR10X Limnímetros'),
+
   /// CR10X Barómetro (carga contingencia)
   cr10xBarometro('CR10X_BARO', 'CR10X Barómetro'),
 

@@ -5,12 +5,14 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/config.dart';
 import '../../repositories/planilla_repository.dart';
 import '../../repositories/catalogo_repository.dart';
 import '../../services/auth_service.dart';
+import '../../services/sync_service.dart';
 import '../../utils/csv_exporter.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -94,10 +96,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const _SectionHeader(title: 'SERVIDOR'),
           const SizedBox(height: 12),
           _SettingsCard(
-            children: const [
+            children: [
               _InfoTile(
                 label: 'URL del servidor',
                 value: ApiConfig.baseUrl,
+                trailing: TextButton(
+                  onPressed: _editServerUrl,
+                  child: Text('Editar'),
+                ),
               ),
             ],
           ),
@@ -194,6 +200,77 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   static void _copyToClipboard(String text) {
     Clipboard.setData(ClipboardData(text: text));
+  }
+
+  Future<void> _editServerUrl() async {
+    final controller = TextEditingController(text: ApiConfig.baseUrl);
+    final updated = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E293B),
+        title: const Text('Servidor', style: TextStyle(color: Colors.white)),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          keyboardType: TextInputType.url,
+          style: const TextStyle(color: Colors.white),
+          decoration: const InputDecoration(
+            labelText: 'URL o IP:puerto',
+            hintText: '192.168.100.112:8000',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('Guardar'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+
+    if (updated == null) return;
+
+    final normalized = ApiConfig.normalizeBaseUrl(updated);
+    if (normalized == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('URL inválida. Ejemplo: 192.168.100.112:8000'),
+          backgroundColor: Color(0xFFEF4444),
+        ),
+      );
+      return;
+    }
+
+    ApiConfig.setBaseUrl(normalized);
+    final settingsBox = await Hive.openBox(StorageConfig.settingsBox);
+    await settingsBox.put(ApiConfig.settingsServerUrlKey, normalized);
+
+    if (!mounted) return;
+    context.read<AuthService>().updateApiBaseUrl(normalized);
+    final syncService = context.read<SyncService>();
+    syncService.updateApiBaseUrl(normalized);
+    context.read<CatalogRepository>().setBaseUrl(normalized);
+    final connected = await syncService.checkConnection();
+
+    if (!mounted) return;
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          connected
+              ? 'Servidor actualizado: $normalized'
+              : 'Servidor guardado, pero sin conexiÃ³n al backend',
+        ),
+        backgroundColor:
+            connected ? const Color(0xFF22C55E) : const Color(0xFFF59E0B),
+      ),
+    );
   }
 
   Future<void> _refreshCatalog(CatalogRepository catalog) async {

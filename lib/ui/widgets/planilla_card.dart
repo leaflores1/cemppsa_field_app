@@ -267,6 +267,11 @@ class _TipoIcon extends StatelessWidget {
           icon: Icons.rotate_right_rounded,
           color: const Color(0xFF6366F1),
         );
+      case TipoPlanilla.cr10xLimnimetros:
+        return _TipoConfig(
+          icon: Icons.water_rounded,
+          color: const Color(0xFF06B6D4),
+        );
       case TipoPlanilla.cr10xBarometro:
         return _TipoConfig(
           icon: Icons.air_rounded,

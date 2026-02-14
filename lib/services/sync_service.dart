@@ -62,6 +62,10 @@ class SyncService extends ChangeNotifier {
 
   SyncService({required ApiClient apiClient}) : _api = apiClient;
 
+  void updateApiBaseUrl(String baseUrl) {
+    _api.setBaseUrl(baseUrl);
+  }
+
   // ===========================================================================
   // GETTERS
   // ===========================================================================
