@@ -20,9 +20,9 @@ class FotoSyncService extends ChangeNotifier {
   bool _isOnline = false;
   String? _lastError;
   DateTime? _lastSyncAt;
-  Future<bool>? _authFuture;
 
-  FotoSyncService({required FotoRepository repository}) : _repository = repository {
+  FotoSyncService({required FotoRepository repository})
+      : _repository = repository {
     _initConnectivity();
   }
 
@@ -35,7 +35,8 @@ class FotoSyncService extends ChangeNotifier {
 
   Future<void> _initConnectivity() async {
     _isOnline = await _checkOnline();
-    _connectivitySub = _connectivity.onConnectivityChanged.listen((result) async {
+    _connectivitySub =
+        _connectivity.onConnectivityChanged.listen((result) async {
       final nowOnline = _isConnectedResult(result);
       _isOnline = nowOnline;
       notifyListeners();
@@ -162,7 +163,8 @@ class FotoSyncService extends ChangeNotifier {
       var response = await http.Response.fromStream(streamed);
 
       if (response.statusCode == 401 || response.statusCode == 403) {
-        debugPrint('FotoSyncService: token rechazado (${response.statusCode}), renovando...');
+        debugPrint(
+            'FotoSyncService: token rechazado (${response.statusCode}), renovando...');
         ApiConfig.authToken = null;
         final reauthed = await _ensureAuthToken(force: true);
         if (reauthed) {
@@ -265,14 +267,17 @@ class FotoSyncService extends ChangeNotifier {
     });
 
     if (ApiConfig.authToken != null && ApiConfig.authToken!.trim().isNotEmpty) {
-      request.headers['Authorization'] = 'Bearer ${ApiConfig.authToken!.trim()}';
+      request.headers['Authorization'] =
+          'Bearer ${ApiConfig.authToken!.trim()}';
     }
 
     request.files.add(
       await http.MultipartFile.fromPath(
         'file',
         file.path,
-        filename: file.uri.pathSegments.isNotEmpty ? file.uri.pathSegments.last : 'foto.jpg',
+        filename: file.uri.pathSegments.isNotEmpty
+            ? file.uri.pathSegments.last
+            : 'foto.jpg',
       ),
     );
 
@@ -281,64 +286,13 @@ class FotoSyncService extends ChangeNotifier {
 
   Future<bool> _ensureAuthToken({bool force = false}) async {
     final existing = ApiConfig.authToken?.trim();
-    if (!force && existing != null && existing.isNotEmpty) {
+    if (existing != null && existing.isNotEmpty) {
       return true;
     }
-
-    if (_authFuture != null && !force) {
-      return _authFuture!;
-    }
-
-    final future = _loginAndStoreToken();
-    _authFuture = future;
-    try {
-      return await future;
-    } finally {
-      if (identical(_authFuture, future)) {
-        _authFuture = null;
-      }
-    }
-  }
-
-  Future<bool> _loginAndStoreToken() async {
-    final email = ApiConfig.fieldAppEmail.trim();
-    final password = ApiConfig.fieldAppPassword;
-    if (email.isEmpty || password.isEmpty) {
-      debugPrint('FotoSyncService: credenciales vacías para login.');
-      return false;
-    }
-
-    final uri = Uri.parse('${ApiConfig.baseUrl}${ApiConfig.authLoginEndpoint}');
-    final response = await http
-        .post(
-          uri,
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-          body: {
-            'username': email,
-            'password': password,
-          },
-        )
-        .timeout(const Duration(seconds: 20));
-
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      debugPrint(
-        'FotoSyncService: login falló status=${response.statusCode} body=${response.body}',
-      );
-      return false;
-    }
-
-    final payload = _decodeBody(response.body);
-    final token = payload['access_token']?.toString();
-    if (token == null || token.trim().isEmpty) {
-      debugPrint('FotoSyncService: login sin access_token válido.');
-      return false;
-    }
-
-    ApiConfig.authToken = token.trim();
-    debugPrint('FotoSyncService: token obtenido para sync de fotos.');
-    return true;
+    debugPrint(
+      'FotoSyncService: no hay token de sesion. Requiere login en la app.',
+    );
+    return false;
   }
 
   Map<String, dynamic> _decodeBody(String body) {

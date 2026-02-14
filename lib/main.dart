@@ -23,6 +23,7 @@ import 'api/api_client.dart';
 // Servicios
 import 'services/sync_service.dart';
 import 'services/foto_sync_service.dart';
+import 'services/auth_service.dart';
 
 // Pantallas
 import 'package:cemppsa_field_app/ui/screens/home_screen.dart';
@@ -33,6 +34,7 @@ import 'package:cemppsa_field_app/ui/screens/planilla_detail_screen.dart';
 import 'package:cemppsa_field_app/ui/screens/export_csv_screen.dart';
 import 'package:cemppsa_field_app/ui/screens/settings_screen.dart';
 import 'package:cemppsa_field_app/ui/screens/fotos_screen.dart';
+import 'package:cemppsa_field_app/ui/screens/login_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -69,6 +71,9 @@ void main() async {
 
   // Inicializar servicios
   final apiClient = ApiClient(baseUrl: ApiConfig.baseUrl);
+  final authService = AuthService(apiClient: apiClient);
+  await authService.init();
+
   final syncService = SyncService(apiClient: apiClient);
   final fotoSyncService = FotoSyncService(repository: fotoRepo);
 
@@ -78,12 +83,35 @@ void main() async {
         ChangeNotifierProvider.value(value: catalogRepo),
         ChangeNotifierProvider.value(value: planillaRepo),
         ChangeNotifierProvider.value(value: fotoRepo),
+        ChangeNotifierProvider.value(value: authService),
         ChangeNotifierProvider.value(value: syncService),
         ChangeNotifierProvider.value(value: fotoSyncService),
       ],
       child: const CEMPPSAFieldApp(),
     ),
   );
+}
+
+class _AuthGateScreen extends StatelessWidget {
+  const _AuthGateScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<AuthService>(
+      builder: (_, auth, __) {
+        if (!auth.isInitialized) {
+          return const Scaffold(
+            backgroundColor: Color(0xFF0F172A),
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+        if (!auth.isAuthenticated) {
+          return const LoginScreen();
+        }
+        return const HomeScreen();
+      },
+    );
+  }
 }
 
 class CEMPPSAFieldApp extends StatelessWidget {
@@ -95,11 +123,8 @@ class CEMPPSAFieldApp extends StatelessWidget {
       title: AppConfig.appName,
       debugShowCheckedModeBanner: false,
       theme: _buildTheme(),
-      initialRoute: '/',
+      home: const _AuthGateScreen(),
       routes: {
-        // Pantalla principal
-        '/': (ctx) => const HomeScreen(),
-
         // Flujos de carga de datos
         '/manual-reading': (ctx) => const ManualReadingScreen(),
         '/cr10x-batch': (ctx) => const CR10XBatchScreen(),
@@ -112,6 +137,7 @@ class CEMPPSAFieldApp extends StatelessWidget {
         // Utilidades
         '/export': (ctx) => const ExportCsvScreen(),
         '/settings': (ctx) => const SettingsScreen(),
+        '/login': (ctx) => const LoginScreen(),
 
         // Atajos para tabs de PlanillasHub
         '/drafts': (ctx) => const PlanillasHubScreen(),
@@ -226,7 +252,8 @@ class CEMPPSAFieldApp extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: Color(0xFFEF4444)),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         hintStyle: TextStyle(color: Colors.grey[600]),
       ),
       cardTheme: CardThemeData(

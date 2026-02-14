@@ -7,8 +7,10 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../core/config.dart';
+
 /// Cliente HTTP base para la app.
-/// 
+///
 /// - Centraliza baseUrl, headers y timeout
 /// - No contiene lógica de negocio
 /// - Usado por servicios (SyncService, AuthService, etc.)
@@ -97,10 +99,19 @@ class ApiClient {
   }) async {
     final uri = _buildUri(path, queryParams);
     final mergedHeaders = {..._defaultHeaders, ...?headers};
+    final token = ApiConfig.authToken?.trim();
+    if (token != null &&
+        token.isNotEmpty &&
+        !mergedHeaders.containsKey('Authorization')) {
+      mergedHeaders['Authorization'] = 'Bearer $token';
+    }
 
     debugPrint('API [$method] $uri');
     if (body != null) {
-      debugPrint('API Body: ${jsonEncode(body)}');
+      final bodyForLog = path.contains('/auth/mobile/login')
+          ? {...body, 'password': '***'}
+          : body;
+      debugPrint('API Body: ${jsonEncode(bodyForLog)}');
     }
 
     try {
@@ -108,9 +119,8 @@ class ApiClient {
 
       switch (method) {
         case 'GET':
-          response = await http
-              .get(uri, headers: mergedHeaders)
-              .timeout(_timeout);
+          response =
+              await http.get(uri, headers: mergedHeaders).timeout(_timeout);
           break;
 
         case 'POST':
@@ -134,9 +144,8 @@ class ApiClient {
           break;
 
         case 'DELETE':
-          response = await http
-              .delete(uri, headers: mergedHeaders)
-              .timeout(_timeout);
+          response =
+              await http.delete(uri, headers: mergedHeaders).timeout(_timeout);
           break;
 
         default:
@@ -190,9 +199,7 @@ class ApiResponse {
     dynamic decoded;
 
     try {
-      decoded = response.body.isNotEmpty
-          ? jsonDecode(response.body)
-          : null;
+      decoded = response.body.isNotEmpty ? jsonDecode(response.body) : null;
     } catch (_) {
       decoded = response.body;
     }

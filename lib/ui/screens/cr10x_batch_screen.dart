@@ -318,6 +318,7 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
         tipo: tipo,
         deviceId: AppConfig.deviceId ?? 'unknown',
         technicianId: AppConfig.technicianId ?? 'tecnico',
+        technicianName: AppConfig.technicianName,
       );
     });
   }
@@ -1108,6 +1109,7 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
         catalog: catalog,
       );
       final success = result['success'] == true;
+      final queuedOffline = result['queued_offline'] == true;
       final errorMsg = result['error'] as String?;
 
       if (!mounted) return;
@@ -1117,6 +1119,16 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
           const SnackBar(
             content: Text('Planilla enviada exitosamente'),
             backgroundColor: Color(0xFF22C55E),
+          ),
+        );
+        Navigator.pop(context);
+      } else if (queuedOffline) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Sin conexión: planilla guardada como pendiente para sincronizar.',
+            ),
+            backgroundColor: Color(0xFF64748B),
           ),
         );
         Navigator.pop(context);
@@ -1130,9 +1142,31 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
       }
     } catch (e) {
       if (mounted) {
+        if (_looksLikeConnectivityError(e.toString())) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Sin conexión: planilla guardada como pendiente para sincronizar.',
+              ),
+              backgroundColor: Color(0xFF64748B),
+            ),
+          );
+          Navigator.pop(context);
+          return;
+        }
         _showSimpleErrorDialog('Error de conexion: $e');
       }
     }
+  }
+
+  bool _looksLikeConnectivityError(String raw) {
+    final text = raw.toLowerCase();
+    return text.contains('socketexception') ||
+        text.contains('network is unreachable') ||
+        text.contains('failed host lookup') ||
+        text.contains('connection failed') ||
+        text.contains('clientexception') ||
+        text.contains('timed out');
   }
 
   void _parseErrorDetails(String errorMsg) {

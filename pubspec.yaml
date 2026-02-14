@@ -34,8 +34,23 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^3.0.0
+  flutter_launcher_icons: ^0.14.4
 
 flutter:
   uses-material-design: true
   assets:
+    - assets/images/favicon.png
     - assets/images/cemppsa_logo.png
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: false
+  image_path: "assets/images/favicon.png"
+  adaptive_icon_foreground: "assets/images/favicon.png"
+  adaptive_icon_background: "#00A77E"
+  min_sdk_android: 21
+  web:
+    generate: true
+    image_path: "assets/images/favicon.png"
+    background_color: "#00A77E"
+    theme_color: "#00A77E"

@@ -360,6 +360,7 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
         catalog: catalog,
       );
       final success = result['success'] == true;
+      final queuedOffline = result['queued_offline'] == true;
 
       if (!mounted) return;
       if (success) {
@@ -373,14 +374,49 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
         return;
       }
 
+      if (queuedOffline) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Sin conexión: planilla guardada como pendiente para sincronizar.',
+            ),
+            backgroundColor: Color(0xFF64748B),
+          ),
+        );
+        Navigator.pop(context);
+        return;
+      }
+
       final error = (result['error'] ?? syncService.lastError)?.toString();
       _handleSendError(error);
     } catch (e) {
       debugPrint('Error sending planilla: $e');
       if (mounted) {
+        if (_looksLikeConnectivityError(e.toString())) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Sin conexión: planilla guardada como pendiente para sincronizar.',
+              ),
+              backgroundColor: Color(0xFF64748B),
+            ),
+          );
+          Navigator.pop(context);
+          return;
+        }
         _handleSendError(e.toString());
       }
     }
+  }
+
+  bool _looksLikeConnectivityError(String raw) {
+    final text = raw.toLowerCase();
+    return text.contains('socketexception') ||
+        text.contains('network is unreachable') ||
+        text.contains('failed host lookup') ||
+        text.contains('connection failed') ||
+        text.contains('clientexception') ||
+        text.contains('timed out');
   }
 
   void _handleSendError(String? errorMsg) {
@@ -698,6 +734,7 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
         tipo: tipo,
         deviceId: AppConfig.deviceId ?? 'unknown-device',
         technicianId: AppConfig.technicianId ?? 'unknown-tech',
+        technicianName: AppConfig.technicianName,
         createdAt: DateTime.now(),
         lecturas: [],
       )..estado = PlanillaEstado.borrador;

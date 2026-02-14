@@ -59,6 +59,7 @@ class _FotosScreenState extends State<FotosScreen> {
           (planilla) =>
               planilla.estado == PlanillaEstado.borrador ||
               planilla.estado == PlanillaEstado.pendiente ||
+              planilla.estado == PlanillaEstado.rechazada ||
               planilla.estado == PlanillaEstado.error,
         )
         .toList()
@@ -140,7 +141,8 @@ class _FotosScreenState extends State<FotosScreen> {
     if (!fotoDir.existsSync()) {
       fotoDir.createSync(recursive: true);
     }
-    final ext = p.extension(sourcePath).isNotEmpty ? p.extension(sourcePath) : '.jpg';
+    final ext =
+        p.extension(sourcePath).isNotEmpty ? p.extension(sourcePath) : '.jpg';
     final targetPath = p.join(fotoDir.path, '${const Uuid().v4()}$ext');
     final copied = await File(sourcePath).copy(targetPath);
     return copied;
@@ -150,7 +152,9 @@ class _FotosScreenState extends State<FotosScreen> {
     final service = context.read<FotoSyncService>();
     await service.syncPending();
     if (!mounted) return;
-    final color = service.lastError == null ? const Color(0xFF22C55E) : const Color(0xFFEF4444);
+    final color = service.lastError == null
+        ? const Color(0xFF22C55E)
+        : const Color(0xFFEF4444);
     final message = service.lastError == null
         ? 'Sincronización de fotos completada'
         : 'Sync parcial: ${service.lastError}';
@@ -170,10 +174,15 @@ class _FotosScreenState extends State<FotosScreen> {
           builder: (ctx) {
             return AlertDialog(
               title: const Text('Eliminar foto'),
-              content: const Text('¿Eliminar esta foto local? Esta acción no se puede deshacer.'),
+              content: const Text(
+                  '¿Eliminar esta foto local? Esta acción no se puede deshacer.'),
               actions: [
-                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-                ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Eliminar')),
+                TextButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    child: const Text('Cancelar')),
+                ElevatedButton(
+                    onPressed: () => Navigator.pop(ctx, true),
+                    child: const Text('Eliminar')),
               ],
             );
           },
@@ -248,7 +257,8 @@ class _FotosScreenState extends State<FotosScreen> {
   }
 
   Widget _buildTopForm(FotoSyncService sync) {
-    final autoLoteUuid = _resolveAutoLoteUuid(context.watch<PlanillaRepository>());
+    final autoLoteUuid =
+        _resolveAutoLoteUuid(context.watch<PlanillaRepository>());
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
       child: Column(
@@ -281,7 +291,8 @@ class _FotosScreenState extends State<FotosScreen> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: autoLoteUuid == null ? Colors.grey : Colors.white70,
+                      color:
+                          autoLoteUuid == null ? Colors.grey : Colors.white70,
                     ),
                   ),
                 ),
@@ -310,7 +321,8 @@ class _FotosScreenState extends State<FotosScreen> {
                       .toList(),
                   onChanged: (value) {
                     if (value == null) return;
-                    final tuple = _eventos.firstWhere((item) => item.$1 == value);
+                    final tuple =
+                        _eventos.firstWhere((item) => item.$1 == value);
                     setState(() {
                       _eventoCodigo = tuple.$1;
                       _eventoNombre = tuple.$2;
@@ -443,7 +455,8 @@ class _FotoCard extends StatelessWidget {
                         ? Image.file(file, fit: BoxFit.cover)
                         : Container(
                             color: const Color(0xFF0F172A),
-                            child: const Icon(Icons.broken_image, color: Colors.grey),
+                            child: const Icon(Icons.broken_image,
+                                color: Colors.grey),
                           ),
                   ),
                 ),
@@ -456,7 +469,9 @@ class _FotoCard extends StatelessWidget {
                         children: [
                           Expanded(
                             child: Text(
-                              foto.eventoNombre ?? foto.eventoCodigo ?? 'Sin evento',
+                              foto.eventoNombre ??
+                                  foto.eventoCodigo ??
+                                  'Sin evento',
                               style: const TextStyle(
                                 fontWeight: FontWeight.w600,
                                 color: Colors.white,
@@ -469,29 +484,35 @@ class _FotoCard extends StatelessWidget {
                       const SizedBox(height: 4),
                       Text(
                         'Mes ${foto.mesOperativo} • ${foto.loteUuid ?? 'sin-lote'}',
-                        style: const TextStyle(fontSize: 12, color: Colors.grey),
+                        style:
+                            const TextStyle(fontSize: 12, color: Colors.grey),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         foto.ubicacion ?? 'Sin ubicación',
-                        style: const TextStyle(fontSize: 12, color: Colors.grey),
+                        style:
+                            const TextStyle(fontSize: 12, color: Colors.grey),
                       ),
-                      if (foto.comentario != null && foto.comentario!.trim().isNotEmpty) ...[
+                      if (foto.comentario != null &&
+                          foto.comentario!.trim().isNotEmpty) ...[
                         const SizedBox(height: 4),
                         Text(
                           foto.comentario!,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 12, color: Colors.white70),
+                          style: const TextStyle(
+                              fontSize: 12, color: Colors.white70),
                         ),
                       ],
-                      if (foto.lastError != null && foto.lastError!.trim().isNotEmpty) ...[
+                      if (foto.lastError != null &&
+                          foto.lastError!.trim().isNotEmpty) ...[
                         const SizedBox(height: 4),
                         Text(
                           foto.lastError!,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 11, color: Color(0xFFFCA5A5)),
+                          style: const TextStyle(
+                              fontSize: 11, color: Color(0xFFFCA5A5)),
                         ),
                       ],
                     ],

@@ -92,6 +92,12 @@ class EstadoChip extends StatelessWidget {
           icon: Icons.check_circle_outline,
           color: const Color(0xFF22C55E), // green-500
         );
+      case PlanillaEstado.rechazada:
+        return _EstadoConfig(
+          label: 'Rechazada',
+          icon: Icons.cancel_outlined,
+          color: const Color(0xFFEF4444), // red-500
+        );
       case PlanillaEstado.error:
         return _EstadoConfig(
           label: 'Error',

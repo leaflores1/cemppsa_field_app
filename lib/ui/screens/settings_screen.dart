@@ -10,6 +10,7 @@ import 'package:provider/provider.dart';
 import '../../core/config.dart';
 import '../../repositories/planilla_repository.dart';
 import '../../repositories/catalogo_repository.dart';
+import '../../services/auth_service.dart';
 import '../../utils/csv_exporter.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -20,20 +21,6 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  final _technicianController = TextEditingController();
-
-  @override
-  void initState() {
-    super.initState();
-    _technicianController.text = AppConfig.technicianId ?? '';
-  }
-
-  @override
-  void dispose() {
-    _technicianController.dispose();
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -54,11 +41,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: 12),
           _SettingsCard(
             children: [
-              _TextFieldTile(
-                label: 'ID del Técnico',
-                hint: 'Ej: tecnico_juan',
-                controller: _technicianController,
-                onChanged: (v) => AppConfig.technicianId = v,
+              Consumer<AuthService>(
+                builder: (_, auth, __) {
+                  final user = auth.currentUser;
+                  return Column(
+                    children: [
+                      _InfoTile(
+                        label: 'Nombre',
+                        value: AppConfig.technicianName ??
+                            user?.displayName ??
+                            'Sin sesión',
+                      ),
+                      const Divider(color: Color(0xFF334155)),
+                      _InfoTile(
+                        label: 'ID técnico',
+                        value:
+                            AppConfig.technicianId ?? user?.id ?? 'Sin sesión',
+                      ),
+                      const Divider(color: Color(0xFF334155)),
+                      _InfoTile(
+                        label: 'Email',
+                        value: user?.email ?? 'Sin sesión',
+                      ),
+                    ],
+                  );
+                },
               ),
               const Divider(color: Color(0xFF334155)),
               _InfoTile(
@@ -67,6 +74,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onCopy: () => _copyToClipboard(AppConfig.deviceId ?? ''),
               ),
             ],
+          ),
+
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _logout,
+              icon: const Icon(Icons.logout),
+              label: const Text('Cerrar sesión'),
+            ),
           ),
 
           const SizedBox(height: 24),
@@ -217,6 +234,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
+
+  Future<void> _logout() async {
+    await context.read<AuthService>().logout();
+    if (!mounted) return;
+    Navigator.pushNamedAndRemoveUntil(context, '/', (_) => false);
+  }
 }
 
 // ============================================================================
@@ -254,52 +277,6 @@ class _SettingsCard extends StatelessWidget {
         border: Border.all(color: const Color(0xFF334155)),
       ),
       child: Column(children: children),
-    );
-  }
-}
-
-class _TextFieldTile extends StatelessWidget {
-  final String label;
-  final String hint;
-  final TextEditingController controller;
-  final ValueChanged<String> onChanged;
-
-  const _TextFieldTile({
-    required this.label,
-    required this.hint,
-    required this.controller,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label,
-              style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: Colors.white)),
-          const SizedBox(height: 8),
-          TextField(
-            controller: controller,
-            onChanged: onChanged,
-            style: const TextStyle(color: Colors.white),
-            decoration: InputDecoration(
-              hintText: hint,
-              hintStyle: TextStyle(color: Colors.grey[600]),
-              filled: true,
-              fillColor: const Color(0xFF0F172A),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

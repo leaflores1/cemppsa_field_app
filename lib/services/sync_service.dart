@@ -8,12 +8,13 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 
 import '../api/api_client.dart';
+import '../core/config.dart';
 import '../data/models/instrumento.dart';
 import '../data/models/planilla.dart';
 import '../repositories/catalogo_repository.dart';
 import '../repositories/planilla_repository.dart';
 
-/// Estado de conexión con el backend
+/// Estado de conexiÃ³n con el backend
 enum ConnectionStatus {
   unknown,
   connected,
@@ -21,7 +22,7 @@ enum ConnectionStatus {
   syncing,
 }
 
-/// Resultado de sincronización
+/// Resultado de sincronizaciÃ³n
 class SyncResult {
   final int sent;
   final int failed;
@@ -37,12 +38,25 @@ class SyncResult {
   bool get hasErrors => failed > 0;
 }
 
-/// Servicio de sincronización principal
+class RejectedPlanillaNotice {
+  final String batchUuid;
+  final String? motivoPrincipal;
+  final List<String> motivos;
+
+  const RejectedPlanillaNotice({
+    required this.batchUuid,
+    required this.motivoPrincipal,
+    required this.motivos,
+  });
+}
+
+/// Servicio de sincronizaciÃ³n principal
 class SyncService extends ChangeNotifier {
   final ApiClient _api;
 
   ConnectionStatus _status = ConnectionStatus.unknown;
   String? _lastError;
+  bool _lastWasConnectivityIssue = false;
   DateTime? _lastSync;
   int _pendingCount = 0;
 
@@ -54,6 +68,7 @@ class SyncService extends ChangeNotifier {
 
   ConnectionStatus get status => _status;
   String? get lastError => _lastError;
+  bool get lastWasConnectivityIssue => _lastWasConnectivityIssue;
   DateTime? get lastSync => _lastSync;
   int get pendingCount => _pendingCount;
 
@@ -65,7 +80,7 @@ class SyncService extends ChangeNotifier {
   // ===========================================================================
 
   Future<bool> checkConnection() async {
-    debugPrint('SyncService: Verificando conexión...');
+    debugPrint('SyncService: Verificando conexiÃ³n...');
     final response = await _api.get('/health');
 
     debugPrint('SyncService: Response isSuccess=${response.isSuccess}');
@@ -78,7 +93,7 @@ class SyncService extends ChangeNotifier {
       final db = response.data?['database'];
 
       if (status == 'ok' || db == 'ok') {
-        debugPrint('SyncService: ✓ Conectado');
+        debugPrint('SyncService: âœ“ Conectado');
         _status = ConnectionStatus.connected;
         _lastError = null;
         notifyListeners();
@@ -86,7 +101,7 @@ class SyncService extends ChangeNotifier {
       }
     }
 
-    debugPrint('SyncService: ✗ Desconectado');
+    debugPrint('SyncService: âœ— Desconectado');
     _status = ConnectionStatus.disconnected;
     _lastError = response.error ?? 'Servidor no disponible';
     notifyListeners();
@@ -94,14 +109,16 @@ class SyncService extends ChangeNotifier {
   }
 
   // ===========================================================================
-  // ENVÍO DE PLANILLA
+  // ENVÃO DE PLANILLA
   // ===========================================================================
 
   Future<bool> sendPlanilla(
     Planilla planilla, {
     CatalogRepository? catalog,
   }) async {
+    _lastWasConnectivityIssue = false;
     final requestBody = planilla.toSyncRequest();
+    _injectSenderMetadata(planilla, requestBody);
     if (catalog != null) {
       final preflightError = _applyCatalogOverrides(
         requestBody: requestBody,
@@ -109,6 +126,7 @@ class SyncService extends ChangeNotifier {
       );
       if (preflightError != null) {
         _lastError = preflightError;
+        _lastWasConnectivityIssue = false;
         planilla.errorMessage = preflightError;
         return false;
       }
@@ -153,6 +171,7 @@ class SyncService extends ChangeNotifier {
       final status =
           response.data is Map ? response.data['status']?.toString() : null;
       if (status == 'accepted' || status == 'duplicate') {
+        _lastWasConnectivityIssue = false;
         return true;
       }
 
@@ -163,7 +182,11 @@ class SyncService extends ChangeNotifier {
         extra: 'unexpected_status=$status',
       );
       _lastError = errorMessage;
-      planilla.errorMessage = errorMessage;
+      _lastWasConnectivityIssue =
+          _isConnectivityFailure(response: response, message: errorMessage);
+      if (!_lastWasConnectivityIssue) {
+        planilla.errorMessage = errorMessage;
+      }
       return false;
     }
 
@@ -173,7 +196,11 @@ class SyncService extends ChangeNotifier {
       responseBody: responseBody,
     );
     _lastError = errorMessage;
-    planilla.errorMessage = errorMessage;
+    _lastWasConnectivityIssue =
+        _isConnectivityFailure(response: response, message: errorMessage);
+    if (!_lastWasConnectivityIssue) {
+      planilla.errorMessage = errorMessage;
+    }
     return false;
   }
 
@@ -189,11 +216,13 @@ class SyncService extends ChangeNotifier {
       return SyncResult(
         sent: 0,
         failed: 0,
-        message: 'Ya hay una sincronización en curso',
+        message: 'Ya hay una sincronizaciÃ³n en curso',
       );
     }
 
-    final pendientes = List<Planilla>.from(repository.pendientes);
+    final pendientes = repository.pendientes
+        .where((p) => p.estado != PlanillaEstado.rechazada)
+        .toList();
     debugPrint(
       'SyncService.syncAll: status=$_status total_planillas=${repository.count} '
       'pendientes=${pendientes.length}',
@@ -204,7 +233,7 @@ class SyncService extends ChangeNotifier {
       return SyncResult(
         sent: 0,
         failed: 0,
-        message: 'Sin conexión al servidor',
+        message: 'Sin conexiÃ³n al servidor',
       );
     }
 
@@ -219,6 +248,7 @@ class SyncService extends ChangeNotifier {
 
     int sent = 0;
     int failed = 0;
+    bool connectivityInterrupted = false;
 
     for (final planilla in pendientes) {
       debugPrint(
@@ -236,16 +266,30 @@ class SyncService extends ChangeNotifier {
         planilla.marcarEnviada();
         sent++;
       } else {
-        planilla.marcarError(_lastError ?? 'Error desconocido');
-        failed++;
+        if (_lastWasConnectivityIssue) {
+          planilla.marcarPendiente();
+          connectivityInterrupted = true;
+        } else {
+          planilla.marcarError(_lastError ?? 'Error desconocido');
+          failed++;
+        }
       }
 
       await repository.save(planilla);
       _pendingCount--;
       notifyListeners();
+
+      if (connectivityInterrupted) {
+        break;
+      }
     }
 
-    _status = ConnectionStatus.connected;
+    _status = connectivityInterrupted
+        ? ConnectionStatus.disconnected
+        : ConnectionStatus.connected;
+    if (connectivityInterrupted) {
+      _lastError = null;
+    }
     _lastSync = DateTime.now();
     _pendingCount = 0;
     notifyListeners();
@@ -253,9 +297,13 @@ class SyncService extends ChangeNotifier {
     return SyncResult(
       sent: sent,
       failed: failed,
-      message: failed == 0
-          ? 'Sincronización completada ($sent planillas)'
-          : '$sent enviadas, $failed con error',
+      message: connectivityInterrupted
+          ? (sent == 0
+              ? 'Sin conexión: las planillas quedaron pendientes'
+              : 'Conexión interrumpida: $sent enviadas, resto pendiente')
+          : failed == 0
+              ? 'Sincronización completada ($sent planillas)'
+              : '$sent enviadas, $failed con error',
     );
   }
 
@@ -277,6 +325,50 @@ class SyncService extends ChangeNotifier {
     }
   }
 
+  void _injectSenderMetadata(Planilla planilla, Map<String, dynamic> body) {
+    final metadata = _resolveSenderMetadata(planilla);
+    body['technician_id'] = metadata.technicianId;
+    body['device_id'] = metadata.deviceId;
+    if (metadata.technicianName != null) {
+      body['technician_name'] = metadata.technicianName;
+    }
+  }
+
+  _SenderMetadata _resolveSenderMetadata(Planilla planilla) {
+    String normalizeString(String? raw, String fallback) {
+      final value = raw?.trim();
+      if (value == null || value.isEmpty) return fallback;
+      if (value == 'unknown-tech' ||
+          value == 'unknown-device' ||
+          value == 'tecnico' ||
+          value == 'unknown') {
+        return fallback;
+      }
+      return value;
+    }
+
+    final technicianId = normalizeString(
+      planilla.technicianId,
+      normalizeString(AppConfig.technicianId, 'unknown-tech'),
+    );
+    final deviceId = normalizeString(
+      planilla.deviceId,
+      normalizeString(AppConfig.deviceId, 'unknown-device'),
+    );
+    final technicianNameRaw = planilla.technicianName?.trim().isNotEmpty == true
+        ? planilla.technicianName
+        : AppConfig.technicianName;
+    final technicianName = technicianNameRaw?.trim();
+
+    return _SenderMetadata(
+      technicianId: technicianId,
+      deviceId: deviceId,
+      technicianName: (technicianName != null && technicianName.isNotEmpty)
+          ? technicianName
+          : null,
+    );
+  }
+
   String _buildPlanillaError({
     required Planilla planilla,
     required ApiResponse response,
@@ -292,6 +384,29 @@ class SyncService extends ChangeNotifier {
     }
     return 'batch_uuid=${planilla.batchUuid} statusCode=$statusCode'
         '$extraPart body=$responseBody';
+  }
+
+  bool _isConnectivityFailure({
+    ApiResponse? response,
+    String? message,
+  }) {
+    if (response?.statusCode == null) {
+      return true;
+    }
+
+    final text = (message ?? response?.error ?? '').toLowerCase();
+    if (text.isEmpty) {
+      return false;
+    }
+
+    return text.contains('socketexception') ||
+        text.contains('network is unreachable') ||
+        text.contains('failed host lookup') ||
+        text.contains('connection failed') ||
+        text.contains('connection refused') ||
+        text.contains('connection reset') ||
+        text.contains('timed out') ||
+        text.contains('clientexception');
   }
 
   static const Map<String, String> _aforadorAliases = {
@@ -402,7 +517,7 @@ class SyncService extends ChangeNotifier {
     if (missing.isNotEmpty) {
       final list = missing.toList()..sort();
       debugPrint(
-        'SyncService: instrumentos no encontrados en catálogo (se envían igual): '
+        'SyncService: instrumentos no encontrados en catÃ¡logo (se envÃ­an igual): '
         '${list.join(', ')}',
       );
     }
@@ -441,9 +556,11 @@ class SyncService extends ChangeNotifier {
   ///   ]
   /// }
   Future<bool> _sendManualPlanilla(Planilla planilla) async {
+    _lastWasConnectivityIssue = false;
     final rows = _buildManualRows(planilla);
     if (rows.isEmpty) {
-      _lastError = 'Planilla manual sin lecturas válidas';
+      _lastError = 'Planilla manual sin lecturas vÃ¡lidas';
+      _lastWasConnectivityIssue = false;
       planilla.errorMessage = _lastError;
       return false;
     }
@@ -451,11 +568,17 @@ class SyncService extends ChangeNotifier {
     final familiaId = _mapTipoToFamiliaId(planilla.tipo);
     final archivoOrigen =
         'app_${planilla.batchUuid}_${DateTime.now().millisecondsSinceEpoch}.json';
+    final metadata = _resolveSenderMetadata(planilla);
 
     final payload = {
       'lote_uuid': planilla.batchUuid,
       'familia_id': familiaId,
       'archivo_origen': archivoOrigen,
+      'planilla_nombre': planilla.tipo.codigo,
+      'technician_id': metadata.technicianId,
+      'device_id': metadata.deviceId,
+      if (metadata.technicianName != null)
+        'technician_name': metadata.technicianName,
       'rows': rows,
     };
 
@@ -474,6 +597,7 @@ class SyncService extends ChangeNotifier {
     debugPrint('SyncService response: $responseBody');
 
     if (response.isSuccess) {
+      _lastWasConnectivityIssue = false;
       return true;
     } else {
       final errorMsg = _buildPlanillaError(
@@ -483,7 +607,11 @@ class SyncService extends ChangeNotifier {
         extra: 'Manual Flow Error',
       );
       _lastError = errorMsg;
-      planilla.errorMessage = errorMsg;
+      _lastWasConnectivityIssue =
+          _isConnectivityFailure(response: response, message: errorMsg);
+      if (!_lastWasConnectivityIssue) {
+        planilla.errorMessage = errorMsg;
+      }
       return false;
     }
   }
@@ -528,6 +656,125 @@ class SyncService extends ChangeNotifier {
     }
   }
 
+  Future<List<RejectedPlanillaNotice>> refreshRemoteStatuses(
+    PlanillaRepository repository,
+  ) async {
+    final tracked = repository
+        .all()
+        .where(
+          (p) =>
+              p.estado == PlanillaEstado.enviada ||
+              p.estado == PlanillaEstado.rechazada,
+        )
+        .toList();
+
+    if (tracked.isEmpty) {
+      return <RejectedPlanillaNotice>[];
+    }
+
+    final notices = <RejectedPlanillaNotice>[];
+
+    for (final planilla in tracked) {
+      final wasRejected = planilla.estado == PlanillaEstado.rechazada;
+      try {
+        final response =
+            await _api.get('/api/v1/ingesta/planillas/${planilla.batchUuid}');
+        if (response.statusCode == 404) {
+          continue;
+        }
+        if (!response.isSuccess || response.data is! Map) {
+          continue;
+        }
+
+        final payload = _toSafeMap(response.data as Map);
+        final estado =
+            (payload['estado'] ?? '').toString().trim().toLowerCase();
+        final rechazadas = _toInt(payload['rechazadas']);
+        final motivos = _extractRejectionReasons(payload);
+        final motivoPrincipal = payload['motivo_principal']?.toString().trim();
+
+        final isRejected =
+            estado == 'rechazado' || (estado == 'parcial' && rechazadas > 0);
+
+        if (isRejected) {
+          final message = _buildRejectedMessage(
+            motivos: motivos,
+            motivoPrincipal: motivoPrincipal,
+          );
+          planilla.marcarRechazada(message);
+          await repository.save(planilla);
+          if (!wasRejected) {
+            notices.add(
+              RejectedPlanillaNotice(
+                batchUuid: planilla.batchUuid,
+                motivoPrincipal: motivoPrincipal,
+                motivos: motivos,
+              ),
+            );
+          }
+          continue;
+        }
+
+        if (estado == 'aprobado' &&
+            planilla.estado == PlanillaEstado.rechazada) {
+          planilla.marcarEnviada();
+          await repository.save(planilla);
+        }
+      } catch (e) {
+        debugPrint(
+          'SyncService.refreshRemoteStatuses: error lote=${planilla.batchUuid}: $e',
+        );
+      }
+    }
+
+    return notices;
+  }
+
+  String _buildRejectedMessage({
+    required List<String> motivos,
+    required String? motivoPrincipal,
+  }) {
+    if (motivos.isEmpty &&
+        (motivoPrincipal == null || motivoPrincipal.isEmpty)) {
+      return 'Planilla rechazada por consola.';
+    }
+
+    final listed = motivos.isNotEmpty ? motivos : <String>[motivoPrincipal!];
+    if (listed.length == 1) {
+      return 'Planilla rechazada: ${listed.first}.';
+    }
+    return 'Planilla rechazada: ${listed.take(3).join(' | ')}.';
+  }
+
+  List<String> _extractRejectionReasons(Map<String, dynamic> payload) {
+    final reasons = <String>[];
+    final rawReasons = payload['motivos_rechazo'];
+    if (rawReasons is List) {
+      for (final item in rawReasons) {
+        final text = item?.toString().trim() ?? '';
+        if (text.isNotEmpty && !reasons.contains(text)) {
+          reasons.add(text);
+        }
+      }
+    }
+
+    final principal = payload['motivo_principal']?.toString().trim() ?? '';
+    if (principal.isNotEmpty && !reasons.contains(principal)) {
+      reasons.insert(0, principal);
+    }
+    return reasons;
+  }
+
+  int _toInt(dynamic raw) {
+    if (raw is int) return raw;
+    if (raw is double) return raw.round();
+    return int.tryParse(raw?.toString() ?? '') ?? 0;
+  }
+
+  Map<String, dynamic> _toSafeMap(Map raw) {
+    return raw.map((key, value) => MapEntry(key.toString(), value));
+  }
+
   Future<Map<String, dynamic>> retrySingle(
     String batchUuid, {
     required PlanillaRepository repository,
@@ -548,10 +795,32 @@ class SyncService extends ChangeNotifier {
       await repository.save(planilla);
       return {'success': true};
     } else {
+      if (_lastWasConnectivityIssue) {
+        planilla.marcarPendiente();
+        await repository.save(planilla);
+        return {
+          'success': false,
+          'queued_offline': true,
+          'planilla': planilla,
+        };
+      }
+
       planilla.marcarError(_lastError ?? 'Error desconocido');
       await repository.save(planilla);
 
       return {'success': false, 'error': _lastError, 'planilla': planilla};
     }
   }
+}
+
+class _SenderMetadata {
+  final String technicianId;
+  final String deviceId;
+  final String? technicianName;
+
+  const _SenderMetadata({
+    required this.technicianId,
+    required this.deviceId,
+    required this.technicianName,
+  });
 }

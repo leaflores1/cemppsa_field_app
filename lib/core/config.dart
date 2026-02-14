@@ -12,7 +12,7 @@ class ApiConfig {
   /// - Producción: 'https://api.cemppsa.com'
   /// 'http://192.168.113.103:8000'
   /// 'http://192.168.100.112:8000'
-  static const String baseUrl = 'http://192.168.113.103:8000'; 
+  static const String baseUrl = 'http://192.168.100.112:8000';
 
   /// Endpoints de la API
   static const String healthEndpoint = '/health';
@@ -21,6 +21,7 @@ class ApiConfig {
   static const String batchesEndpoint = '/api/v1/batches';
   static const String fotosEndpoint = '/api/v1/fotos';
   static const String authLoginEndpoint = '/api/v1/auth/login';
+  static const String mobileAuthLoginEndpoint = '/api/v1/auth/mobile/login';
 
   /// Token Bearer opcional para endpoints protegidos
   /// Si no se configura, las requests se envían sin Authorization.
@@ -46,6 +47,7 @@ class AppConfig {
 
   /// ID del técnico (configurado por el usuario)
   static String? technicianId;
+  static String? technicianName;
 
   /// Intervalo de auto-sync en minutos
   static const int autoSyncIntervalMinutes = 15;

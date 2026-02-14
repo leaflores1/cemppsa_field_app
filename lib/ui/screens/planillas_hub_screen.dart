@@ -232,9 +232,12 @@ class _PlanillasHubScreenState extends State<PlanillasHubScreen>
   }
 
   void _retrySend(Planilla planilla) {
+    final text = planilla.estado == PlanillaEstado.rechazada
+        ? 'La planilla fue rechazada. Revisa los motivos en el detalle.'
+        : 'Usá el botón Sincronizar en el inicio para reintentar';
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Usá el botón Sincronizar en el inicio para reintentar'),
+      SnackBar(
+        content: Text(text),
       ),
     );
   }

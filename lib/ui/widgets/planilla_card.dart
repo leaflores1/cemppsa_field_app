@@ -170,6 +170,7 @@ class PlanillaCard extends StatelessWidget {
 
   Color _getBorderColor() {
     switch (planilla.estado) {
+      case PlanillaEstado.rechazada:
       case PlanillaEstado.error:
         return const Color(0xFFEF4444).withOpacity(0.3);
       case PlanillaEstado.enviada:

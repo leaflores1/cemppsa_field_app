@@ -20,6 +20,9 @@ enum PlanillaEstado {
   /// Enviada exitosamente al servidor
   enviada,
 
+  /// Rechazada por revision en consola
+  rechazada,
+
   /// Error en el envío (reintentable)
   error,
 }
@@ -111,6 +114,9 @@ class Planilla {
   /// ID del técnico (usuario logueado)
   final String technicianId;
 
+  /// Nombre del técnico (auditoria y trazabilidad)
+  final String? technicianName;
+
   /// Fecha de creación de la planilla
   final DateTime createdAt;
 
@@ -137,6 +143,7 @@ class Planilla {
     required this.tipo,
     required this.deviceId,
     required this.technicianId,
+    this.technicianName,
     DateTime? createdAt,
     this.estado = PlanillaEstado.borrador,
     List<Lectura>? lecturas,
@@ -150,10 +157,15 @@ class Planilla {
 
   /// Serializa para envío al backend (POST /api/v1/sync)
   Map<String, dynamic> toSyncRequest() {
+    final normalizedTechnicianName = technicianName?.trim();
     return {
       'batch_uuid': batchUuid,
       'device_id': deviceId,
       'technician_id': technicianId,
+      'technician_name': (normalizedTechnicianName != null &&
+              normalizedTechnicianName.isNotEmpty)
+          ? normalizedTechnicianName
+          : null,
       'created_at': createdAt.toIso8601String(),
       'planilla_nombre': tipo.codigo,
       'readings': lecturas.map((l) => l.toJson()).toList(),
@@ -167,6 +179,7 @@ class Planilla {
       'tipo': tipo.codigo,
       'device_id': deviceId,
       'technician_id': technicianId,
+      'technician_name': technicianName,
       'created_at': createdAt.toIso8601String(),
       'estado': estado.name,
       'lecturas': lecturas.map((l) => l.toJson()).toList(),
@@ -182,8 +195,9 @@ class Planilla {
     return Planilla(
       batchUuid: json['batch_uuid'] as String,
       tipo: TipoPlanilla.fromCodigo(json['tipo'] as String),
-      deviceId: json['device_id'] as String,
-      technicianId: json['technician_id'] as String,
+      deviceId: json['device_id'].toString(),
+      technicianId: json['technician_id'].toString(),
+      technicianName: json['technician_name']?.toString(),
       createdAt: DateTime.parse(json['created_at'] as String),
       estado: PlanillaEstado.values.firstWhere(
         (e) => e.name == json['estado'],
@@ -250,6 +264,7 @@ class Planilla {
       isNotEmpty &&
       (estado == PlanillaEstado.borrador ||
           estado == PlanillaEstado.pendiente ||
+          estado == PlanillaEstado.rechazada ||
           estado == PlanillaEstado.error);
 
   /// ¿Ya fue enviada exitosamente?
@@ -293,6 +308,12 @@ class Planilla {
   void marcarEnviada() {
     estado = PlanillaEstado.enviada;
     errorMessage = null;
+  }
+
+  /// Marca como rechazada por revision de supervisión
+  void marcarRechazada(String motivo) {
+    estado = PlanillaEstado.rechazada;
+    errorMessage = motivo;
   }
 
   /// Marca como error

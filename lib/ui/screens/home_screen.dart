@@ -6,6 +6,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/config.dart';
+import '../../data/models/planilla.dart';
 import '../../repositories/catalogo_repository.dart';
 import '../../repositories/planilla_repository.dart';
 import '../../services/sync_service.dart';
@@ -22,15 +24,27 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    // Verificar conexiÃ³n al iniciar
+    // Verificar conexión y estados remotos al iniciar
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<SyncService>().checkConnection();
+      _initializeHome();
     });
+  }
+
+  Future<void> _initializeHome() async {
+    final syncService = context.read<SyncService>();
+    final planillaRepo = context.read<PlanillaRepository>();
+    await syncService.checkConnection();
+    final notices = await syncService.refreshRemoteStatuses(planillaRepo);
+    if (!mounted || notices.isEmpty) return;
+    _showRejectedNotice(notices);
   }
 
   Future<void> _syncPendientes() async {
     final syncService = context.read<SyncService>();
     final planillaRepo = context.read<PlanillaRepository>();
+    final pendientesEnviables = planillaRepo.pendientes
+        .where((p) => p.estado != PlanillaEstado.rechazada)
+        .toList();
 
     if (syncService.isSyncing) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -42,10 +56,10 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    if (planillaRepo.pendientes.isEmpty) {
+    if (pendientesEnviables.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('No hay planillas pendientes'),
+          content: Text('No hay planillas pendientes para enviar'),
           backgroundColor: Color(0xFF64748B),
         ),
       );
@@ -54,8 +68,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(
-            'Sincronizando ${planillaRepo.pendientes.length} planillas...'),
+        content:
+            Text('Sincronizando ${pendientesEnviables.length} planillas...'),
         backgroundColor: const Color(0xFF3B82F6),
       ),
     );
@@ -64,17 +78,41 @@ class _HomeScreenState extends State<HomeScreen> {
       planillaRepo,
       catalog: context.read<CatalogRepository>(),
     );
+    final rejectedNotices =
+        await syncService.refreshRemoteStatuses(planillaRepo);
 
     if (mounted) {
+      final hasRejected = rejectedNotices.isNotEmpty;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(result.message),
-          backgroundColor: result.hasErrors
+          content: Text(
+            hasRejected
+                ? '${result.message}. ${rejectedNotices.length} planilla(s) rechazada(s) en consola.'
+                : result.message,
+          ),
+          backgroundColor: result.hasErrors || hasRejected
               ? const Color(0xFFEF4444)
               : const Color(0xFF22C55E),
         ),
       );
     }
+  }
+
+  void _showRejectedNotice(List<RejectedPlanillaNotice> notices) {
+    final first = notices.first;
+    final shortBatch = first.batchUuid.length >= 8
+        ? first.batchUuid.substring(0, 8).toUpperCase()
+        : first.batchUuid.toUpperCase();
+    final message = notices.length == 1
+        ? 'Planilla $shortBatch rechazada: ${first.motivoPrincipal ?? 'ver detalle en Mis Planillas'}'
+        : '${notices.length} planillas fueron rechazadas en consola';
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: const Color(0xFFEF4444),
+      ),
+    );
   }
 
   @override
@@ -220,23 +258,20 @@ class _HomeScreenState extends State<HomeScreen> {
               color: const Color(0xFF1E3A5F),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Center(
-              child: Text(
-                'C',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF3B82F6),
-                ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.asset(
+                'assets/images/favicon.png',
+                fit: BoxFit.cover,
               ),
             ),
           ),
           const SizedBox(width: 12),
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                const Text(
                   'CEMPPSA',
                   style: TextStyle(
                     fontSize: 18,
@@ -244,13 +279,21 @@ class _HomeScreenState extends State<HomeScreen> {
                     color: Colors.white,
                   ),
                 ),
-                Text(
+                const Text(
                   'Sistema de Auscultación',
                   style: TextStyle(
                     fontSize: 12,
                     color: Colors.grey,
                   ),
                 ),
+                if ((AppConfig.technicianName ?? '').trim().isNotEmpty)
+                  Text(
+                    AppConfig.technicianName!.trim(),
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFF94A3B8),
+                    ),
+                  ),
               ],
             ),
           ),

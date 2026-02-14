@@ -127,6 +127,7 @@ class PlanillaRepository extends ChangeNotifier {
   List<Planilla> get pendientes => _planillas.values
       .where((p) =>
           p.estado == PlanillaEstado.pendiente ||
+          p.estado == PlanillaEstado.rechazada ||
           p.estado == PlanillaEstado.error)
       .toList()
     ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
