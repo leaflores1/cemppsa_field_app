@@ -92,9 +92,7 @@ class CatalogRepository extends ChangeNotifier {
   // ===========================================================================
 
   void setBaseUrl(String url) {
-    _baseUrl = url.endsWith('/')
-        ? url.substring(0, url.length - 1)
-        : url;
+    _baseUrl = url.endsWith('/') ? url.substring(0, url.length - 1) : url;
   }
 
   bool get needsSync {
@@ -125,9 +123,7 @@ class CatalogRepository extends ChangeNotifier {
       final uri = Uri.parse('$_baseUrl/api/v1/catalog-app/instruments');
       debugPrint('CatalogRepository GET $uri');
 
-      final response = await http
-          .get(uri)
-          .timeout(const Duration(seconds: 15));
+      final response = await http.get(uri).timeout(const Duration(seconds: 15));
 
       if (response.statusCode != 200) {
         _lastError = 'HTTP ${response.statusCode}';
@@ -172,48 +168,43 @@ class CatalogRepository extends ChangeNotifier {
   // ===========================================================================
 
   List<Instrumento> all() =>
-      _byCode.values.toList()
-        ..sort((a, b) => a.codigo.compareTo(b.codigo));
+      _byCode.values.toList()..sort((a, b) => a.codigo.compareTo(b.codigo));
 
-  Instrumento? byCode(String code) =>
-      _byCode[code.toUpperCase()];
+  Instrumento? byCode(String code) => _byCode[code.toUpperCase()];
 
   List<Instrumento> byFamilia(FamiliaInstrumento familia) =>
       List.unmodifiable(_byFamilia[familia] ?? []);
 
-  List<Instrumento> activos() =>
-      _byCode.values.where((i) => i.activo).toList();
+  List<Instrumento> activos() => _byCode.values.where((i) => i.activo).toList();
 
   List<Instrumento> manuales() =>
       _byCode.values.where((i) => i.esManual).toList();
 
   /// Casagrande = piezómetro + subfamilia CASAGRANDE
-  List<Instrumento> casagrande() =>
-      _byCode.values.where((i) =>
+  List<Instrumento> casagrande() => _byCode.values
+      .where((i) =>
           i.familia == FamiliaInstrumento.casagrande ||
           (i.familia == FamiliaInstrumento.piezometro &&
-          i.subfamilia == 'CASAGRANDE')
-      ).toList();
+              i.subfamilia == 'CASAGRANDE'))
+      .toList();
 
-  List<Instrumento> freatimetros() =>
-      byFamilia(FamiliaInstrumento.freatimetro);
+  List<Instrumento> freatimetros() => byFamilia(FamiliaInstrumento.freatimetro);
 
-  List<Instrumento> aforadores() =>
-      byFamilia(FamiliaInstrumento.aforador);
+  List<Instrumento> aforadores() => byFamilia(FamiliaInstrumento.aforador);
 
   List<Instrumento> cr10x() =>
       _byCode.values.where((i) => !i.esManual).toList();
 
   List<Instrumento> buscar(String texto) {
     final q = texto.toLowerCase();
-    return _byCode.values.where((i) =>
-      i.codigo.toLowerCase().contains(q) ||
-      (i.nombre?.toLowerCase().contains(q) ?? false)
-    ).toList();
+    return _byCode.values
+        .where((i) =>
+            i.codigo.toLowerCase().contains(q) ||
+            (i.nombre?.toLowerCase().contains(q) ?? false))
+        .toList();
   }
 
-  List<FamiliaInstrumento> get familias =>
-      _byFamilia.keys.toList();
+  List<FamiliaInstrumento> get familias => _byFamilia.keys.toList();
 
   Map<FamiliaInstrumento, int> get conteoPorFamilia {
     final map = <FamiliaInstrumento, int>{};
@@ -249,21 +240,24 @@ class CatalogRepository extends ChangeNotifier {
     // 1. Try Online
     if (_baseUrl != null) {
       try {
-        final uri = Uri.parse('$_baseUrl/api/v1/catalog/mobile/schema?familia=$familyId');
+        final uri = Uri.parse(
+            '$_baseUrl/api/v1/catalog/mobile/schema?familia=$familyId');
         debugPrint('Fetching schema: $uri');
-        
-        final response = await http.get(uri).timeout(const Duration(seconds: 10));
-        
+
+        final response =
+            await http.get(uri).timeout(const Duration(seconds: 10));
+
         if (response.statusCode == 200) {
           final json = jsonDecode(utf8.decode(response.bodyBytes));
           final schema = MobileSchema.fromJson(json);
-          
+
           // Cache it
           // Store complete JSON object to avoid serialization issues
           await _box.put(cacheKey, json);
           return schema;
         } else {
-          debugPrint('Error fetching schema ($familyId): ${response.statusCode}');
+          debugPrint(
+              'Error fetching schema ($familyId): ${response.statusCode}');
         }
       } catch (e) {
         debugPrint('Network error for schema ($familyId): $e');
@@ -276,9 +270,10 @@ class CatalogRepository extends ChangeNotifier {
         final cached = _box.get(cacheKey);
         // Ensure it's a Map<String, dynamic>
         // Hive stores Map<dynamic, dynamic> sometimes
-        final Map<String, dynamic> jsonMap = 
-            cached is Map ? jsonDecode(jsonEncode(cached)) : Map<String, dynamic>.from(cached);
-            
+        final Map<String, dynamic> jsonMap = cached is Map
+            ? jsonDecode(jsonEncode(cached))
+            : Map<String, dynamic>.from(cached);
+
         debugPrint('Loaded schema from cache: $familyId');
         return MobileSchema.fromJson(jsonMap);
       } catch (e) {

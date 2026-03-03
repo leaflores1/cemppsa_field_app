@@ -6,6 +6,7 @@ import '../../core/config.dart';
 import '../../repositories/catalogo_repository.dart';
 import '../../services/auth_service.dart';
 import '../../services/sync_service.dart';
+import '../../utils/server_discovery.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -20,6 +21,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
 
   bool _obscurePassword = true;
+  bool _isDiscoveringServer = false;
 
   @override
   void initState() {
@@ -131,6 +133,58 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  Future<void> _discoverServer() async {
+    setState(() => _isDiscoveringServer = true);
+
+    try {
+      final foundUrl = await ServerDiscovery.findServer();
+
+      if (!mounted) return;
+
+      if (foundUrl != null) {
+        final normalized = ApiConfig.normalizeBaseUrl(foundUrl);
+        if (normalized != null) {
+          ApiConfig.setBaseUrl(normalized);
+          final settingsBox = await Hive.openBox(StorageConfig.settingsBox);
+          await settingsBox.put(ApiConfig.settingsServerUrlKey, normalized);
+
+          context.read<AuthService>().updateApiBaseUrl(normalized);
+          final syncService = context.read<SyncService>();
+          syncService.updateApiBaseUrl(normalized);
+          context.read<CatalogRepository>().setBaseUrl(normalized);
+
+          setState(() {});
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Servidor encontrado: $normalized'),
+              backgroundColor: const Color(0xFF22C55E),
+            ),
+          );
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No se pudo encontrar el servidor en la red local.'),
+            backgroundColor: Color(0xFFF59E0B),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error al buscar servidor: $e'),
+          backgroundColor: const Color(0xFFEF4444),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isDiscoveringServer = false);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -206,6 +260,29 @@ class _LoginScreenState extends State<LoginScreen> {
                               label: Text(
                                 'Servidor: ${ApiConfig.baseUrl}',
                                 overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ),
+                          Center(
+                            child: TextButton.icon(
+                              onPressed:
+                                  _isDiscoveringServer ? null : _discoverServer,
+                              icon: _isDiscoveringServer
+                                  ? const SizedBox(
+                                      width: 14,
+                                      height: 14,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2))
+                                  : const Icon(Icons.radar, size: 16),
+                              label: Text(
+                                _isDiscoveringServer
+                                    ? 'Buscando servidor...'
+                                    : 'Autodetectar servidor en red',
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                    color: _isDiscoveringServer
+                                        ? Colors.grey
+                                        : Colors.blue),
                               ),
                             ),
                           ),

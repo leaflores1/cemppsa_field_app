@@ -85,7 +85,9 @@ class FotoRepository extends ChangeNotifier {
 
   int get totalPendientes => _fotos.values
       .where(
-        (f) => f.status == FotoSyncStatus.pendiente || f.status == FotoSyncStatus.error,
+        (f) =>
+            f.status == FotoSyncStatus.pendiente ||
+            f.status == FotoSyncStatus.error,
       )
       .length;
 }

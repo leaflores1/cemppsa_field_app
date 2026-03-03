@@ -14,6 +14,7 @@ import '../../repositories/catalogo_repository.dart';
 import '../../services/auth_service.dart';
 import '../../services/sync_service.dart';
 import '../../utils/csv_exporter.dart';
+import '../../utils/server_discovery.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -23,6 +24,8 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
+  bool _isDiscoveringServer = false;
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -102,8 +105,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 value: ApiConfig.baseUrl,
                 trailing: TextButton(
                   onPressed: _editServerUrl,
-                  child: Text('Editar'),
+                  child: const Text('Editar'),
                 ),
+              ),
+              const Divider(color: Color(0xFF334155)),
+              ListTile(
+                leading: _isDiscoveringServer
+                    ? const SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.radar, color: Colors.blue),
+                title: Text(
+                  _isDiscoveringServer
+                      ? 'Buscando en red local...'
+                      : 'Buscar servidor automáticamente',
+                  style: const TextStyle(fontSize: 14),
+                ),
+                onTap: _isDiscoveringServer ? null : _discoverServer,
               ),
             ],
           ),

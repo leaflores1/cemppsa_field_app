@@ -5,7 +5,7 @@
 
 /// Configuración de la API del backend
 class ApiConfig {
-  static const String defaultBaseUrl = 'http://192.168.100.112:8000';
+  static const String defaultBaseUrl = 'http://192.168.113.127:8000';
   static const String settingsServerUrlKey = 'api_base_url';
   static String _baseUrl = defaultBaseUrl;
 

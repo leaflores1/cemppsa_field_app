@@ -69,9 +69,10 @@ class Lectura {
     // Normalizar valor: coma → punto
     final normalizedValue = rawValue.replaceAll(',', '.').trim();
     final parsedValue = double.tryParse(normalizedValue) ?? 0.0;
-    
+
     // Canonicalizar código del instrumento (PC-05 → PC05)
-    final canonicalCode = CodigoHelper.canonicalize(instrumentCode.toUpperCase().trim());
+    final canonicalCode =
+        CodigoHelper.canonicalize(instrumentCode.toUpperCase().trim());
 
     return Lectura(
       clientRowId: clientRowId,

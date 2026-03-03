@@ -42,7 +42,7 @@ enum FamiliaInstrumento {
 
     // Casagrande (lecturas manuales en cámara de compuertas)
     // Solo PC01-PC26 y PC*SEC (con SEC sufijo)
-    if (RegExp(r'^PC\d{2}(SEC)?$').hasMatch(upper) && 
+    if (RegExp(r'^PC\d{2}(SEC)?$').hasMatch(upper) &&
         (int.tryParse(upper.substring(2, 4)) ?? 0) <= 26) {
       return FamiliaInstrumento.casagrande;
     }
@@ -55,7 +55,9 @@ enum FamiliaInstrumento {
     }
 
     // Freatímetros
-    if (upper.startsWith('PP') || upper.startsWith('D1') || upper.startsWith('D2')) {
+    if (upper.startsWith('PP') ||
+        upper.startsWith('D1') ||
+        upper.startsWith('D2')) {
       return FamiliaInstrumento.freatimetro;
     }
 
@@ -91,7 +93,9 @@ enum FamiliaInstrumento {
     }
 
     // Termómetros
-    if (upper.startsWith('TE') || upper.startsWith('TG') || RegExp(r'^T\d').hasMatch(upper)) {
+    if (upper.startsWith('TE') ||
+        upper.startsWith('TG') ||
+        RegExp(r'^T\d').hasMatch(upper)) {
       return FamiliaInstrumento.termometro;
     }
 
@@ -118,26 +122,25 @@ enum FamiliaInstrumento {
 /// Utilidades para códigos de instrumento
 class CodigoHelper {
   /// Canonicaliza código de instrumento.
-  /// 
+  ///
   /// Elimina variantes para formato uniforme:
   /// - PC-05 → PC05
   /// - AE1-41 → AE141
   /// - PP7* → PP7
   static String canonicalize(String codigo) {
     var canonical = codigo.toUpperCase();
-    
+
     // Remover guiones y asteriscos
     canonical = canonical.replaceAll('-', '').replaceAll('*', '');
-    
+
     return canonical;
   }
-  
+
   /// Compara dos códigos ignorando variantes
   static bool codigoMatch(String codigo1, String codigo2) {
     return canonicalize(codigo1) == canonicalize(codigo2);
   }
 }
-
 
 /// Subfamilias comunes (para clasificación más fina)
 /// Corresponde al campo `subfamilia` VARCHAR(50) del backend
@@ -167,7 +170,7 @@ class Subfamilia {
     final upper = code.toUpperCase();
 
     // Piezómetros Casagrande (lectura manual) - Solo PC01-PC26
-    if (RegExp(r'^PC\d{2}(SEC)?$').hasMatch(upper) && 
+    if (RegExp(r'^PC\d{2}(SEC)?$').hasMatch(upper) &&
         (int.tryParse(upper.substring(2, 4)) ?? 0) <= 26) {
       return casagrande;
     }
@@ -175,20 +178,20 @@ class Subfamilia {
     // Por eje (Piezómetros & Asentímetros)
     // Asentímetros: AD -> EJE_D, AE/AE1 -> EJE_E1
     if (upper.startsWith('AD')) return ejeD;
-    if (upper.startsWith('AE')) return ejeE1; 
+    if (upper.startsWith('AE')) return ejeE1;
 
     // Piezómetros
     if (upper.startsWith('PA')) return ejeA;
     if (upper.startsWith('PB')) return ejeB;
-    if (upper.startsWith('PC')) return ejeC;  // PC31, PC41, etc. → EJE_C
+    if (upper.startsWith('PC')) return ejeC; // PC31, PC41, etc. → EJE_C
     if (upper.startsWith('PD')) return ejeD;
-    
-    // Logic for E vs E1: 
+
+    // Logic for E vs E1:
     // Usually PE is E, but user asked for E1 specifically for some instruments?
     // Let's assume PE1... -> EJE_E1, PE... -> EJE_E
     if (upper.startsWith('PE1')) return ejeE1;
     if (upper.startsWith('PE')) return ejeE;
-    
+
     if (upper.startsWith('PF')) return ejeF;
     if (upper.startsWith('PG')) return ejeG;
 
@@ -245,16 +248,16 @@ class Instrumento {
   /// Constructor desde respuesta del catálogo del backend
   factory Instrumento.fromJson(Map<String, dynamic> json) {
     var familiaStr = json['familia'] as String? ?? 'PIEZOMETRO';
-    
+
     // Check if we should override based on code pattern
     // This fixes cases where backend might send generic PIEZOMETRO or null for special types
     // or if the enum mapping defaults to Piezometro.
     final codigo = json['codigo'] as String;
     final backendFam = FamiliaInstrumento.fromBackend(familiaStr);
     final inferredFam = FamiliaInstrumento.inferFromCode(codigo);
-    
-    final finalFam = (backendFam == FamiliaInstrumento.piezometro && 
-                      inferredFam != FamiliaInstrumento.piezometro)
+
+    final finalFam = (backendFam == FamiliaInstrumento.piezometro &&
+            inferredFam != FamiliaInstrumento.piezometro)
         ? inferredFam
         : backendFam;
 
@@ -266,7 +269,8 @@ class Instrumento {
       codigo: codigo,
       nombre: json['nombre'] as String?,
       familia: finalFam,
-      subfamilia: (json['subfamilia'] as String?) ?? Subfamilia.inferFromCode(codigo),
+      subfamilia:
+          (json['subfamilia'] as String?) ?? Subfamilia.inferFromCode(codigo),
       activo: json['activo'] as bool? ?? true,
       // Usar defaults del backend si están disponibles
       defaultParameter: defaultParam?.trim().isNotEmpty == true
@@ -391,9 +395,10 @@ class Instrumento {
   }
 
   String? _inferAxisFromCode() {
-    final normalized = codigo.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
-    
-    // Check for Temperature (T) or Axis (X, Y, Z) at end only if preceded by number? 
+    final normalized =
+        codigo.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
+
+    // Check for Temperature (T) or Axis (X, Y, Z) at end only if preceded by number?
     // Usually J01X, J01Y, J01Z, J01T
     final match = RegExp(r'([XYZT])$').firstMatch(normalized);
     return match?.group(1);
@@ -404,8 +409,7 @@ class Instrumento {
 
   @override
   bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is Instrumento && other.codigo == codigo;
+      identical(this, other) || other is Instrumento && other.codigo == codigo;
 
   @override
   int get hashCode => codigo.hashCode;

@@ -118,9 +118,7 @@ class CsvExporter {
   /// Lista archivos exportados
   static Future<List<FileSystemEntity>> listExports() async {
     final dir = await getExportDirectory();
-    return dir.listSync()
-        .where((f) => f.path.endsWith('.csv'))
-        .toList()
+    return dir.listSync().where((f) => f.path.endsWith('.csv')).toList()
       ..sort((a, b) => b.statSync().modified.compareTo(a.statSync().modified));
   }
 
