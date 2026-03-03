@@ -20,7 +20,7 @@ dependencies:
   hive: ^2.2.3
   hive_flutter: ^1.1.0
   path_provider: ^2.1.5
-  path: ^1.9.0            # ← agrega esto
+  path: ^1.9.1            # ← agrega esto
 
   # --- Conectividad / API ---
   connectivity_plus: ^6.0.3
@@ -29,6 +29,7 @@ dependencies:
   # --- Export / apertura de archivos ---
   open_filex: ^4.5.0
   image_picker: ^1.1.2
+  network_info_plus: ^7.0.0
 
 dev_dependencies:
   flutter_test:

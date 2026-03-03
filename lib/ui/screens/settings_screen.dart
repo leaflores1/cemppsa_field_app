@@ -56,6 +56,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         value: AppConfig.technicianName ??
                             user?.displayName ??
                             'Sin sesión',
+                        trailing: TextButton(
+                          onPressed: _editTechnicianName,
+                          child: const Text('Editar'),
+                        ),
                       ),
                       const Divider(color: Color(0xFF334155)),
                       _InfoTile(
@@ -221,6 +225,79 @@ class _SettingsScreenState extends State<SettingsScreen> {
     Clipboard.setData(ClipboardData(text: text));
   }
 
+  Future<void> _editTechnicianName() async {
+    try {
+      final controller = TextEditingController(text: AppConfig.technicianName ?? '');
+      final updated = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: const Color(0xFF1E293B),
+          title: const Text('Nombre', style: TextStyle(color: Colors.white)),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            style: const TextStyle(color: Colors.white),
+            decoration: const InputDecoration(
+              labelText: 'Tu Nombre',
+              hintText: 'Ej: Juan Pérez',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancelar'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+              child: const Text('Guardar'),
+            ),
+          ],
+        ),
+      );
+      // Defer dispose so the dialog exit animation can finish
+      WidgetsBinding.instance.addPostFrameCallback((_) => controller.dispose());
+
+      if (updated == null) return;
+
+      if (updated.isEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('El nombre no puede estar vacío'),
+            backgroundColor: Color(0xFFEF4444),
+          ),
+        );
+        return;
+      }
+
+      AppConfig.technicianName = updated;
+      final settingsBox = await Hive.openBox(StorageConfig.settingsBox);
+      await settingsBox.put('technician_name', updated);
+
+      if (!mounted) return;
+      // Defer setState to avoid build scope conflict with Consumer
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() {});
+      });
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Nombre actualizado'),
+          backgroundColor: Color(0xFF22C55E),
+        ),
+      );
+    } catch (e) {
+      debugPrint('_editTechnicianName ERROR: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error al editar nombre: $e'),
+          backgroundColor: const Color(0xFFEF4444),
+        ),
+      );
+    }
+  }
+
   Future<void> _editServerUrl() async {
     final controller = TextEditingController(text: ApiConfig.baseUrl);
     final updated = await showDialog<String>(
@@ -250,7 +327,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ],
       ),
     );
-    controller.dispose();
+    // Defer dispose so the dialog exit animation can finish
+    WidgetsBinding.instance.addPostFrameCallback((_) => controller.dispose());
 
     if (updated == null) return;
 
@@ -288,6 +366,76 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         backgroundColor:
             connected ? const Color(0xFF22C55E) : const Color(0xFFF59E0B),
+      ),
+    );
+  }
+
+  Future<void> _discoverServer() async {
+    setState(() => _isDiscoveringServer = true);
+    try {
+      debugPrint('DiscoverServer: Iniciando búsqueda...');
+      final ip = await ServerDiscovery.findServer();
+      debugPrint('DiscoverServer: Resultado=$ip');
+      if (!mounted) return;
+
+      if (ip != null) {
+        final apply = await _showDiscoverySuccessDialog(ip);
+        if (apply == true) {
+          ApiConfig.setBaseUrl(ip);
+          final settingsBox = await Hive.openBox(StorageConfig.settingsBox);
+          await settingsBox.put(ApiConfig.settingsServerUrlKey, ip);
+
+          if (!mounted) return;
+          context.read<AuthService>().updateApiBaseUrl(ip);
+          context.read<SyncService>().updateApiBaseUrl(ip);
+          context.read<CatalogRepository>().setBaseUrl(ip);
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Servidor actualizado: $ip'),
+              backgroundColor: const Color(0xFF22C55E),
+            ),
+          );
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No se encontró ningún servidor en la red local'),
+            backgroundColor: Color(0xFFF59E0B),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('DiscoverServer ERROR: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error en búsqueda: $e'),
+          backgroundColor: const Color(0xFFEF4444),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isDiscoveringServer = false);
+    }
+  }
+
+  Future<bool?> _showDiscoverySuccessDialog(String ip) {
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E293B),
+        title: const Text('Servidor encontrado', style: TextStyle(color: Colors.white)),
+        content: Text('Se encontró un servidor en $ip.\n\n¿Deseas usar esta dirección?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Usar esta dirección'),
+          ),
+        ],
       ),
     );
   }

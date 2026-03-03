@@ -157,13 +157,27 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF0F172A),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF1E293B),
-        foregroundColor: Colors.white,
-        title: const Text('CR10X'),
-        elevation: 0,
+    return WillPopScope(
+      onWillPop: () async {
+        if (_selectedTipo != null) {
+          await _confirmCancel();
+          return false;
+        }
+        return true;
+      },
+      child: Scaffold(
+        backgroundColor: const Color(0xFF0F172A),
+        appBar: AppBar(
+          backgroundColor: const Color(0xFF1E293B),
+          foregroundColor: Colors.white,
+          title: const Text('CR10X'),
+          elevation: 0,
+          leading: _selectedTipo != null
+              ? IconButton(
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: _confirmCancel,
+                )
+              : null,
         actions: [
           if (_currentPlanilla != null)
             TextButton.icon(
@@ -186,7 +200,7 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
         ],
       ),
       body: _selectedTipo == null ? _buildFamilySelector() : _buildBatchGrid(),
-    );
+    ));
   }
 
   // ===========================================================================
@@ -1224,7 +1238,7 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
     }
   }
 
-  void _confirmCancel() {
+  Future<void> _confirmCancel() async {
     final hasData = _controllers.values.any((c) => c.text.isNotEmpty);
 
     if (!hasData) {
@@ -1238,7 +1252,7 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
       return;
     }
 
-    showDialog(
+    await showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1E293B),

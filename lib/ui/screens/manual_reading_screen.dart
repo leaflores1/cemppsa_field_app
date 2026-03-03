@@ -90,13 +90,27 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
   // [MODIFIED] AppBar action: "Enviar"
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF0F172A),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF1E293B),
-        foregroundColor: Colors.white,
-        title: const Text('Lecturas Manuales'),
-        elevation: 0,
+    return WillPopScope(
+      onWillPop: () async {
+        if (_selectedTipo != null) {
+          await _confirmCancel();
+          return false;
+        }
+        return true;
+      },
+      child: Scaffold(
+        backgroundColor: const Color(0xFF0F172A),
+        appBar: AppBar(
+          backgroundColor: const Color(0xFF1E293B),
+          foregroundColor: Colors.white,
+          title: const Text('Lecturas Manuales'),
+          elevation: 0,
+          leading: _selectedTipo != null
+              ? IconButton(
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: _confirmCancel,
+                )
+              : null,
         actions: [
           if (_currentPlanilla != null)
             TextButton.icon(
@@ -119,7 +133,7 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
         ],
       ),
       body: _selectedTipo == null ? _buildTipoSelector() : _buildBatchGrid(),
-    );
+    ));
   }
 
   // ... _buildTipoSelector ...
@@ -851,25 +865,35 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
   }
 
   Future<void> _confirmCancel() async {
-    final shouldPop = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E293B),
-        title: const Text('¿Salir?', style: TextStyle(color: Colors.white)),
-        content: const Text('Se perderán los cambios no guardados.',
-            style: TextStyle(color: Colors.white70)),
-        actions: [
-          TextButton(
+    final hasData = _controllers.values.any((c) => c.text.isNotEmpty);
+    bool shouldPop = true;
+    
+    if (hasData) {
+      final res = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: const Color(0xFF1E293B),
+          title: const Text('¿Salir?', style: TextStyle(color: Colors.white)),
+          content: const Text(
+            'Se perderán los cambios no guardados. ¿Volver a las familias?',
+            style: TextStyle(color: Colors.white70),
+          ),
+          actions: [
+            TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancelar')),
-          TextButton(
+              child: const Text('Cancelar'),
+            ),
+            TextButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Salir')),
-        ],
-      ),
-    );
+              child: const Text('Salir'),
+            ),
+          ],
+        ),
+      );
+      shouldPop = res == true;
+    }
 
-    if (shouldPop == true && mounted) {
+    if (shouldPop && mounted) {
       setState(() {
         _disposeInputs();
         _batchDateTime = DateTime.now();

@@ -56,12 +56,18 @@ void main() async {
   // Inicializar Hive
   await Hive.initFlutter();
 
-  // Cargar URL de servidor persistida (si existe)
+  // Cargar configuraciones persistidas
   final settingsBox = await Hive.openBox(StorageConfig.settingsBox);
+  
   final persistedBaseUrl =
       settingsBox.get(ApiConfig.settingsServerUrlKey)?.toString();
   if (persistedBaseUrl != null && persistedBaseUrl.trim().isNotEmpty) {
     ApiConfig.setBaseUrl(persistedBaseUrl);
+  }
+
+  final persistedTechName = settingsBox.get('technician_name')?.toString();
+  if (persistedTechName != null && persistedTechName.trim().isNotEmpty) {
+    AppConfig.technicianName = persistedTechName;
   }
 
   // Generar device ID si no existe
