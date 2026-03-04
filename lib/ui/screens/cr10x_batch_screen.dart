@@ -570,6 +570,9 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
                 _getFocusNode(_triaxAxisKey(baseCode, 'Z')).requestFocus(),
             onZSubmitted: () => _focusNextTriaxial(instrumentos, index),
             onSave: (x, y, z) => _saveTriaxialReadings(inst, x, y, z),
+            rangeX: _getRangeForInstrument(baseCode, 'EJE_X'),
+            rangeY: _getRangeForInstrument(baseCode, 'EJE_Y'),
+            rangeZ: _getRangeForInstrument(baseCode, 'EJE_Z'),
           );
         }
 
@@ -585,6 +588,8 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
             onTempSubmitted: () => _focusNext(instrumentos, index),
             onSave: (luValue, tempValue) =>
                 _saveAsentimetroReadings(inst, luValue, tempValue),
+            rangeLu: _getRangeForInstrument(inst.codigo, 'LECTURA_LU'),
+            rangeTemp: _getRangeForInstrument(inst.codigo, 'TEMPERATURA'),
           );
         }
 
@@ -1647,7 +1652,7 @@ class _InstrumentInputRowState extends State<_InstrumentInputRow> {
   }
 }
 
-class _AsentimetroInputRow extends StatelessWidget {
+class _AsentimetroInputRow extends StatefulWidget {
   final Instrumento instrumento;
   final TextEditingController luController;
   final TextEditingController tempController;
@@ -1656,6 +1661,8 @@ class _AsentimetroInputRow extends StatelessWidget {
   final VoidCallback onPrimarySubmitted;
   final VoidCallback onTempSubmitted;
   final void Function(String luValue, String tempValue) onSave;
+  final InstrumentRange? rangeLu;
+  final InstrumentRange? rangeTemp;
 
   const _AsentimetroInputRow({
     required this.instrumento,
@@ -1666,97 +1673,195 @@ class _AsentimetroInputRow extends StatelessWidget {
     required this.onPrimarySubmitted,
     required this.onTempSubmitted,
     required this.onSave,
+    this.rangeLu,
+    this.rangeTemp,
   });
 
   @override
+  State<_AsentimetroInputRow> createState() => _AsentimetroInputRowState();
+}
+
+class _AsentimetroInputRowState extends State<_AsentimetroInputRow> {
+  bool _isLuOutOfRange = false;
+  bool _isTempOutOfRange = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.luController.addListener(_validateLuRange);
+    widget.tempController.addListener(_validateTempRange);
+    _validateLuRange();
+    _validateTempRange();
+  }
+
+  @override
+  void didUpdateWidget(covariant _AsentimetroInputRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.rangeLu != widget.rangeLu) _validateLuRange();
+    if (oldWidget.rangeTemp != widget.rangeTemp) _validateTempRange();
+  }
+
+  @override
+  void dispose() {
+    widget.luController.removeListener(_validateLuRange);
+    widget.tempController.removeListener(_validateTempRange);
+    super.dispose();
+  }
+
+  void _validateLuRange() {
+    if (widget.rangeLu == null || !widget.rangeLu!.hasRange) {
+      if (_isLuOutOfRange) setState(() => _isLuOutOfRange = false);
+      return;
+    }
+    final text = widget.luController.text.replaceAll(',', '.');
+    final val = double.tryParse(text);
+    if (val == null) {
+      if (_isLuOutOfRange) setState(() => _isLuOutOfRange = false);
+      return;
+    }
+    final outOfRange = RangeService.isOutOfRange(val, widget.rangeLu!);
+    if (_isLuOutOfRange != outOfRange) {
+      setState(() => _isLuOutOfRange = outOfRange);
+    }
+  }
+
+  void _validateTempRange() {
+    if (widget.rangeTemp == null || !widget.rangeTemp!.hasRange) {
+      if (_isTempOutOfRange) setState(() => _isTempOutOfRange = false);
+      return;
+    }
+    final text = widget.tempController.text.replaceAll(',', '.');
+    final val = double.tryParse(text);
+    if (val == null) {
+      if (_isTempOutOfRange) setState(() => _isTempOutOfRange = false);
+      return;
+    }
+    final outOfRange = RangeService.isOutOfRange(val, widget.rangeTemp!);
+    if (_isTempOutOfRange != outOfRange) {
+      setState(() => _isTempOutOfRange = outOfRange);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final bool anyOutOfRange = _isLuOutOfRange || _isTempOutOfRange;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E293B),
+        color: anyOutOfRange ? const Color(0xFF422006) : const Color(0xFF1E293B),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFF334155)),
+        border: Border.all(color: anyOutOfRange ? const Color(0xFFF59E0B) : const Color(0xFF334155)),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            width: 62,
-            child: Text(
-              instrumento.codigo,
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-                color: Colors.white,
-                fontSize: 12,
-              ),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: TextField(
-              controller: luController,
-              focusNode: luFocusNode,
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
-              textInputAction: TextInputAction.next,
-              onSubmitted: (_) => onPrimarySubmitted(),
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-              ),
-              decoration: InputDecoration(
-                hintText: 'LU',
-                hintStyle: TextStyle(color: Colors.grey[700]),
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                filled: true,
-                fillColor: const Color(0xFF0F172A),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide.none,
+          Row(
+            children: [
+              SizedBox(
+                width: 62,
+                child: Text(
+                  widget.instrumento.codigo,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                    fontSize: 12,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
-            ),
-          ),
-          const SizedBox(width: 6),
-          Expanded(
-            child: TextField(
-              controller: tempController,
-              focusNode: tempFocusNode,
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
-              textInputAction: TextInputAction.next,
-              onSubmitted: (_) => onTempSubmitted(),
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-              ),
-              decoration: InputDecoration(
-                hintText: 'T (°C)',
-                hintStyle: TextStyle(color: Colors.grey[700]),
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                filled: true,
-                fillColor: const Color(0xFF0F172A),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide.none,
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: widget.luController,
+                  focusNode: widget.luFocusNode,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  textInputAction: TextInputAction.next,
+                  onSubmitted: (_) => widget.onPrimarySubmitted(),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: 'LU',
+                    hintStyle: TextStyle(color: Colors.grey[700]),
+                    contentPadding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    filled: true,
+                    fillColor: _isLuOutOfRange ? const Color(0xFF78350F) : const Color(0xFF0F172A),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
                 ),
               ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: TextField(
+                  controller: widget.tempController,
+                  focusNode: widget.tempFocusNode,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  textInputAction: TextInputAction.next,
+                  onSubmitted: (_) => widget.onTempSubmitted(),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: 'T (°C)',
+                    hintStyle: TextStyle(color: Colors.grey[700]),
+                    contentPadding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    filled: true,
+                    fillColor: _isTempOutOfRange ? const Color(0xFF78350F) : const Color(0xFF0F172A),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              IconButton(
+                icon: const Icon(Icons.save_as_outlined,
+                    color: Color(0xFF3B82F6), size: 20),
+                onPressed: () => widget.onSave(widget.luController.text, widget.tempController.text),
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                padding: EdgeInsets.zero,
+                tooltip: 'Guardar LU + temperatura',
+              ),
+            ],
+          ),
+          
+          if ((widget.rangeLu != null && widget.rangeLu!.hasRange) || (widget.rangeTemp != null && widget.rangeTemp!.hasRange))
+            Padding(
+              padding: const EdgeInsets.only(top: 4, left: 70),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (widget.rangeLu != null && widget.rangeLu!.hasRange)
+                    Text(
+                      _isLuOutOfRange ? '⚠️ Fuera de rango [${widget.rangeLu!.fullLabel}]' : 'Ref LU: ${widget.rangeLu!.fullLabel}',
+                      style: TextStyle(
+                        fontSize: 9,
+                        color: _isLuOutOfRange ? const Color(0xFFFBBF24) : Colors.grey[600],
+                      ),
+                    ),
+                  if (widget.rangeTemp != null && widget.rangeTemp!.hasRange)
+                    Text(
+                      _isTempOutOfRange ? '⚠️ Fuera de rango [${widget.rangeTemp!.fullLabel}]' : 'Ref T: ${widget.rangeTemp!.fullLabel}',
+                      style: TextStyle(
+                        fontSize: 9,
+                        color: _isTempOutOfRange ? const Color(0xFFFBBF24) : Colors.grey[600],
+                      ),
+                    ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(width: 6),
-          IconButton(
-            icon: const Icon(Icons.save_as_outlined,
-                color: Color(0xFF3B82F6), size: 20),
-            onPressed: () => onSave(luController.text, tempController.text),
-            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-            padding: EdgeInsets.zero,
-            tooltip: 'Guardar LU + temperatura',
-          ),
         ],
       ),
     );
@@ -1775,6 +1880,9 @@ class _TriaxialInputRow extends StatelessWidget {
   final VoidCallback onYSubmitted;
   final VoidCallback onZSubmitted;
   final void Function(String x, String y, String z) onSave;
+  final InstrumentRange? rangeX;
+  final InstrumentRange? rangeY;
+  final InstrumentRange? rangeZ;
 
   const _TriaxialInputRow({
     required this.instrumentCode,
@@ -1788,6 +1896,9 @@ class _TriaxialInputRow extends StatelessWidget {
     required this.onYSubmitted,
     required this.onZSubmitted,
     required this.onSave,
+    this.rangeX,
+    this.rangeY,
+    this.rangeZ,
   });
 
   @override
@@ -1850,6 +1961,7 @@ class _TriaxialInputRow extends StatelessWidget {
                   controller: controllerX,
                   focusNode: focusNodeX,
                   onSubmitted: onXSubmitted,
+                  range: rangeX,
                 ),
               ),
               const SizedBox(width: 8),
@@ -1859,6 +1971,7 @@ class _TriaxialInputRow extends StatelessWidget {
                   controller: controllerY,
                   focusNode: focusNodeY,
                   onSubmitted: onYSubmitted,
+                  range: rangeY,
                 ),
               ),
               const SizedBox(width: 8),
@@ -1868,6 +1981,7 @@ class _TriaxialInputRow extends StatelessWidget {
                   controller: controllerZ,
                   focusNode: focusNodeZ,
                   onSubmitted: onZSubmitted,
+                  range: rangeZ,
                 ),
               ),
             ],
@@ -1878,45 +1992,114 @@ class _TriaxialInputRow extends StatelessWidget {
   }
 }
 
-class _TriaxialAxisField extends StatelessWidget {
+class _TriaxialAxisField extends StatefulWidget {
   final String axisLabel;
   final TextEditingController controller;
   final FocusNode focusNode;
   final VoidCallback onSubmitted;
+  final InstrumentRange? range;
 
   const _TriaxialAxisField({
     required this.axisLabel,
     required this.controller,
     required this.focusNode,
     required this.onSubmitted,
+    this.range,
   });
 
   @override
+  State<_TriaxialAxisField> createState() => _TriaxialAxisFieldState();
+}
+
+class _TriaxialAxisFieldState extends State<_TriaxialAxisField> {
+  bool _isOutOfRange = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_validateRange);
+    _validateRange();
+  }
+
+  @override
+  void didUpdateWidget(covariant _TriaxialAxisField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.range != widget.range) {
+      _validateRange();
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_validateRange);
+    super.dispose();
+  }
+
+  void _validateRange() {
+    if (widget.range == null || !widget.range!.hasRange) {
+      if (_isOutOfRange) setState(() => _isOutOfRange = false);
+      return;
+    }
+    final text = widget.controller.text.replaceAll(',', '.');
+    final val = double.tryParse(text);
+    if (val == null) {
+      if (_isOutOfRange) setState(() => _isOutOfRange = false);
+      return;
+    }
+    final outOfRange = RangeService.isOutOfRange(val, widget.range!);
+    if (_isOutOfRange != outOfRange) {
+      setState(() => _isOutOfRange = outOfRange);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return TextField(
-      controller: controller,
-      focusNode: focusNode,
-      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-      textInputAction: TextInputAction.next,
-      onSubmitted: (_) => onSubmitted(),
-      style: const TextStyle(
-        color: Colors.white,
-        fontSize: 14,
-        fontWeight: FontWeight.w500,
-      ),
-      decoration: InputDecoration(
-        labelText: axisLabel,
-        labelStyle: const TextStyle(color: Color(0xFF14B8A6), fontSize: 12),
-        hintText: '0,00',
-        hintStyle: TextStyle(color: Colors.grey[700]),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        filled: true,
-        fillColor: const Color(0xFF0F172A),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: BorderSide.none,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TextField(
+          controller: widget.controller,
+          focusNode: widget.focusNode,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          textInputAction: TextInputAction.next,
+          onSubmitted: (_) => widget.onSubmitted(),
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+          ),
+          decoration: InputDecoration(
+            labelText: widget.axisLabel,
+            labelStyle: const TextStyle(color: Color(0xFF14B8A6), fontSize: 12),
+            hintText: '0,00',
+            hintStyle: TextStyle(color: Colors.grey[700]),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            filled: true,
+            fillColor: _isOutOfRange ? const Color(0xFF422006) : const Color(0xFF0F172A),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: _isOutOfRange
+                  ? const BorderSide(color: Color(0xFFF59E0B))
+                  : BorderSide.none,
+            ),
+          ),
         ),
-      ),
+        if (widget.range != null && widget.range!.hasRange)
+          Padding(
+            padding: const EdgeInsets.only(top: 4, left: 2),
+            child: Text(
+              _isOutOfRange
+                  ? '⚠️ [${widget.range!.fullLabel}]'
+                  : '[${widget.range!.fullLabel}]',
+              style: TextStyle(
+                fontSize: 9,
+                color: _isOutOfRange ? const Color(0xFFFBBF24) : Colors.grey[600],
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+      ],
     );
   }
 }
