@@ -25,9 +25,11 @@ dependencies:
   # --- Conectividad / API ---
   connectivity_plus: ^6.0.3
   http: ^1.2.2
+  crypto: ^3.0.3
 
   # --- Export / apertura de archivos ---
   open_filex: ^4.5.0
+  package_info_plus: ^8.0.0
   image_picker: ^1.1.2
   network_info_plus: ^7.0.0
 

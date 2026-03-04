@@ -50,6 +50,7 @@ class ApiConfig {
   static const String fotosEndpoint = '/api/v1/fotos';
   static const String authLoginEndpoint = '/api/v1/auth/login';
   static const String mobileAuthLoginEndpoint = '/api/v1/auth/mobile/login';
+  static const String appVersionEndpoint = '/api/v1/app/version';
 
   /// Token Bearer opcional para endpoints protegidos
   /// Si no se configura, las requests se envían sin Authorization.

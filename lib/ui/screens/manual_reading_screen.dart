@@ -14,7 +14,8 @@ import '../../repositories/catalogo_repository.dart';
 import '../../repositories/planilla_repository.dart';
 import '../../data/models/schema_model.dart';
 import '../../core/config.dart';
-import '../../services/sync_service.dart'; // [NEW] Import
+import '../../services/sync_service.dart';
+import '../../services/range_service.dart';
 
 class ManualReadingScreen extends StatefulWidget {
   const ManualReadingScreen({super.key});
@@ -33,6 +34,9 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
   final Map<String, FocusNode> _focusNodes = {};
 
   bool _initialized = false;
+
+  // Rangos esperados por instrumento (cache local)
+  final Map<String, List<InstrumentRange>> _rangesCache = {};
 
   @override
   void didChangeDependencies() {
@@ -178,7 +182,8 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
           onSubmitted: () => _focusNext(instrumentos, index),
           customLabel: label,
           customUnit: unit,
-          onSave: (val) => _saveSingleReading(inst, val), // Per-row save
+          onSave: (val) => _saveSingleReading(inst, val),
+          range: _getRangeForInstrument(inst.codigo, _resolveVariableCode(inst)),
         );
       },
     );
@@ -740,6 +745,8 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
   }
 
   Future<void> _selectFamily(TipoPlanilla tipo) async {
+    RangeService.clearCache();
+    _rangesCache.clear();
     setState(() {
       _disposeInputs();
       _selectedTipo = tipo;
@@ -755,6 +762,23 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
       _loadedSchema = null;
     });
     await _loadSchemaForType(tipo);
+    // Pre-carga rangos con UN SOLO request bulk
+    _prefetchRanges();
+  }
+
+  /// Carga rangos de todos los instrumentos en un solo request
+  Future<void> _prefetchRanges() async {
+    final catalog = context.read<CatalogRepository>();
+    final instrumentos = _getInstrumentosForTipo(catalog);
+    if (instrumentos.isEmpty) return;
+    final codigos = instrumentos.map((i) => i.codigo).toList();
+    await RangeService.prefetchBulk(codigos);
+    if (mounted) setState(() {});
+  }
+
+  /// Obtiene el rango desde cache (sin requests)
+  InstrumentRange? _getRangeForInstrument(String codigo, String variableCodigo) {
+    return RangeService.getFromCache(codigo, variableCodigo);
   }
 
   Widget _buildBatchGrid() {
@@ -914,24 +938,66 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
 }
 
 // [MODIFIED] _InstrumentInputRow with Save Button
-class _InstrumentInputRow extends StatelessWidget {
+class _InstrumentInputRow extends StatefulWidget {
   final Instrumento instrumento;
   final TextEditingController controller;
   final FocusNode focusNode;
   final VoidCallback onSubmitted;
   final String? customLabel;
   final String? customUnit;
-  final Function(String) onSave; // [NEW]
+  final Function(String) onSave;
+  final InstrumentRange? range;
 
   const _InstrumentInputRow({
     required this.instrumento,
     required this.controller,
     required this.focusNode,
     required this.onSubmitted,
-    required this.onSave, // [NEW]
+    required this.onSave,
     this.customLabel,
     this.customUnit,
+    this.range,
   });
+
+  @override
+  State<_InstrumentInputRow> createState() => _InstrumentInputRowState();
+}
+
+class _InstrumentInputRowState extends State<_InstrumentInputRow> {
+  bool _isOutOfRange = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_checkRange);
+  }
+
+  @override
+  void didUpdateWidget(covariant _InstrumentInputRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.removeListener(_checkRange);
+      widget.controller.addListener(_checkRange);
+    }
+    _checkRange();
+  }
+
+  void _checkRange() {
+    if (widget.range == null || !widget.range!.hasRange) {
+      if (_isOutOfRange) setState(() => _isOutOfRange = false);
+      return;
+    }
+    final text = widget.controller.text.replaceAll(',', '.');
+    final val = double.tryParse(text);
+    final oor = val != null && widget.range!.isOutOfRange(val);
+    if (oor != _isOutOfRange) setState(() => _isOutOfRange = oor);
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_checkRange);
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -939,77 +1005,100 @@ class _InstrumentInputRow extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E293B),
+        color: _isOutOfRange
+            ? const Color(0xFF422006)
+            : const Color(0xFF1E293B),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFF334155)),
+        border: Border.all(
+          color: _isOutOfRange
+              ? const Color(0xFFF59E0B)
+              : const Color(0xFF334155),
+        ),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            width: 70,
-            child: Text(
-              instrumento.codigo,
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-                color: Colors.white,
-                fontSize: 12,
+          Row(
+            children: [
+              SizedBox(
+                width: 70,
+                child: Text(
+                  widget.instrumento.codigo,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                    fontSize: 12,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-              overflow: TextOverflow.ellipsis,
-            ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: widget.controller,
+                  focusNode: widget.focusNode,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  textInputAction: TextInputAction.next,
+                  onSubmitted: (_) => widget.onSubmitted(),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: widget.customLabel ?? '0,00',
+                    hintStyle: TextStyle(color: Colors.grey[700]),
+                    contentPadding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    filled: true,
+                    fillColor: const Color(0xFF0F172A),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 30,
+                child: Text(
+                  widget.customUnit ?? widget.instrumento.defaultUnit,
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: Colors.grey[500],
+                  ),
+                  textAlign: TextAlign.center,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.save_as_outlined,
+                    color: Color(0xFF3B82F6), size: 20),
+                onPressed: () => widget.onSave(widget.controller.text),
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                padding: EdgeInsets.zero,
+                tooltip: 'Guardar valor',
+              ),
+            ],
           ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: TextField(
-              controller: controller,
-              focusNode: focusNode,
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
-              textInputAction: TextInputAction.next, // Or Done?
-              onSubmitted: (_) => onSubmitted(),
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.w500,
-              ),
-              decoration: InputDecoration(
-                hintText: customLabel ?? '0,00',
-                hintStyle: TextStyle(color: Colors.grey[700]),
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                filled: true,
-                fillColor: const Color(0xFF0F172A),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide.none,
+          // Rango esperado
+          if (widget.range != null && widget.range!.hasRange)
+            Padding(
+              padding: const EdgeInsets.only(top: 4, left: 78),
+              child: Text(
+                _isOutOfRange
+                    ? '⚠️ Fuera de rango [${widget.range!.fullLabel}]. Podés enviarlo igual.'
+                    : 'Ref Silver: ${widget.range!.fullLabel}',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: _isOutOfRange
+                      ? const Color(0xFFFBBF24)
+                      : Colors.grey[600],
                 ),
               ),
             ),
-          ),
-          const SizedBox(width: 8),
-
-          // [NEW] Unit Text
-          SizedBox(
-            width: 30, // Reduced to make space for button
-            child: Text(
-              customUnit ?? instrumento.defaultUnit,
-              style: TextStyle(
-                fontSize: 10,
-                color: Colors.grey[500],
-              ),
-              textAlign: TextAlign.center,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-
-          // [NEW] Save Icon Button
-          IconButton(
-            icon: const Icon(Icons.save_as_outlined,
-                color: Color(0xFF3B82F6), size: 20),
-            onPressed: () => onSave(controller.text),
-            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-            padding: EdgeInsets.zero,
-            tooltip: 'Guardar valor',
-          ),
         ],
       ),
     );

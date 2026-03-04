@@ -12,7 +12,9 @@ import '../../repositories/catalogo_repository.dart';
 import '../../repositories/planilla_repository.dart';
 import '../../services/auth_service.dart';
 import '../../services/sync_service.dart';
+import '../../services/update_service.dart';
 import '../widgets/connectivity_banner.dart';
+import '../widgets/update_dialog.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -35,9 +37,28 @@ class _HomeScreenState extends State<HomeScreen> {
     final syncService = context.read<SyncService>();
     final planillaRepo = context.read<PlanillaRepository>();
     await syncService.checkConnection();
+
+    // Verificar actualizaciones OTA (no bloquante)
+    if (syncService.isConnected) {
+      _checkForUpdates();
+    }
+
     final notices = await syncService.refreshRemoteStatuses(planillaRepo);
     if (!mounted || notices.isEmpty) return;
     _showRejectedNotice(notices);
+  }
+
+  Future<void> _checkForUpdates() async {
+    final remote = await UpdateService.checkForUpdate();
+    if (remote == null || !mounted) return;
+
+    final hasUpdate = await UpdateService.isUpdateAvailable(remote);
+    if (!hasUpdate || !mounted) return;
+
+    final forced = await UpdateService.isForceRequired(remote);
+    if (!mounted) return;
+
+    UpdateDialog.show(context, remote, forced);
   }
 
   Future<void> _syncPendientes() async {
