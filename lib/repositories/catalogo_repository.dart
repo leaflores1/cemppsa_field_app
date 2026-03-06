@@ -172,6 +172,17 @@ class CatalogRepository extends ChangeNotifier {
 
   Instrumento? byCode(String code) => _byCode[code.toUpperCase()];
 
+  InstrumentRange? rangeForInstrument(String code, String variableCodigo) {
+    final inst = byCode(code);
+    return inst?.rangeForVariable(variableCodigo);
+  }
+
+  List<InstrumentRange> rangesForInstrument(String code) {
+    final inst = byCode(code);
+    if (inst == null) return const [];
+    return List.unmodifiable(inst.rangos);
+  }
+
   List<Instrumento> byFamilia(FamiliaInstrumento familia) =>
       List.unmodifiable(_byFamilia[familia] ?? []);
 

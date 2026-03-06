@@ -12,7 +12,6 @@ import '../../data/models/planilla.dart';
 import '../../repositories/catalogo_repository.dart';
 import '../../repositories/planilla_repository.dart';
 import '../../services/sync_service.dart';
-import '../../services/range_service.dart';
 import 'dart:convert';
 import '../../core/config.dart';
 
@@ -47,9 +46,6 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
   final Map<String, FocusNode> _focusNodes = {};
 
   bool _initialized = false;
-
-  // Rangos esperados por instrumento (cache local)
-  final Map<String, List<InstrumentRange>> _rangesCache = {};
 
   @override
   void didChangeDependencies() {
@@ -162,49 +158,52 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
   @override
   Widget build(BuildContext context) {
     return WillPopScope(
-      onWillPop: () async {
-        if (_selectedTipo != null) {
-          await _confirmCancel();
-          return false;
-        }
-        return true;
-      },
-      child: Scaffold(
-        backgroundColor: const Color(0xFF0F172A),
-        appBar: AppBar(
-          backgroundColor: const Color(0xFF1E293B),
-          foregroundColor: Colors.white,
-          title: const Text('CR10X'),
-          elevation: 0,
-          leading: _selectedTipo != null
-              ? IconButton(
-                  icon: const Icon(Icons.arrow_back),
-                  onPressed: _confirmCancel,
-                )
-              : null,
-        actions: [
-          if (_currentPlanilla != null)
-            TextButton.icon(
-              onPressed: _sendPlanilla, // [MODIFIED] Now triggers Send
-              icon: const Icon(Icons.send, color: Color(0xFF22C55E), size: 18),
-              label: const Text('Enviar',
-                  style: TextStyle(
-                      color: Color(0xFF22C55E),
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13)),
-              style: TextButton.styleFrom(
-                backgroundColor: const Color(0xFF22C55E).withOpacity(0.1),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20)),
-              ),
-            ),
-          const SizedBox(width: 8),
-        ],
-      ),
-      body: _selectedTipo == null ? _buildFamilySelector() : _buildBatchGrid(),
-    ));
+        onWillPop: () async {
+          if (_selectedTipo != null) {
+            await _confirmCancel();
+            return false;
+          }
+          return true;
+        },
+        child: Scaffold(
+          backgroundColor: const Color(0xFF0F172A),
+          appBar: AppBar(
+            backgroundColor: const Color(0xFF1E293B),
+            foregroundColor: Colors.white,
+            title: const Text('CR10X'),
+            elevation: 0,
+            leading: _selectedTipo != null
+                ? IconButton(
+                    icon: const Icon(Icons.arrow_back),
+                    onPressed: _confirmCancel,
+                  )
+                : null,
+            actions: [
+              if (_currentPlanilla != null)
+                TextButton.icon(
+                  onPressed: _sendPlanilla, // [MODIFIED] Now triggers Send
+                  icon: const Icon(Icons.send,
+                      color: Color(0xFF22C55E), size: 18),
+                  label: const Text('Enviar',
+                      style: TextStyle(
+                          color: Color(0xFF22C55E),
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13)),
+                  style: TextButton.styleFrom(
+                    backgroundColor: const Color(0xFF22C55E).withOpacity(0.1),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20)),
+                  ),
+                ),
+              const SizedBox(width: 8),
+            ],
+          ),
+          body: _selectedTipo == null
+              ? _buildFamilySelector()
+              : _buildBatchGrid(),
+        ));
   }
 
   // ===========================================================================
@@ -337,8 +336,6 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
   }
 
   void _selectFamily(TipoPlanilla tipo) {
-    RangeService.clearCache();
-    _rangesCache.clear();
     setState(() {
       _disposeInputs();
       _selectedTipo = tipo;
@@ -351,22 +348,14 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
         technicianName: AppConfig.technicianName,
       );
     });
-    // Pre-carga rangos con UN SOLO request bulk
-    _prefetchRanges();
   }
 
-  /// Carga rangos de todos los instrumentos en un solo request bulk
-  Future<void> _prefetchRanges() async {
-    final catalog = context.read<CatalogRepository>();
-    final codigos = catalog.all().map((i) => i.codigo).toList();
-    if (codigos.isEmpty) return;
-    await RangeService.prefetchBulk(codigos);
-    if (mounted) setState(() {});
-  }
-
-  /// Obtiene el rango desde cache local (sin requests)
-  InstrumentRange? _getRangeForInstrument(String codigo, String variableCodigo) {
-    return RangeService.getFromCache(codigo, variableCodigo);
+  /// Obtiene el rango desde el catálogo local (sin requests en pantalla)
+  InstrumentRange? _getRangeForInstrument(
+      String codigo, String variableCodigo) {
+    return context
+        .read<CatalogRepository>()
+        .rangeForInstrument(codigo, variableCodigo);
   }
 
   // ===========================================================================
@@ -600,7 +589,8 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
           onSubmitted: () => _focusNext(instrumentos, index),
           onSave: (val) => _saveSingleReading(inst, val),
           unitLabel: _resolveInputUnitLabel(inst),
-          range: _getRangeForInstrument(inst.codigo, _resolvePrimaryParameter(inst)),
+          range: _getRangeForInstrument(
+              inst.codigo, _resolvePrimaryParameter(inst)),
         );
       },
     );
@@ -1552,14 +1542,12 @@ class _InstrumentInputRowState extends State<_InstrumentInputRow> {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: _isOutOfRange
-            ? const Color(0xFF422006)
-            : const Color(0xFF1E293B),
+        color:
+            _isOutOfRange ? const Color(0xFF422006) : const Color(0xFF1E293B),
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
-          color: _isOutOfRange
-              ? const Color(0xFFF59E0B)
-              : const Color(0xFF334155),
+          color:
+              _isOutOfRange ? const Color(0xFFF59E0B) : const Color(0xFF334155),
         ),
       ),
       child: Column(
@@ -1719,7 +1707,7 @@ class _AsentimetroInputRowState extends State<_AsentimetroInputRow> {
       if (_isLuOutOfRange) setState(() => _isLuOutOfRange = false);
       return;
     }
-    final outOfRange = RangeService.isOutOfRange(val, widget.rangeLu!);
+    final outOfRange = widget.rangeLu!.isOutOfRange(val);
     if (_isLuOutOfRange != outOfRange) {
       setState(() => _isLuOutOfRange = outOfRange);
     }
@@ -1736,7 +1724,7 @@ class _AsentimetroInputRowState extends State<_AsentimetroInputRow> {
       if (_isTempOutOfRange) setState(() => _isTempOutOfRange = false);
       return;
     }
-    final outOfRange = RangeService.isOutOfRange(val, widget.rangeTemp!);
+    final outOfRange = widget.rangeTemp!.isOutOfRange(val);
     if (_isTempOutOfRange != outOfRange) {
       setState(() => _isTempOutOfRange = outOfRange);
     }
@@ -1750,9 +1738,13 @@ class _AsentimetroInputRowState extends State<_AsentimetroInputRow> {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: anyOutOfRange ? const Color(0xFF422006) : const Color(0xFF1E293B),
+        color:
+            anyOutOfRange ? const Color(0xFF422006) : const Color(0xFF1E293B),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: anyOutOfRange ? const Color(0xFFF59E0B) : const Color(0xFF334155)),
+        border: Border.all(
+            color: anyOutOfRange
+                ? const Color(0xFFF59E0B)
+                : const Color(0xFF334155)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1776,7 +1768,8 @@ class _AsentimetroInputRowState extends State<_AsentimetroInputRow> {
                 child: TextField(
                   controller: widget.luController,
                   focusNode: widget.luFocusNode,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
                   textInputAction: TextInputAction.next,
                   onSubmitted: (_) => widget.onPrimarySubmitted(),
                   style: const TextStyle(
@@ -1790,7 +1783,9 @@ class _AsentimetroInputRowState extends State<_AsentimetroInputRow> {
                     contentPadding:
                         const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                     filled: true,
-                    fillColor: _isLuOutOfRange ? const Color(0xFF78350F) : const Color(0xFF0F172A),
+                    fillColor: _isLuOutOfRange
+                        ? const Color(0xFF78350F)
+                        : const Color(0xFF0F172A),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
                       borderSide: BorderSide.none,
@@ -1803,7 +1798,8 @@ class _AsentimetroInputRowState extends State<_AsentimetroInputRow> {
                 child: TextField(
                   controller: widget.tempController,
                   focusNode: widget.tempFocusNode,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
                   textInputAction: TextInputAction.next,
                   onSubmitted: (_) => widget.onTempSubmitted(),
                   style: const TextStyle(
@@ -1817,7 +1813,9 @@ class _AsentimetroInputRowState extends State<_AsentimetroInputRow> {
                     contentPadding:
                         const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                     filled: true,
-                    fillColor: _isTempOutOfRange ? const Color(0xFF78350F) : const Color(0xFF0F172A),
+                    fillColor: _isTempOutOfRange
+                        ? const Color(0xFF78350F)
+                        : const Color(0xFF0F172A),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
                       borderSide: BorderSide.none,
@@ -1829,15 +1827,16 @@ class _AsentimetroInputRowState extends State<_AsentimetroInputRow> {
               IconButton(
                 icon: const Icon(Icons.save_as_outlined,
                     color: Color(0xFF3B82F6), size: 20),
-                onPressed: () => widget.onSave(widget.luController.text, widget.tempController.text),
+                onPressed: () => widget.onSave(
+                    widget.luController.text, widget.tempController.text),
                 constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                 padding: EdgeInsets.zero,
                 tooltip: 'Guardar LU + temperatura',
               ),
             ],
           ),
-          
-          if ((widget.rangeLu != null && widget.rangeLu!.hasRange) || (widget.rangeTemp != null && widget.rangeTemp!.hasRange))
+          if ((widget.rangeLu != null && widget.rangeLu!.hasRange) ||
+              (widget.rangeTemp != null && widget.rangeTemp!.hasRange))
             Padding(
               padding: const EdgeInsets.only(top: 4, left: 70),
               child: Column(
@@ -1845,18 +1844,26 @@ class _AsentimetroInputRowState extends State<_AsentimetroInputRow> {
                 children: [
                   if (widget.rangeLu != null && widget.rangeLu!.hasRange)
                     Text(
-                      _isLuOutOfRange ? '⚠️ Fuera de rango [${widget.rangeLu!.fullLabel}]' : 'Ref LU: ${widget.rangeLu!.fullLabel}',
+                      _isLuOutOfRange
+                          ? '⚠️ Fuera de rango [${widget.rangeLu!.fullLabel}]'
+                          : 'Ref LU: ${widget.rangeLu!.fullLabel}',
                       style: TextStyle(
                         fontSize: 9,
-                        color: _isLuOutOfRange ? const Color(0xFFFBBF24) : Colors.grey[600],
+                        color: _isLuOutOfRange
+                            ? const Color(0xFFFBBF24)
+                            : Colors.grey[600],
                       ),
                     ),
                   if (widget.rangeTemp != null && widget.rangeTemp!.hasRange)
                     Text(
-                      _isTempOutOfRange ? '⚠️ Fuera de rango [${widget.rangeTemp!.fullLabel}]' : 'Ref T: ${widget.rangeTemp!.fullLabel}',
+                      _isTempOutOfRange
+                          ? '⚠️ Fuera de rango [${widget.rangeTemp!.fullLabel}]'
+                          : 'Ref T: ${widget.rangeTemp!.fullLabel}',
                       style: TextStyle(
                         fontSize: 9,
-                        color: _isTempOutOfRange ? const Color(0xFFFBBF24) : Colors.grey[600],
+                        color: _isTempOutOfRange
+                            ? const Color(0xFFFBBF24)
+                            : Colors.grey[600],
                       ),
                     ),
                 ],
@@ -2046,7 +2053,7 @@ class _TriaxialAxisFieldState extends State<_TriaxialAxisField> {
       if (_isOutOfRange) setState(() => _isOutOfRange = false);
       return;
     }
-    final outOfRange = RangeService.isOutOfRange(val, widget.range!);
+    final outOfRange = widget.range!.isOutOfRange(val);
     if (_isOutOfRange != outOfRange) {
       setState(() => _isOutOfRange = outOfRange);
     }
@@ -2076,7 +2083,9 @@ class _TriaxialAxisFieldState extends State<_TriaxialAxisField> {
             contentPadding:
                 const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             filled: true,
-            fillColor: _isOutOfRange ? const Color(0xFF422006) : const Color(0xFF0F172A),
+            fillColor: _isOutOfRange
+                ? const Color(0xFF422006)
+                : const Color(0xFF0F172A),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
               borderSide: _isOutOfRange
@@ -2094,7 +2103,8 @@ class _TriaxialAxisFieldState extends State<_TriaxialAxisField> {
                   : '[${widget.range!.fullLabel}]',
               style: TextStyle(
                 fontSize: 9,
-                color: _isOutOfRange ? const Color(0xFFFBBF24) : Colors.grey[600],
+                color:
+                    _isOutOfRange ? const Color(0xFFFBBF24) : Colors.grey[600],
               ),
               overflow: TextOverflow.ellipsis,
             ),

@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:uuid/uuid.dart';
+import 'dart:async';
 
 // Core
 import 'core/config.dart';
@@ -58,7 +59,7 @@ void main() async {
 
   // Cargar configuraciones persistidas
   final settingsBox = await Hive.openBox(StorageConfig.settingsBox);
-  
+
   final persistedBaseUrl =
       settingsBox.get(ApiConfig.settingsServerUrlKey)?.toString();
   if (persistedBaseUrl != null && persistedBaseUrl.trim().isNotEmpty) {
@@ -76,6 +77,10 @@ void main() async {
   // Inicializar repositorios
   final catalogRepo = CatalogRepository(baseUrl: ApiConfig.baseUrl);
   await catalogRepo.init();
+  if (catalogRepo.needsSync) {
+    // Primera lectura de catálogo+rango por instrumento (best effort).
+    unawaited(catalogRepo.syncFromBackend());
+  }
 
   final planillaRepo = PlanillaRepository();
   await planillaRepo.init();

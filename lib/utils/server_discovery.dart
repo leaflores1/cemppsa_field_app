@@ -3,33 +3,42 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+
 import '../core/config.dart';
 
 class ServerDiscovery {
-  static const int _targetPort = 8000;
+  static const int _defaultPort = 8000;
   static const String _healthPath = '/health';
-  static const Duration _timeout = Duration(milliseconds: 1500);
+  static const Duration _timeout = Duration(milliseconds: 2500);
 
-  /// Escanea la red local y devuelve la primera IP que responda al health check
+  /// Escanea la red local y devuelve la primera URL base valida.
   static Future<String?> findServer() async {
     final ips = await _getLocalIPv4Addresses();
     if (ips.isEmpty) {
-      debugPrint('ServerDiscovery: No se encontraron interfaces de red locales.');
+      debugPrint(
+          'ServerDiscovery: No se encontraron interfaces de red locales.');
       return null;
     }
 
+    final candidatePorts = _resolveCandidatePorts();
     debugPrint('ServerDiscovery: IPs locales encontradas: $ips');
+    debugPrint('ServerDiscovery: Puertos objetivo: $candidatePorts');
 
     final client = http.Client();
     try {
+      final direct = await _probeConfiguredBaseUrl(client);
+      if (direct != null) return direct;
+
       for (final ip in ips) {
         final subnet = _getSubnet(ip);
         if (subnet == null) continue;
 
-        debugPrint('ServerDiscovery: Escaneando subred: $subnet.0/24');
-        final foundIp = await _scanSubnet(subnet, client);
-        if (foundIp != null) {
-          return foundIp;
+        for (final port in candidatePorts) {
+          debugPrint(
+            'ServerDiscovery: Escaneando subred: $subnet.0/24 (puerto $port)',
+          );
+          final foundBaseUrl = await _scanSubnet(subnet, port, client);
+          if (foundBaseUrl != null) return foundBaseUrl;
         }
       }
     } finally {
@@ -39,9 +48,12 @@ class ServerDiscovery {
     return null;
   }
 
-  /// Escanea una subred especifica enviando pings HTTP en lotes
-  static Future<String?> _scanSubnet(String subnet, http.Client client) async {
-    // Escanear IPs de la 1 a la 254 en lotes para no agotar los file descriptors
+  /// Escanea una subred especifica enviando pings HTTP en lotes.
+  static Future<String?> _scanSubnet(
+    String subnet,
+    int port,
+    http.Client client,
+  ) async {
     final hosts = List.generate(254, (i) => i + 1);
     const batchSize = 32;
 
@@ -50,30 +62,29 @@ class ServerDiscovery {
         i,
         i + batchSize > hosts.length ? hosts.length : i + batchSize,
       );
-      
-      final futures = chunk.map((host) => _checkIp('$subnet.$host', client));
+
+      final futures =
+          chunk.map((host) => _checkIp('$subnet.$host', port, client));
       final results = await Future.wait(futures);
-      
       for (final res in results) {
-        if (res != null) {
-          return res;
-        }
+        if (res != null) return res;
       }
     }
 
     return null;
   }
 
-  static Future<String?> _checkIp(String ip, http.Client client) async {
-    final url = Uri.parse('http://$ip:$_targetPort$_healthPath');
+  static Future<String?> _checkIp(
+      String ip, int port, http.Client client) async {
+    final url = Uri.parse('http://$ip:$port$_healthPath');
     try {
       final response = await client.get(url).timeout(_timeout);
       if (response.statusCode == 200) {
-        debugPrint('ServerDiscovery: ✓ Servidor encontrado en $ip');
-        return 'http://$ip:$_targetPort';
+        debugPrint('ServerDiscovery: Servidor encontrado en $ip:$port');
+        return 'http://$ip:$port';
       }
     } catch (_) {
-      // Timeout o error de conexión se ignoran silenciosamente
+      // Timeout o error de conexion: ignorar y continuar
     }
     return null;
   }
@@ -82,20 +93,22 @@ class ServerDiscovery {
     final ips = <String>[];
     try {
       final interfaces = await NetworkInterface.list();
-      
+
       // Priorizar interfaces WLAN/Wi-Fi
       interfaces.sort((a, b) {
-        final aWlan = a.name.toLowerCase().contains('wlan') || a.name.toLowerCase().contains('wifi');
-        final bWlan = b.name.toLowerCase().contains('wlan') || b.name.toLowerCase().contains('wifi');
+        final aWlan = a.name.toLowerCase().contains('wlan') ||
+            a.name.toLowerCase().contains('wifi');
+        final bWlan = b.name.toLowerCase().contains('wlan') ||
+            b.name.toLowerCase().contains('wifi');
         if (aWlan && !bWlan) return -1;
         if (!aWlan && bWlan) return 1;
         return 0;
       });
 
-      for (var interface in interfaces) {
-        for (var addr in interface.addresses) {
+      for (final interface in interfaces) {
+        for (final addr in interface.addresses) {
           if (addr.type == InternetAddressType.IPv4 && !addr.isLoopback) {
-            // Ignorar IPs extrañas
+            // Ignorar link-local
             if (addr.address.startsWith('169.254.')) continue;
             ips.add(addr.address);
           }
@@ -112,5 +125,36 @@ class ServerDiscovery {
     if (parts.length != 4) return null;
     return '${parts[0]}.${parts[1]}.${parts[2]}';
   }
-}
 
+  static List<int> _resolveCandidatePorts() {
+    final ports = <int>{_defaultPort};
+    final configured = Uri.tryParse(ApiConfig.baseUrl);
+
+    if (configured != null) {
+      if (configured.hasPort) {
+        ports.add(configured.port);
+      } else if (configured.scheme == 'https') {
+        ports.add(443);
+      } else if (configured.scheme == 'http') {
+        ports.add(80);
+      }
+    }
+
+    return ports.toList()..sort();
+  }
+
+  static Future<String?> _probeConfiguredBaseUrl(http.Client client) async {
+    final configured = Uri.tryParse(ApiConfig.baseUrl);
+    if (configured == null || configured.host.trim().isEmpty) return null;
+    final host = configured.host.trim();
+    if (host == 'localhost' || host == '127.0.0.1') return null;
+
+    final port = configured.hasPort
+        ? configured.port
+        : (configured.scheme == 'https' ? 443 : 80);
+    debugPrint(
+      'ServerDiscovery: Probando URL configurada primero: $host:$port',
+    );
+    return _checkIp(host, port, client);
+  }
+}

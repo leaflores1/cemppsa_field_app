@@ -15,7 +15,6 @@ import '../../repositories/planilla_repository.dart';
 import '../../data/models/schema_model.dart';
 import '../../core/config.dart';
 import '../../services/sync_service.dart';
-import '../../services/range_service.dart';
 
 class ManualReadingScreen extends StatefulWidget {
   const ManualReadingScreen({super.key});
@@ -34,9 +33,6 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
   final Map<String, FocusNode> _focusNodes = {};
 
   bool _initialized = false;
-
-  // Rangos esperados por instrumento (cache local)
-  final Map<String, List<InstrumentRange>> _rangesCache = {};
 
   @override
   void didChangeDependencies() {
@@ -95,49 +91,51 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
   @override
   Widget build(BuildContext context) {
     return WillPopScope(
-      onWillPop: () async {
-        if (_selectedTipo != null) {
-          await _confirmCancel();
-          return false;
-        }
-        return true;
-      },
-      child: Scaffold(
-        backgroundColor: const Color(0xFF0F172A),
-        appBar: AppBar(
-          backgroundColor: const Color(0xFF1E293B),
-          foregroundColor: Colors.white,
-          title: const Text('Lecturas Manuales'),
-          elevation: 0,
-          leading: _selectedTipo != null
-              ? IconButton(
-                  icon: const Icon(Icons.arrow_back),
-                  onPressed: _confirmCancel,
-                )
-              : null,
-        actions: [
-          if (_currentPlanilla != null)
-            TextButton.icon(
-              onPressed: _sendPlanilla,
-              icon: const Icon(Icons.send, color: Color(0xFF22C55E), size: 18),
-              label: const Text('Enviar',
-                  style: TextStyle(
-                      color: Color(0xFF22C55E),
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13)),
-              style: TextButton.styleFrom(
-                backgroundColor: const Color(0xFF22C55E).withOpacity(0.1),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20)),
-              ),
-            ),
-          const SizedBox(width: 8),
-        ],
-      ),
-      body: _selectedTipo == null ? _buildTipoSelector() : _buildBatchGrid(),
-    ));
+        onWillPop: () async {
+          if (_selectedTipo != null) {
+            await _confirmCancel();
+            return false;
+          }
+          return true;
+        },
+        child: Scaffold(
+          backgroundColor: const Color(0xFF0F172A),
+          appBar: AppBar(
+            backgroundColor: const Color(0xFF1E293B),
+            foregroundColor: Colors.white,
+            title: const Text('Lecturas Manuales'),
+            elevation: 0,
+            leading: _selectedTipo != null
+                ? IconButton(
+                    icon: const Icon(Icons.arrow_back),
+                    onPressed: _confirmCancel,
+                  )
+                : null,
+            actions: [
+              if (_currentPlanilla != null)
+                TextButton.icon(
+                  onPressed: _sendPlanilla,
+                  icon: const Icon(Icons.send,
+                      color: Color(0xFF22C55E), size: 18),
+                  label: const Text('Enviar',
+                      style: TextStyle(
+                          color: Color(0xFF22C55E),
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13)),
+                  style: TextButton.styleFrom(
+                    backgroundColor: const Color(0xFF22C55E).withOpacity(0.1),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20)),
+                  ),
+                ),
+              const SizedBox(width: 8),
+            ],
+          ),
+          body:
+              _selectedTipo == null ? _buildTipoSelector() : _buildBatchGrid(),
+        ));
   }
 
   // ... _buildTipoSelector ...
@@ -183,7 +181,8 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
           customLabel: label,
           customUnit: unit,
           onSave: (val) => _saveSingleReading(inst, val),
-          range: _getRangeForInstrument(inst.codigo, _resolveVariableCode(inst)),
+          range:
+              _getRangeForInstrument(inst.codigo, _resolveVariableCode(inst)),
         );
       },
     );
@@ -745,8 +744,6 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
   }
 
   Future<void> _selectFamily(TipoPlanilla tipo) async {
-    RangeService.clearCache();
-    _rangesCache.clear();
     setState(() {
       _disposeInputs();
       _selectedTipo = tipo;
@@ -762,23 +759,14 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
       _loadedSchema = null;
     });
     await _loadSchemaForType(tipo);
-    // Pre-carga rangos con UN SOLO request bulk
-    _prefetchRanges();
   }
 
-  /// Carga rangos de todos los instrumentos en un solo request
-  Future<void> _prefetchRanges() async {
-    final catalog = context.read<CatalogRepository>();
-    final instrumentos = _getInstrumentosForTipo(catalog);
-    if (instrumentos.isEmpty) return;
-    final codigos = instrumentos.map((i) => i.codigo).toList();
-    await RangeService.prefetchBulk(codigos);
-    if (mounted) setState(() {});
-  }
-
-  /// Obtiene el rango desde cache (sin requests)
-  InstrumentRange? _getRangeForInstrument(String codigo, String variableCodigo) {
-    return RangeService.getFromCache(codigo, variableCodigo);
+  /// Obtiene el rango desde el catálogo local (sin requests en pantalla)
+  InstrumentRange? _getRangeForInstrument(
+      String codigo, String variableCodigo) {
+    return context
+        .read<CatalogRepository>()
+        .rangeForInstrument(codigo, variableCodigo);
   }
 
   Widget _buildBatchGrid() {
@@ -891,7 +879,7 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
   Future<void> _confirmCancel() async {
     final hasData = _controllers.values.any((c) => c.text.isNotEmpty);
     bool shouldPop = true;
-    
+
     if (hasData) {
       final res = await showDialog<bool>(
         context: context,
@@ -1005,14 +993,12 @@ class _InstrumentInputRowState extends State<_InstrumentInputRow> {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: _isOutOfRange
-            ? const Color(0xFF422006)
-            : const Color(0xFF1E293B),
+        color:
+            _isOutOfRange ? const Color(0xFF422006) : const Color(0xFF1E293B),
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
-          color: _isOutOfRange
-              ? const Color(0xFFF59E0B)
-              : const Color(0xFF334155),
+          color:
+              _isOutOfRange ? const Color(0xFFF59E0B) : const Color(0xFF334155),
         ),
       ),
       child: Column(
