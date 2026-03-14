@@ -173,10 +173,10 @@ class _PlanillaDetailScreenState extends State<PlanillaDetailScreen> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: const Color(0xFFEF4444).withOpacity(0.1),
+                color: const Color(0xFFEF4444).withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
                 border:
-                    Border.all(color: const Color(0xFFEF4444).withOpacity(0.3)),
+                    Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.3)),
               ),
               child: Row(
                 children: [
@@ -527,7 +527,7 @@ class _LecturaRow extends StatelessWidget {
             width: 60,
             padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
             decoration: BoxDecoration(
-              color: const Color(0xFF3B82F6).withOpacity(0.1),
+              color: const Color(0xFF3B82F6).withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(6),
             ),
             child: Text(

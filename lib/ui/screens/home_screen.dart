@@ -403,10 +403,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildFooter() {
-    return Padding(
-      padding: const EdgeInsets.all(16),
+    return const Padding(
+      padding: EdgeInsets.all(16),
       child: Column(
-        children: const [
+        children: [
           Divider(color: Color(0xFF334155)),
           SizedBox(height: 8),
           Text(

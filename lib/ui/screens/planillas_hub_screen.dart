@@ -165,7 +165,7 @@ class _PlanillasHubScreenState extends State<PlanillasHubScreen>
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               constraints: const BoxConstraints(minWidth: 20),
               decoration: BoxDecoration(
-                color: Color.fromRGBO(color.red, color.green, color.blue, 0.2),
+                color: color.withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text(

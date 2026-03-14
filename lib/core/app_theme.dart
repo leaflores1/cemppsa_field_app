@@ -14,18 +14,15 @@ class AppTheme {
   static const _secondary = Color(0xFF9FB7FF); // blue-ish
 
   static ThemeData dark() {
-    final scheme = ColorScheme(
-      brightness: Brightness.dark,
+    const scheme = ColorScheme.dark(
       primary: _primary,
-      onPrimary: const Color(0xFF07101A),
+      onPrimary: Color(0xFF07101A),
       secondary: _secondary,
-      onSecondary: const Color(0xFF0B1322),
-      error: const Color(0xFFFF6B6B),
-      onError: const Color(0xFF1A0A0A),
+      onSecondary: Color(0xFF0B1322),
+      error: Color(0xFFFF6B6B),
+      onError: Color(0xFF1A0A0A),
       surface: _surface,
-      onSurface: const Color(0xFFE7EEF8),
-      background: _bgTop,
-      onBackground: const Color(0xFFE7EEF8),
+      onSurface: Color(0xFFE7EEF8),
     );
 
     return ThemeData(
@@ -61,7 +58,7 @@ class AppTheme {
 
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
-        backgroundColor: const Color(0xFF0F1A2B).withOpacity(0.95),
+        backgroundColor: const Color(0xFF0F1A2B).withValues(alpha: 0.95),
         contentTextStyle: const TextStyle(color: Color(0xFFE7EEF8)),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       ),

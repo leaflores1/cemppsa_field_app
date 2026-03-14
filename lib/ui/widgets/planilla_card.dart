@@ -106,7 +106,7 @@ class PlanillaCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFEF4444).withOpacity(0.1),
+                    color: const Color(0xFFEF4444).withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Row(
@@ -172,12 +172,12 @@ class PlanillaCard extends StatelessWidget {
     switch (planilla.estado) {
       case PlanillaEstado.rechazada:
       case PlanillaEstado.error:
-        return const Color(0xFFEF4444).withOpacity(0.3);
+        return const Color(0xFFEF4444).withValues(alpha: 0.3);
       case PlanillaEstado.enviada:
-        return const Color(0xFF22C55E).withOpacity(0.3);
+        return const Color(0xFF22C55E).withValues(alpha: 0.3);
       case PlanillaEstado.pendiente:
       case PlanillaEstado.enviando:
-        return const Color(0xFFF59E0B).withOpacity(0.3);
+        return const Color(0xFFF59E0B).withValues(alpha: 0.3);
       default:
         return const Color(0xFF334155);
     }
@@ -208,7 +208,7 @@ class _TipoIcon extends StatelessWidget {
       width: 44,
       height: 44,
       decoration: BoxDecoration(
-        color: config.color.withOpacity(0.15),
+        color: config.color.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Icon(config.icon, color: config.color, size: 22),

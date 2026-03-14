@@ -177,10 +177,10 @@ class _ExportCsvScreenState extends State<ExportCsvScreen> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: const Color(0xFF22C55E).withOpacity(0.1),
+                color: const Color(0xFF22C55E).withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(10),
                 border:
-                    Border.all(color: const Color(0xFF22C55E).withOpacity(0.3)),
+                    Border.all(color: const Color(0xFF22C55E).withValues(alpha: 0.3)),
               ),
               child: Row(
                 children: [
@@ -532,12 +532,12 @@ class _SelectablePlanillaRow extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
         color: isSelected
-            ? const Color(0xFF3B82F6).withOpacity(0.1)
+            ? const Color(0xFF3B82F6).withValues(alpha: 0.1)
             : const Color(0xFF1E293B),
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: isSelected
-              ? const Color(0xFF3B82F6).withOpacity(0.5)
+              ? const Color(0xFF3B82F6).withValues(alpha: 0.5)
               : const Color(0xFF334155),
         ),
       ),

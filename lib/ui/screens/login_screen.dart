@@ -147,6 +147,7 @@ class _LoginScreenState extends State<LoginScreen> {
           ApiConfig.setBaseUrl(normalized);
           final settingsBox = await Hive.openBox(StorageConfig.settingsBox);
           await settingsBox.put(ApiConfig.settingsServerUrlKey, normalized);
+          if (!mounted) return;
 
           context.read<AuthService>().updateApiBaseUrl(normalized);
           final syncService = context.read<SyncService>();

@@ -104,13 +104,12 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
   // [MODIFIED] AppBar action: "Enviar"
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-        onWillPop: () async {
-          if (_selectedTipo != null) {
-            await _confirmCancel();
-            return false;
+    return PopScope(
+        canPop: _selectedTipo == null,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop && _selectedTipo != null) {
+            _confirmCancel();
           }
-          return true;
         },
         child: Scaffold(
           backgroundColor: const Color(0xFF0F172A),
@@ -137,7 +136,8 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
                           fontWeight: FontWeight.bold,
                           fontSize: 13)),
                   style: TextButton.styleFrom(
-                    backgroundColor: const Color(0xFF22C55E).withOpacity(0.1),
+                    backgroundColor:
+                        const Color(0xFF22C55E).withValues(alpha: 0.1),
                     padding:
                         const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     shape: RoundedRectangleBorder(
@@ -404,6 +404,7 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
     if (!readyToContinue) {
       return;
     }
+    if (!mounted) return;
 
     if (_currentPlanilla!.lecturas.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -645,6 +646,7 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
     }
 
     _currentPlanilla!.estado = PlanillaEstado.borrador;
+    if (!mounted) return;
     await context.read<PlanillaRepository>().save(_currentPlanilla!);
 
     if (mounted) {
@@ -1462,12 +1464,7 @@ class _FamilyCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final iconBgColor = Color.fromRGBO(
-      color.red,
-      color.green,
-      color.blue,
-      0.15,
-    );
+    final iconBgColor = color.withValues(alpha: 0.15);
 
     return Material(
       color: const Color(0xFF1E293B),
