@@ -1,6 +1,6 @@
-// ==============================================================================
+﻿// ==============================================================================
 // CEMPPSA Field App - SettingsScreen
-// Pantalla de configuración de la app (desacoplada de SyncService)
+// Pantalla de configuraciÃ³n de la app (desacoplada de SyncService)
 // ==============================================================================
 
 import 'package:flutter/material.dart';
@@ -13,6 +13,7 @@ import '../../repositories/planilla_repository.dart';
 import '../../repositories/catalogo_repository.dart';
 import '../../services/auth_service.dart';
 import '../../services/sync_service.dart';
+import '../widgets/catalog_freshness_banner.dart';
 import '../../utils/csv_exporter.dart';
 import '../../utils/server_discovery.dart';
 
@@ -33,7 +34,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       appBar: AppBar(
         backgroundColor: const Color(0xFF1E293B),
         foregroundColor: Colors.white,
-        title: const Text('Configuración'),
+        title: const Text('ConfiguraciÃ³n'),
         elevation: 0,
       ),
       body: ListView(
@@ -55,7 +56,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         label: 'Nombre',
                         value: AppConfig.technicianName ??
                             user?.displayName ??
-                            'Sin sesión',
+                            'Sin sesiÃ³n',
                         trailing: TextButton(
                           onPressed: _editTechnicianName,
                           child: const Text('Editar'),
@@ -63,14 +64,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                       const Divider(color: Color(0xFF334155)),
                       _InfoTile(
-                        label: 'ID técnico',
+                        label: 'ID tÃ©cnico',
                         value:
-                            AppConfig.technicianId ?? user?.id ?? 'Sin sesión',
+                            AppConfig.technicianId ?? user?.id ?? 'Sin sesiÃ³n',
                       ),
                       const Divider(color: Color(0xFF334155)),
                       _InfoTile(
                         label: 'Email',
-                        value: user?.email ?? 'Sin sesión',
+                        value: user?.email ?? 'Sin sesiÃ³n',
                       ),
                     ],
                   );
@@ -91,7 +92,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: OutlinedButton.icon(
               onPressed: _logout,
               icon: const Icon(Icons.logout),
-              label: const Text('Cerrar sesión'),
+              label: const Text('Cerrar sesiÃ³n'),
             ),
           ),
 
@@ -123,7 +124,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 title: Text(
                   _isDiscoveringServer
                       ? 'Buscando en red local...'
-                      : 'Buscar servidor automáticamente',
+                      : 'Buscar servidor automÃ¡ticamente',
                   style: const TextStyle(fontSize: 14),
                 ),
                 onTap: _isDiscoveringServer ? null : _discoverServer,
@@ -140,17 +141,50 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: 12),
           _SettingsCard(
             children: [
-              Consumer<CatalogRepository>(
-                builder: (_, catalog, __) => _InfoTile(
-                  label: 'Catálogo de instrumentos',
-                  value: '${catalog.totalInstrumentos} instrumentos',
-                  trailing: TextButton(
-                    onPressed: catalog.isSyncing
-                        ? null
-                        : () => _refreshCatalog(catalog),
-                    child: const Text('Actualizar'),
-                  ),
-                ),
+              Consumer2<CatalogRepository, SyncService>(
+                builder: (_, catalog, syncService, __) {
+                  final info = CatalogFreshnessInfo.fromRepository(catalog);
+                  final connectionLabel = syncService.isConnected
+                      ? 'Red disponible'
+                      : 'Sin red disponible';
+                  return Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                        child: CatalogFreshnessBanner(
+                          info: info,
+                          onTap: () =>
+                              _showCatalogFreshnessPanel(catalog, syncService),
+                        ),
+                      ),
+                      _InfoTile(
+                        label: 'Catalogo de instrumentos',
+                        value: '${catalog.totalInstrumentos} instrumentos',
+                        trailing: TextButton(
+                          onPressed: catalog.isSyncing
+                              ? null
+                              : () => _refreshCatalog(catalog),
+                          child: const Text('Actualizar'),
+                        ),
+                      ),
+                      const Divider(color: Color(0xFF334155)),
+                      _InfoTile(
+                        label: 'Ultima sincronizacion',
+                        value: info.lastSyncLabel,
+                      ),
+                      const Divider(color: Color(0xFF334155)),
+                      _InfoTile(
+                        label: 'Version del catalogo',
+                        value: info.versionLabel,
+                      ),
+                      const Divider(color: Color(0xFF334155)),
+                      _InfoTile(
+                        label: 'Estado de red',
+                        value: connectionLabel,
+                      ),
+                    ],
+                  );
+                },
               ),
               const Divider(color: Color(0xFF334155)),
               Consumer<PlanillaRepository>(
@@ -177,7 +211,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _ActionTile(
                 icon: Icons.cleaning_services_outlined,
                 label: 'Limpiar planillas enviadas',
-                subtitle: 'Elimina planillas enviadas hace más de 30 días',
+                subtitle: 'Elimina planillas enviadas hace mas de 30 dias',
                 onTap: _cleanOldPlanillas,
               ),
               const Divider(color: Color(0xFF334155)),
@@ -197,15 +231,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
           // =========================
           const _SectionHeader(title: 'ACERCA DE'),
           const SizedBox(height: 12),
-          _SettingsCard(
-            children: const [
+          const _SettingsCard(
+            children: [
               _InfoTile(
-                label: 'Aplicación',
+                label: 'Aplicacion',
                 value: AppConfig.appName,
               ),
               Divider(color: Color(0xFF334155)),
               _InfoTile(
-                label: 'Versión',
+                label: 'Version',
                 value: AppConfig.version,
               ),
             ],
@@ -239,7 +273,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             style: const TextStyle(color: Colors.white),
             decoration: const InputDecoration(
               labelText: 'Tu Nombre',
-              hintText: 'Ej: Juan Pérez',
+              hintText: 'Ej: Juan PÃ©rez',
             ),
           ),
           actions: [
@@ -263,7 +297,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('El nombre no puede estar vacío'),
+            content: Text('El nombre no puede estar vacÃ­o'),
             backgroundColor: Color(0xFFEF4444),
           ),
         );
@@ -337,43 +371,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('URL inválida. Ejemplo: 192.168.100.112:8000'),
+          content: Text('URL invÃ¡lida. Ejemplo: 192.168.100.112:8000'),
           backgroundColor: Color(0xFFEF4444),
         ),
       );
       return;
     }
-
-    ApiConfig.setBaseUrl(normalized);
-    final settingsBox = await Hive.openBox(StorageConfig.settingsBox);
-    await settingsBox.put(ApiConfig.settingsServerUrlKey, normalized);
-
-    if (!mounted) return;
-    context.read<AuthService>().updateApiBaseUrl(normalized);
-    final syncService = context.read<SyncService>();
-    syncService.updateApiBaseUrl(normalized);
-    context.read<CatalogRepository>().setBaseUrl(normalized);
-    final connected = await syncService.checkConnection();
-
-    if (!mounted) return;
-    setState(() {});
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          connected
-              ? 'Servidor actualizado: $normalized'
-              : 'Servidor guardado, pero sin conexiÃ³n al backend',
-        ),
-        backgroundColor:
-            connected ? const Color(0xFF22C55E) : const Color(0xFFF59E0B),
-      ),
-    );
+    await _applyServerUrlChange(normalized);
   }
 
   Future<void> _discoverServer() async {
     setState(() => _isDiscoveringServer = true);
     try {
-      debugPrint('DiscoverServer: Iniciando búsqueda...');
+      debugPrint('DiscoverServer: Iniciando bÃºsqueda...');
       final ip = await ServerDiscovery.findServer();
       debugPrint('DiscoverServer: Resultado=$ip');
       if (!mounted) return;
@@ -381,26 +391,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (ip != null) {
         final apply = await _showDiscoverySuccessDialog(ip);
         if (apply == true) {
-          ApiConfig.setBaseUrl(ip);
-          final settingsBox = await Hive.openBox(StorageConfig.settingsBox);
-          await settingsBox.put(ApiConfig.settingsServerUrlKey, ip);
-
-          if (!mounted) return;
-          context.read<AuthService>().updateApiBaseUrl(ip);
-          context.read<SyncService>().updateApiBaseUrl(ip);
-          context.read<CatalogRepository>().setBaseUrl(ip);
-          
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Servidor actualizado: $ip'),
-              backgroundColor: const Color(0xFF22C55E),
-            ),
-          );
+          await _applyServerUrlChange(ip);
         }
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('No se encontró ningún servidor en la red local'),
+            content: Text('No se encontrÃ³ ningÃºn servidor en la red local'),
             backgroundColor: Color(0xFFF59E0B),
           ),
         );
@@ -410,7 +406,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error en búsqueda: $e'),
+          content: Text('Error en bÃºsqueda: $e'),
           backgroundColor: const Color(0xFFEF4444),
         ),
       );
@@ -425,7 +421,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1E293B),
         title: const Text('Servidor encontrado', style: TextStyle(color: Colors.white)),
-        content: Text('Se encontró un servidor en $ip.\n\n¿Deseas usar esta dirección?'),
+        content: Text('Se encontrÃ³ un servidor en $ip.\n\nÂ¿Deseas usar esta direcciÃ³n?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -433,7 +429,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Usar esta dirección'),
+            child: const Text('Usar esta direcciÃ³n'),
           ),
         ],
       ),
@@ -447,10 +443,57 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          ok ? 'Catálogo actualizado' : 'Error al sincronizar catálogo',
+          ok ? 'CatÃ¡logo actualizado' : 'Error al sincronizar catÃ¡logo',
         ),
         backgroundColor: ok ? const Color(0xFF22C55E) : const Color(0xFFEF4444),
       ),
+    );
+  }
+
+  Future<void> _applyServerUrlChange(String normalized) async {
+    if (normalized == ApiConfig.baseUrl) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('El servidor ya estaba configurado'),
+          backgroundColor: Color(0xFF64748B),
+        ),
+      );
+      return;
+    }
+
+    ApiConfig.setBaseUrl(normalized);
+    final settingsBox = await Hive.openBox(StorageConfig.settingsBox);
+    await settingsBox.put(ApiConfig.settingsServerUrlKey, normalized);
+
+    if (!mounted) return;
+    context.read<AuthService>().updateApiBaseUrl(normalized);
+    context.read<SyncService>().updateApiBaseUrl(normalized);
+    final catalog = context.read<CatalogRepository>();
+    catalog.setBaseUrl(normalized);
+    await catalog.clearLocalCache();
+
+    if (!mounted) return;
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Catalogo limpiado. Sincroniza antes de tomar mediciones.'),
+        backgroundColor: Color(0xFFF59E0B),
+      ),
+    );
+  }
+
+  Future<void> _showCatalogFreshnessPanel(
+    CatalogRepository catalog,
+    SyncService syncService,
+  ) {
+    return showCatalogFreshnessDetailsSheet(
+      context,
+      info: CatalogFreshnessInfo.fromRepository(catalog),
+      checkConnection: syncService.checkConnection,
+      initialIsConnected: syncService.isConnected,
+      isRefreshing: catalog.isSyncing,
+      onRefreshRequested: () => _refreshCatalog(catalog),
     );
   }
 

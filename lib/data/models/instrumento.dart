@@ -387,35 +387,35 @@ class Instrumento {
     };
   }
 
-  /// Obtiene rango de una variable. Si no hay match exacto, usa fallback estable.
+  /// Obtiene rango de una variable solo con match exacto.
   InstrumentRange? rangeForVariable(String variableCodigo) {
     if (rangos.isEmpty) return null;
-    final target = variableCodigo.toUpperCase();
+    final target = variableCodigo.trim().toUpperCase();
     for (final r in rangos) {
       if (r.variableCodigo.toUpperCase() == target) return r;
     }
+    return null;
+  }
 
-    const preferred = [
-      'DELTA_P_MCA',
-      'NIVEL_MCA',
-      'NIVEL_FREATICO',
-      'CAUDAL',
-      'LECTURA_LU',
-      'DX',
-      'DY',
-      'DZ',
-      'INCLINACION',
-    ];
-    for (final pref in preferred) {
-      for (final r in rangos) {
-        if (r.variableCodigo.toUpperCase() == pref) return r;
-      }
+  String rangeDebugInfo(String variableCodigo) {
+    final rawTarget = variableCodigo.trim();
+    if (rawTarget.isEmpty) {
+      return 'Instrumento $codigo sin variable solicitada para buscar rango';
     }
-
-    for (final r in rangos) {
-      if (r.variableCodigo.toUpperCase() != 'PERIODO') return r;
+    if (rangos.isEmpty) {
+      return 'Instrumento $codigo sin rangos configurados para $rawTarget';
     }
-    return rangos.first;
+    final target = rawTarget.toUpperCase();
+    final available = rangos
+        .map((r) => r.variableCodigo.trim().toUpperCase())
+        .where((value) => value.isNotEmpty)
+        .toList();
+    if (available.contains(target)) {
+      return 'Instrumento $codigo con match exacto para $target';
+    }
+    final availableLabel = available.join(', ');
+    return 'Instrumento $codigo sin match exacto para $target. '
+        'Disponibles: $availableLabel';
   }
 
   /// Nombre para mostrar en UI

@@ -121,6 +121,20 @@ class SyncService extends ChangeNotifier {
     CatalogRepository? catalog,
   }) async {
     _lastWasConnectivityIssue = false;
+    final invalidLecturas = planilla.lecturas
+        .where((l) => l.valorInvalido == true || l.value == null)
+        .toList();
+    if (invalidLecturas.isNotEmpty) {
+      final codes = invalidLecturas.map((l) => l.instrumentCode).toSet().toList()
+        ..sort();
+      final error = 'La planilla contiene valores inválidos o incompletos: '
+          '${codes.join(', ')}';
+      _lastError = error;
+      _lastWasConnectivityIssue = false;
+      planilla.errorMessage = error;
+      return false;
+    }
+
     final requestBody = planilla.toSyncRequest();
     _injectSenderMetadata(planilla, requestBody);
     if (catalog != null) {
@@ -621,25 +635,14 @@ class SyncService extends ChangeNotifier {
   }
 
   List<Map<String, dynamic>> _buildManualRows(Planilla planilla) {
-    // Group by timestamp (ISO string usually sufficient equality check if consistent)
-    final grouped = <String, Map<String, dynamic>>{};
-
     for (final lectura in planilla.lecturas) {
-      final ts = lectura.measuredAt.toIso8601String();
-      if (!grouped.containsKey(ts)) {
-        grouped[ts] = {'fecha': ts};
+      if (lectura.valorInvalido == true || lectura.value == null) {
+        throw StateError(
+          'Planilla manual contiene lecturas inválidas: ${lectura.instrumentCode}',
+        );
       }
-
-      // Add Value
-      // Backend expects "CODE": value.
-      // Lectura model stores value as double.
-      grouped[ts]![lectura.instrumentCode] = lectura.value;
     }
-
-    final rows = grouped.entries.toList()
-      ..sort((a, b) => a.key.compareTo(b.key));
-
-    return rows.map((entry) => entry.value).toList();
+    return planilla.lecturas.map((lectura) => lectura.toSyncJson()).toList();
   }
 
   String _mapTipoToFamiliaId(TipoPlanilla tipo) {

@@ -1,9 +1,10 @@
-// ==============================================================================
+﻿// ==============================================================================
 // CEMPPSA Field App - CR10XBatchScreen
 // Pantalla de carga masiva CR10X (contingencia cuando falla automatico)
 // ==============================================================================
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 
 import '../../data/models/instrumento.dart';
@@ -14,6 +15,8 @@ import '../../repositories/planilla_repository.dart';
 import '../../services/sync_service.dart';
 import 'dart:convert';
 import '../../core/config.dart';
+import '../widgets/catalog_freshness_banner.dart';
+import '../widgets/out_of_range_review_sheet.dart';
 
 class CR10XBatchScreen extends StatefulWidget {
   const CR10XBatchScreen({super.key});
@@ -24,6 +27,8 @@ class CR10XBatchScreen extends StatefulWidget {
 
 class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
   static const List<String> _triaxAxes = ['X', 'Y', 'Z'];
+  static final List<String> _triaxBaseCodes =
+      List<String>.generate(15, (index) => 'J${index + 1}');
   static const Set<String> _ejeCPiezometrosExtras = {
     'PC05',
     'PC13',
@@ -44,8 +49,13 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
   // Controladores para entrada rapida en grid
   final Map<String, TextEditingController> _controllers = {};
   final Map<String, FocusNode> _focusNodes = {};
+  final Map<String, String> _confirmedWarningRawByKey = {};
+  final Set<String> _reviewHighlightedKeys = {};
+  final Set<String> _loggedMissingCatalogCodes = {};
 
   bool _initialized = false;
+  static const String _confirmedOutOfRangeNote =
+      'Valor fuera de rango confirmado por tecnico en campo';
 
   @override
   void didChangeDependencies() {
@@ -99,7 +109,12 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
       if (!_controllers.containsKey(key)) {
         _controllers[key] = TextEditingController();
       }
-      _controllers[key]!.text = lectura.value.toString();
+      _controllers[key]!.text = _controllerTextForLectura(lectura);
+      if (lectura.advertenciaConfirmada == true && lectura.valorRaw != null) {
+        _confirmedWarningRawByKey[
+                _readingKey(lectura.instrumentCode, lectura.parameter)] =
+            lectura.valorRaw!;
+      }
     }
   }
 
@@ -153,6 +168,8 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
     }
     _controllers.clear();
     _focusNodes.clear();
+    _confirmedWarningRawByKey.clear();
+    _reviewHighlightedKeys.clear();
   }
 
   @override
@@ -181,7 +198,9 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
             actions: [
               if (_currentPlanilla != null)
                 TextButton.icon(
-                  onPressed: _sendPlanilla, // [MODIFIED] Now triggers Send
+                  onPressed: _hasInvalidInputs
+                      ? null
+                      : _sendPlanilla, // [MODIFIED] Now triggers Send
                   icon: const Icon(Icons.send,
                       color: Color(0xFF22C55E), size: 18),
                   label: const Text('Enviar',
@@ -350,7 +369,7 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
     });
   }
 
-  /// Obtiene el rango desde el catálogo local (sin requests en pantalla)
+  /// Obtiene el rango desde el catÃ¡logo local (sin requests en pantalla)
   InstrumentRange? _getRangeForInstrument(
       String codigo, String variableCodigo) {
     return context
@@ -385,6 +404,10 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
   }
 
   Widget _buildBatchHeader() {
+    final catalog = context.watch<CatalogRepository>();
+    final syncService = context.watch<SyncService>();
+    final freshnessInfo = CatalogFreshnessInfo.fromRepository(catalog);
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: const BoxDecoration(
@@ -450,6 +473,11 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
                 ],
               ),
             ),
+          ),
+          const SizedBox(height: 12),
+          CatalogFreshnessBanner(
+            info: freshnessInfo,
+            onTap: () => _showCatalogFreshnessPanel(catalog, syncService),
           ),
         ],
       ),
@@ -547,6 +575,8 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
           final baseCode = _triaxBaseCode(inst.codigo);
           return _TriaxialInputRow(
             instrumentCode: baseCode,
+            hasCatalogReference:
+                context.read<CatalogRepository>().byCode(baseCode) != null,
             controllerX: _getController(_triaxAxisKey(baseCode, 'X')),
             controllerY: _getController(_triaxAxisKey(baseCode, 'Y')),
             controllerZ: _getController(_triaxAxisKey(baseCode, 'Z')),
@@ -562,6 +592,30 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
             rangeX: _getRangeForInstrument(baseCode, 'EJE_X'),
             rangeY: _getRangeForInstrument(baseCode, 'EJE_Y'),
             rangeZ: _getRangeForInstrument(baseCode, 'EJE_Z'),
+            isWarningConfirmedX: _isWarningConfirmed(
+              _triaxAxisKey(baseCode, 'X'),
+              'PERIODO_X',
+              _getController(_triaxAxisKey(baseCode, 'X')).text,
+            ),
+            isWarningConfirmedY: _isWarningConfirmed(
+              _triaxAxisKey(baseCode, 'Y'),
+              'PERIODO_Y',
+              _getController(_triaxAxisKey(baseCode, 'Y')).text,
+            ),
+            isWarningConfirmedZ: _isWarningConfirmed(
+              _triaxAxisKey(baseCode, 'Z'),
+              'PERIODO_Z',
+              _getController(_triaxAxisKey(baseCode, 'Z')).text,
+            ),
+            needsReviewX: _reviewHighlightedKeys.contains(
+              _readingKey(_triaxAxisKey(baseCode, 'X'), 'PERIODO_X'),
+            ),
+            needsReviewY: _reviewHighlightedKeys.contains(
+              _readingKey(_triaxAxisKey(baseCode, 'Y'), 'PERIODO_Y'),
+            ),
+            needsReviewZ: _reviewHighlightedKeys.contains(
+              _readingKey(_triaxAxisKey(baseCode, 'Z'), 'PERIODO_Z'),
+            ),
           );
         }
 
@@ -579,6 +633,20 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
                 _saveAsentimetroReadings(inst, luValue, tempValue),
             rangeLu: _getRangeForInstrument(inst.codigo, 'LECTURA_LU'),
             rangeTemp: _getRangeForInstrument(inst.codigo, 'TEMPERATURA'),
+            isLuWarningConfirmed: _isWarningConfirmed(
+              inst.codigo,
+              'LECTURA_LU',
+              _getController(inst.codigo).text,
+            ),
+            isTempWarningConfirmed: _isWarningConfirmed(
+              inst.codigo,
+              'TEMPERATURA',
+              _getController(_tempControllerKey(inst.codigo)).text,
+            ),
+            needsReviewLu: _reviewHighlightedKeys
+                .contains(_readingKey(inst.codigo, 'LECTURA_LU')),
+            needsReviewTemp: _reviewHighlightedKeys
+                .contains(_readingKey(inst.codigo, 'TEMPERATURA')),
           );
         }
 
@@ -591,6 +659,14 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
           unitLabel: _resolveInputUnitLabel(inst),
           range: _getRangeForInstrument(
               inst.codigo, _resolvePrimaryParameter(inst)),
+          isWarningConfirmed: _isWarningConfirmed(
+            inst.codigo,
+            _resolvePrimaryParameter(inst),
+            _getController(inst.codigo).text,
+          ),
+          needsReviewHighlight: _reviewHighlightedKeys.contains(
+            _readingKey(inst.codigo, _resolvePrimaryParameter(inst)),
+          ),
         );
       },
     );
@@ -766,8 +842,21 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
       );
     }
 
-    if (byBase.isEmpty) {
-      return [];
+    for (final baseCode in _triaxBaseCodes) {
+      byBase.putIfAbsent(baseCode, () {
+        if (kDebugMode && _loggedMissingCatalogCodes.add(baseCode)) {
+          debugPrint('Instrumento $baseCode no encontrado en catalogo');
+        }
+        return Instrumento.fromCode(baseCode);
+      });
+    }
+
+    for (final baseCode in byBase.keys) {
+      if (catalog.byCode(baseCode) == null &&
+          kDebugMode &&
+          _loggedMissingCatalogCodes.add(baseCode)) {
+        debugPrint('Instrumento $baseCode no encontrado en catalogo');
+      }
     }
 
     final items = byBase.values.toList()
@@ -777,7 +866,13 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
 
   TextEditingController _getController(String codigo) {
     if (!_controllers.containsKey(codigo)) {
-      _controllers[codigo] = TextEditingController();
+      final controller = TextEditingController();
+      controller.addListener(() {
+        if (mounted) {
+          setState(() {});
+        }
+      });
+      _controllers[codigo] = controller;
     }
     return _controllers[codigo]!;
   }
@@ -834,7 +929,9 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
             ),
             const SizedBox(width: 8),
             ElevatedButton(
-              onPressed: filledCount > 0 ? _saveDraft : null, // [MODIFIED]
+              onPressed: filledCount > 0 && !_hasInvalidInputs
+                  ? _saveDraft
+                  : null, // [MODIFIED]
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF3B82F6), // [MODIFIED] Blue
                 disabledBackgroundColor: const Color(0xFF334155),
@@ -904,7 +1001,7 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
       instrumento: inst,
       rawValue: rawTempValue,
       parameter: 'TEMPERATURA',
-      unit: '°C',
+      unit: 'Â°C',
     );
 
     _currentPlanilla!.estado = PlanillaEstado.borrador;
@@ -940,6 +1037,8 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
         rawValue: values[axis] ?? '',
         parameter: 'PERIODO_$axis',
         unit: _resolveTriaxialUnit(inst),
+        rangeInstrumentCode: baseCode,
+        rangeVariableCode: 'EJE_$axis',
       );
     }
 
@@ -988,6 +1087,8 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
     for (final c in _controllers.values) {
       c.clear();
     }
+    _confirmedWarningRawByKey.clear();
+    _reviewHighlightedKeys.clear();
     setState(() {});
   }
 
@@ -997,6 +1098,8 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
     required String rawValue,
     String? parameter,
     String? unit,
+    String? rangeInstrumentCode,
+    String? rangeVariableCode,
   }) {
     if (_currentPlanilla == null) return;
     final normalizedValue = rawValue.trim();
@@ -1013,6 +1116,28 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
           l.instrumentCode == resolvedInstrumentCode &&
           (l.parameter ?? '').toLowerCase() == normalizedParameter,
     );
+    final existingReading =
+        existingIndex >= 0 ? _currentPlanilla!.lecturas[existingIndex] : null;
+    final effectiveRangeInstrumentCode =
+        rangeInstrumentCode ?? resolvedInstrumentCode;
+    final effectiveRangeVariableCode =
+        (rangeVariableCode ?? resolvedParameter).trim();
+    final range = _getRangeForInstrument(
+      effectiveRangeInstrumentCode,
+      effectiveRangeVariableCode,
+    );
+    final parsedValue = Lectura.parseRawValue(normalizedValue);
+    final hasRange = range?.hasRange == true;
+    final fueraDeRango =
+        parsedValue != null ? (hasRange ? range!.isOutOfRange(parsedValue) : null) : null;
+    final advertenciaConfirmada = fueraDeRango == true &&
+            _isWarningConfirmed(
+              resolvedInstrumentCode,
+              resolvedParameter,
+              normalizedValue,
+            )
+        ? true
+        : null;
 
     final lectura = Lectura.fromForm(
       clientRowId: existingIndex >= 0
@@ -1023,6 +1148,15 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
       unit: unit ?? _resolvePrimaryUnit(instrumento),
       rawValue: normalizedValue,
       measuredAt: _batchDateTime,
+      fueraDeRango: fueraDeRango,
+      rangoMin: hasRange && parsedValue != null ? range!.min : null,
+      rangoMax: hasRange && parsedValue != null ? range!.max : null,
+      rangoVersion: hasRange && parsedValue != null ? range!.version : null,
+      advertenciaConfirmada: advertenciaConfirmada,
+      notes: _buildReadingNotes(
+        warningConfirmed: advertenciaConfirmada == true,
+        existingNotes: existingReading?.notes,
+      ),
     );
 
     if (existingIndex >= 0) {
@@ -1046,6 +1180,8 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
             rawValue: _controllers[_triaxAxisKey(baseCode, axis)]?.text ?? '',
             parameter: 'PERIODO_$axis',
             unit: _resolveTriaxialUnit(inst),
+            rangeInstrumentCode: baseCode,
+            rangeVariableCode: 'EJE_$axis',
           );
         }
         continue;
@@ -1062,7 +1198,7 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
           instrumento: inst,
           rawValue: _controllers[_tempControllerKey(inst.codigo)]?.text ?? '',
           parameter: 'TEMPERATURA',
-          unit: '°C',
+          unit: 'Â°C',
         );
         continue;
       }
@@ -1116,6 +1252,10 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
 
   Future<void> _sendPlanilla() async {
     if (_currentPlanilla == null) return;
+    if (_hasInvalidInputs) {
+      _showInvalidValuesMessage();
+      return;
+    }
     final hasValues = _controllers.values.any((c) => c.text.isNotEmpty);
 
     if (!hasValues && _currentPlanilla?.lecturas.isEmpty == true) {
@@ -1127,7 +1267,11 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
 
     // Save local pending (always rebuild from current form state)
     final instrumentos = _getInstrumentosForGrid();
-    _syncPlanillaFromInputs(instrumentos);
+    final readyToContinue =
+        await _ensureOutOfRangeConfirmation(instrumentos);
+    if (!readyToContinue) {
+      return;
+    }
 
     if (_currentPlanilla!.lecturas.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1172,7 +1316,7 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-              'Sin conexión: planilla guardada como pendiente para sincronizar.',
+              'Sin conexiÃ³n: planilla guardada como pendiente para sincronizar.',
             ),
             backgroundColor: Color(0xFF64748B),
           ),
@@ -1192,7 +1336,7 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text(
-                'Sin conexión: planilla guardada como pendiente para sincronizar.',
+                'Sin conexiÃ³n: planilla guardada como pendiente para sincronizar.',
               ),
               backgroundColor: Color(0xFF64748B),
             ),
@@ -1240,8 +1384,16 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
 
   Future<void> _saveDraft() async {
     if (_currentPlanilla == null) return;
+    if (_hasInvalidInputs) {
+      _showInvalidValuesMessage();
+      return;
+    }
     final instrumentos = _getInstrumentosForGrid();
-    _syncPlanillaFromInputs(instrumentos);
+    final readyToContinue =
+        await _ensureOutOfRangeConfirmation(instrumentos);
+    if (!readyToContinue) {
+      return;
+    }
 
     _currentPlanilla!.estado = PlanillaEstado.borrador;
     await context.read<PlanillaRepository>().save(_currentPlanilla!);
@@ -1261,11 +1413,11 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
 
     if (!hasData) {
       setState(() {
-        _disposeInputs();
-        _batchDateTime = DateTime.now();
-        _selectedTipo = null;
-        _selectedEje = null;
-        _currentPlanilla = null;
+      _disposeInputs();
+      _batchDateTime = DateTime.now();
+      _selectedTipo = null;
+      _selectedEje = null;
+      _currentPlanilla = null;
       });
       return;
     }
@@ -1394,6 +1546,196 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
         '${dt.hour.toString().padLeft(2, '0')}:'
         '${dt.minute.toString().padLeft(2, '0')}';
   }
+
+  Future<void> _showCatalogFreshnessPanel(
+    CatalogRepository catalog,
+    SyncService syncService,
+  ) {
+    return showCatalogFreshnessDetailsSheet(
+      context,
+      info: CatalogFreshnessInfo.fromRepository(catalog),
+      checkConnection: syncService.checkConnection,
+      initialIsConnected: syncService.isConnected,
+      isRefreshing: catalog.isSyncing,
+      onRefreshRequested: () => _refreshCatalogFromMeasurement(catalog),
+    );
+  }
+
+  Future<void> _refreshCatalogFromMeasurement(CatalogRepository catalog) async {
+    final ok = await catalog.syncFromBackend();
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(ok ? 'Catalogo actualizado' : 'Error al actualizar catalogo'),
+        backgroundColor: ok ? const Color(0xFF22C55E) : const Color(0xFFEF4444),
+      ),
+    );
+  }
+
+  String _controllerTextForLectura(Lectura lectura) {
+    if (lectura.valorRaw != null) {
+      return lectura.valorRaw!;
+    }
+    return lectura.value?.toString() ?? '';
+  }
+
+  String _readingKey(String instrumentCode, String? parameter) {
+    final canonicalCode =
+        CodigoHelper.canonicalize(instrumentCode.toUpperCase().trim());
+    final normalizedParameter = (parameter ?? '').trim().toUpperCase();
+    return '$canonicalCode|$normalizedParameter';
+  }
+
+  bool _isWarningConfirmed(
+    String instrumentCode,
+    String? parameter,
+    String rawValue,
+  ) {
+    final normalizedValue = Lectura.normalizeRawValue(rawValue);
+    if (normalizedValue.isEmpty) {
+      return false;
+    }
+    return _confirmedWarningRawByKey[_readingKey(instrumentCode, parameter)] ==
+        normalizedValue;
+  }
+
+  String _labelForParameter(String? parameter) {
+    final normalized = (parameter ?? '').trim().toUpperCase();
+    switch (normalized) {
+      case 'LECTURA_CR10X':
+        return 'Lectura';
+      case 'LECTURA_LU':
+        return 'Lectura LU';
+      case 'TEMPERATURA':
+        return 'Temperatura';
+      case 'PERIODO_X':
+        return 'Eje X';
+      case 'PERIODO_Y':
+        return 'Eje Y';
+      case 'PERIODO_Z':
+        return 'Eje Z';
+      default:
+        return normalized.isEmpty ? 'Lectura' : normalized;
+    }
+  }
+
+  String? _buildReadingNotes({
+    required bool warningConfirmed,
+    String? existingNotes,
+  }) {
+    final cleanedExisting = existingNotes?.trim();
+    if (!warningConfirmed) {
+      if (cleanedExisting == null || cleanedExisting.isEmpty) {
+        return null;
+      }
+      if (cleanedExisting == _confirmedOutOfRangeNote) {
+        return null;
+      }
+      return cleanedExisting;
+    }
+
+    if (cleanedExisting == null || cleanedExisting.isEmpty) {
+      return _confirmedOutOfRangeNote;
+    }
+    if (cleanedExisting.contains(_confirmedOutOfRangeNote)) {
+      return cleanedExisting;
+    }
+    return '$cleanedExisting | $_confirmedOutOfRangeNote';
+  }
+
+  List<OutOfRangeReviewItem> _pendingOutOfRangeReviewItems(
+    List<Instrumento> instrumentos,
+  ) {
+    if (_currentPlanilla == null) {
+      return const [];
+    }
+
+    final pending = <OutOfRangeReviewItem>[];
+
+    for (final lectura in _currentPlanilla!.lecturas) {
+      if (lectura.fueraDeRango != true || lectura.advertenciaConfirmada == true) {
+        continue;
+      }
+      if (lectura.value == null ||
+          lectura.rangoMin == null ||
+          lectura.rangoMax == null ||
+          lectura.valorRaw == null) {
+        continue;
+      }
+
+      pending.add(
+        OutOfRangeReviewItem(
+          readingKey: _readingKey(lectura.instrumentCode, lectura.parameter),
+          instrumentCode: lectura.instrumentCode,
+          label: _labelForParameter(lectura.parameter),
+          rawValue: lectura.valorRaw!,
+          value: lectura.value!,
+          min: lectura.rangoMin!,
+          max: lectura.rangoMax!,
+        ),
+      );
+    }
+
+    return pending;
+  }
+
+  Future<bool> _ensureOutOfRangeConfirmation(
+    List<Instrumento> instrumentos,
+  ) async {
+    if (_currentPlanilla == null) {
+      return false;
+    }
+
+    _syncPlanillaFromInputs(instrumentos);
+    final pendingItems = _pendingOutOfRangeReviewItems(instrumentos);
+    if (pendingItems.isEmpty) {
+      setState(() => _reviewHighlightedKeys.clear());
+      return true;
+    }
+
+    final confirmed = await showOutOfRangeReviewSheet(
+      context,
+      items: pendingItems,
+    );
+    if (confirmed != true) {
+      if (!mounted) return false;
+      setState(() {
+        _reviewHighlightedKeys
+          ..clear()
+          ..addAll(pendingItems.map((item) => item.readingKey));
+      });
+      return false;
+    }
+
+    setState(() {
+      _reviewHighlightedKeys.clear();
+      for (final item in pendingItems) {
+        _confirmedWarningRawByKey[item.readingKey] = item.rawValue;
+      }
+    });
+
+    _syncPlanillaFromInputs(instrumentos);
+    return true;
+  }
+
+  bool _controllerHasInvalidValue(TextEditingController controller) {
+    return Lectura.isInvalidRawValue(controller.text);
+  }
+
+  bool get _hasInvalidInputs =>
+      _controllers.values.any(_controllerHasInvalidValue);
+
+  void _showInvalidValuesMessage() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Hay valores con formato incorrecto. RevisÃ¡ el formato antes de guardar o enviar.',
+        ),
+        backgroundColor: Color(0xFFEF4444),
+      ),
+    );
+  }
 }
 
 // =============================================================================
@@ -1477,6 +1819,81 @@ class _FamilyCard extends StatelessWidget {
   }
 }
 
+Color _statusBorderColor({
+  required bool isInvalid,
+  required bool isOutOfRange,
+  required bool isWithinRange,
+  bool needsReviewHighlight = false,
+}) {
+  if (isInvalid) return const Color(0xFFEF4444);
+  if (isOutOfRange) return const Color(0xFFF59E0B);
+  if (isWithinRange) return const Color(0xFF22C55E);
+  if (needsReviewHighlight) return const Color(0xFFF59E0B);
+  return const Color(0xFF334155);
+}
+
+Color _statusBackgroundColor({
+  required bool isInvalid,
+  required bool isOutOfRange,
+  required bool isWithinRange,
+}) {
+  if (isInvalid) return const Color(0xFF3F1D1D);
+  if (isOutOfRange) return const Color(0xFF422006);
+  if (isWithinRange) return const Color(0xFF13261B);
+  return const Color(0xFF1E293B);
+}
+
+Color _statusFieldFillColor({
+  required bool isInvalid,
+  required bool isOutOfRange,
+  required bool isWithinRange,
+  bool needsReviewHighlight = false,
+}) {
+  if (isInvalid) return const Color(0xFF451A1A);
+  if (isOutOfRange) return const Color(0xFF78350F);
+  if (isWithinRange) return const Color(0xFF12301F);
+  if (needsReviewHighlight) return const Color(0xFF2C1E0A);
+  return const Color(0xFF0F172A);
+}
+
+Color _statusHelperColor({
+  required bool isInvalid,
+  required bool isOutOfRange,
+  required bool isWithinRange,
+}) {
+  if (isInvalid) return const Color(0xFFFCA5A5);
+  if (isOutOfRange) return const Color(0xFFFBBF24);
+  if (isWithinRange) return const Color(0xFF86EFAC);
+  return Colors.grey[500]!;
+}
+
+String _statusHelperText({
+  required bool isInvalid,
+  required bool isOutOfRange,
+  required bool isWithinRange,
+  required bool hasRange,
+  required InstrumentRange? range,
+  String? labelPrefix,
+}) {
+  final prefix = labelPrefix == null ? '' : '$labelPrefix | ';
+  if (isInvalid) {
+    return '${prefix}Formato incorrecto | Usa punto como decimal';
+  }
+  if (isOutOfRange && range != null) {
+    return '${prefix}Fuera de rango | Esperado: ${range.fullLabel}';
+  }
+  if (isWithinRange && range != null) {
+    return '${prefix}Dentro del rango esperado (${range.fullLabel})';
+  }
+  if (!hasRange) {
+    return '${prefix}Sin referencia historica';
+  }
+  if (range != null) {
+    return '${prefix}Esperado: ${range.fullLabel}';
+  }
+  return '${prefix}Sin referencia historica';
+}
+
 class _InstrumentInputRow extends StatefulWidget {
   final Instrumento instrumento;
   final TextEditingController controller;
@@ -1485,6 +1902,8 @@ class _InstrumentInputRow extends StatefulWidget {
   final String unitLabel;
   final Function(String) onSave;
   final InstrumentRange? range;
+  final bool isWarningConfirmed;
+  final bool needsReviewHighlight;
 
   const _InstrumentInputRow({
     required this.instrumento,
@@ -1494,6 +1913,8 @@ class _InstrumentInputRow extends StatefulWidget {
     required this.unitLabel,
     required this.onSave,
     this.range,
+    this.isWarningConfirmed = false,
+    this.needsReviewHighlight = false,
   });
 
   @override
@@ -1502,11 +1923,13 @@ class _InstrumentInputRow extends StatefulWidget {
 
 class _InstrumentInputRowState extends State<_InstrumentInputRow> {
   bool _isOutOfRange = false;
+  bool _isInvalidValue = false;
 
   @override
   void initState() {
     super.initState();
     widget.controller.addListener(_checkRange);
+    _checkRange();
   }
 
   @override
@@ -1520,14 +1943,19 @@ class _InstrumentInputRowState extends State<_InstrumentInputRow> {
   }
 
   void _checkRange() {
-    if (widget.range == null || !widget.range!.hasRange) {
-      if (_isOutOfRange) setState(() => _isOutOfRange = false);
-      return;
+    final rawValue = widget.controller.text;
+    final invalid = Lectura.isInvalidRawValue(rawValue);
+    final parsedValue = Lectura.parseRawValue(rawValue);
+    final outOfRange = parsedValue != null &&
+        widget.range != null &&
+        widget.range!.hasRange &&
+        widget.range!.isOutOfRange(parsedValue);
+    if (outOfRange != _isOutOfRange || invalid != _isInvalidValue) {
+      setState(() {
+        _isOutOfRange = outOfRange;
+        _isInvalidValue = invalid;
+      });
     }
-    final text = widget.controller.text.replaceAll(',', '.');
-    final val = double.tryParse(text);
-    final oor = val != null && widget.range!.isOutOfRange(val);
-    if (oor != _isOutOfRange) setState(() => _isOutOfRange = oor);
   }
 
   @override
@@ -1538,17 +1966,41 @@ class _InstrumentInputRowState extends State<_InstrumentInputRow> {
 
   @override
   Widget build(BuildContext context) {
+    final hasRange = widget.range?.hasRange == true;
+    final hasTypedValue = widget.controller.text.trim().isNotEmpty;
+    final isWithinRange =
+        hasTypedValue && hasRange && !_isOutOfRange && !_isInvalidValue;
+    final borderColor = _statusBorderColor(
+      isInvalid: _isInvalidValue,
+      isOutOfRange: _isOutOfRange,
+      isWithinRange: isWithinRange,
+      needsReviewHighlight: widget.needsReviewHighlight,
+    );
+    final backgroundColor = _statusBackgroundColor(
+      isInvalid: _isInvalidValue,
+      isOutOfRange: _isOutOfRange,
+      isWithinRange: isWithinRange,
+    );
+    final helperText = _statusHelperText(
+      isInvalid: _isInvalidValue,
+      isOutOfRange: _isOutOfRange,
+      isWithinRange: isWithinRange,
+      hasRange: hasRange,
+      range: widget.range,
+    );
+    final helperColor = _statusHelperColor(
+      isInvalid: _isInvalidValue,
+      isOutOfRange: _isOutOfRange,
+      isWithinRange: isWithinRange,
+    );
+
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color:
-            _isOutOfRange ? const Color(0xFF422006) : const Color(0xFF1E293B),
+        color: backgroundColor,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color:
-              _isOutOfRange ? const Color(0xFFF59E0B) : const Color(0xFF334155),
-        ),
+        border: Border.all(color: borderColor),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1582,15 +2034,28 @@ class _InstrumentInputRowState extends State<_InstrumentInputRow> {
                     fontWeight: FontWeight.w500,
                   ),
                   decoration: InputDecoration(
-                    hintText: '0,00',
+                    hintText: '0.00',
                     hintStyle: TextStyle(color: Colors.grey[700]),
                     contentPadding:
                         const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     filled: true,
-                    fillColor: const Color(0xFF0F172A),
+                    fillColor: _statusFieldFillColor(
+                      isInvalid: _isInvalidValue,
+                      isOutOfRange: _isOutOfRange,
+                      isWithinRange: isWithinRange,
+                      needsReviewHighlight: widget.needsReviewHighlight,
+                    ),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide.none,
+                      borderSide: BorderSide(color: borderColor),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide(color: borderColor),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide(color: borderColor, width: 1.2),
                     ),
                   ),
                 ),
@@ -1618,22 +2083,48 @@ class _InstrumentInputRowState extends State<_InstrumentInputRow> {
               ),
             ],
           ),
-          // Rango esperado
-          if (widget.range != null && widget.range!.hasRange)
-            Padding(
-              padding: const EdgeInsets.only(top: 4, left: 78),
-              child: Text(
-                _isOutOfRange
-                    ? '⚠️ Fuera de rango [${widget.range!.fullLabel}]. Podés enviarlo igual.'
-                    : 'Ref Silver: ${widget.range!.fullLabel}',
-                style: TextStyle(
-                  fontSize: 10,
-                  color: _isOutOfRange
-                      ? const Color(0xFFFBBF24)
-                      : Colors.grey[600],
+          Padding(
+            padding: const EdgeInsets.only(top: 4, left: 78),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  helperText,
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: helperColor,
+                    fontWeight: isWithinRange || _isOutOfRange
+                        ? FontWeight.w600
+                        : FontWeight.w400,
+                  ),
                 ),
-              ),
+                if (_isOutOfRange && widget.isWarningConfirmed)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 2),
+                    child: Text(
+                      'Confirmado en campo',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Color(0xFFFDE68A),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                if (widget.needsReviewHighlight)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 2),
+                    child: Text(
+                      'Revisa este valor antes de continuar',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Color(0xFFFBBF24),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+              ],
             ),
+          ),
         ],
       ),
     );
@@ -1651,6 +2142,10 @@ class _AsentimetroInputRow extends StatefulWidget {
   final void Function(String luValue, String tempValue) onSave;
   final InstrumentRange? rangeLu;
   final InstrumentRange? rangeTemp;
+  final bool isLuWarningConfirmed;
+  final bool isTempWarningConfirmed;
+  final bool needsReviewLu;
+  final bool needsReviewTemp;
 
   const _AsentimetroInputRow({
     required this.instrumento,
@@ -1663,6 +2158,10 @@ class _AsentimetroInputRow extends StatefulWidget {
     required this.onSave,
     this.rangeLu,
     this.rangeTemp,
+    this.isLuWarningConfirmed = false,
+    this.isTempWarningConfirmed = false,
+    this.needsReviewLu = false,
+    this.needsReviewTemp = false,
   });
 
   @override
@@ -1672,6 +2171,8 @@ class _AsentimetroInputRow extends StatefulWidget {
 class _AsentimetroInputRowState extends State<_AsentimetroInputRow> {
   bool _isLuOutOfRange = false;
   bool _isTempOutOfRange = false;
+  bool _isLuInvalid = false;
+  bool _isTempInvalid = false;
 
   @override
   void initState() {
@@ -1685,8 +2186,16 @@ class _AsentimetroInputRowState extends State<_AsentimetroInputRow> {
   @override
   void didUpdateWidget(covariant _AsentimetroInputRow oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.rangeLu != widget.rangeLu) _validateLuRange();
-    if (oldWidget.rangeTemp != widget.rangeTemp) _validateTempRange();
+    if (oldWidget.luController != widget.luController) {
+      oldWidget.luController.removeListener(_validateLuRange);
+      widget.luController.addListener(_validateLuRange);
+    }
+    if (oldWidget.tempController != widget.tempController) {
+      oldWidget.tempController.removeListener(_validateTempRange);
+      widget.tempController.addListener(_validateTempRange);
+    }
+    _validateLuRange();
+    _validateTempRange();
   }
 
   @override
@@ -1697,54 +2206,132 @@ class _AsentimetroInputRowState extends State<_AsentimetroInputRow> {
   }
 
   void _validateLuRange() {
-    if (widget.rangeLu == null || !widget.rangeLu!.hasRange) {
-      if (_isLuOutOfRange) setState(() => _isLuOutOfRange = false);
-      return;
-    }
-    final text = widget.luController.text.replaceAll(',', '.');
-    final val = double.tryParse(text);
-    if (val == null) {
-      if (_isLuOutOfRange) setState(() => _isLuOutOfRange = false);
-      return;
-    }
-    final outOfRange = widget.rangeLu!.isOutOfRange(val);
-    if (_isLuOutOfRange != outOfRange) {
-      setState(() => _isLuOutOfRange = outOfRange);
+    final rawValue = widget.luController.text;
+    final invalid = Lectura.isInvalidRawValue(rawValue);
+    final parsedValue = Lectura.parseRawValue(rawValue);
+    final outOfRange = parsedValue != null &&
+        widget.rangeLu != null &&
+        widget.rangeLu!.hasRange &&
+        widget.rangeLu!.isOutOfRange(parsedValue);
+    if (_isLuOutOfRange != outOfRange || _isLuInvalid != invalid) {
+      setState(() {
+        _isLuOutOfRange = outOfRange;
+        _isLuInvalid = invalid;
+      });
     }
   }
 
   void _validateTempRange() {
-    if (widget.rangeTemp == null || !widget.rangeTemp!.hasRange) {
-      if (_isTempOutOfRange) setState(() => _isTempOutOfRange = false);
-      return;
+    final rawValue = widget.tempController.text;
+    final invalid = Lectura.isInvalidRawValue(rawValue);
+    final parsedValue = Lectura.parseRawValue(rawValue);
+    final outOfRange = parsedValue != null &&
+        widget.rangeTemp != null &&
+        widget.rangeTemp!.hasRange &&
+        widget.rangeTemp!.isOutOfRange(parsedValue);
+    if (_isTempOutOfRange != outOfRange || _isTempInvalid != invalid) {
+      setState(() {
+        _isTempOutOfRange = outOfRange;
+        _isTempInvalid = invalid;
+      });
     }
-    final text = widget.tempController.text.replaceAll(',', '.');
-    final val = double.tryParse(text);
-    if (val == null) {
-      if (_isTempOutOfRange) setState(() => _isTempOutOfRange = false);
-      return;
-    }
-    final outOfRange = widget.rangeTemp!.isOutOfRange(val);
-    if (_isTempOutOfRange != outOfRange) {
-      setState(() => _isTempOutOfRange = outOfRange);
-    }
+  }
+
+  Widget _buildStatusLine({
+    required String label,
+    required bool isInvalid,
+    required bool isOutOfRange,
+    required bool isWithinRange,
+    required bool hasRange,
+    required InstrumentRange? range,
+    required bool isWarningConfirmed,
+    required bool needsReviewHighlight,
+  }) {
+    final helperText = _statusHelperText(
+      isInvalid: isInvalid,
+      isOutOfRange: isOutOfRange,
+      isWithinRange: isWithinRange,
+      hasRange: hasRange,
+      range: range,
+      labelPrefix: label,
+    );
+    final helperColor = _statusHelperColor(
+      isInvalid: isInvalid,
+      isOutOfRange: isOutOfRange,
+      isWithinRange: isWithinRange,
+    );
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 2),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            helperText,
+            style: TextStyle(
+              fontSize: 9,
+              color: helperColor,
+              fontWeight:
+                  isWithinRange || isOutOfRange ? FontWeight.w600 : FontWeight.w400,
+            ),
+          ),
+          if (isOutOfRange && isWarningConfirmed)
+            Text(
+              '$label | Confirmado en campo',
+              style: const TextStyle(
+                fontSize: 9,
+                color: Color(0xFFFDE68A),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          if (needsReviewHighlight)
+            Text(
+              '$label | Revisa este valor antes de continuar',
+              style: const TextStyle(
+                fontSize: 9,
+                color: Color(0xFFFBBF24),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+        ],
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final bool anyOutOfRange = _isLuOutOfRange || _isTempOutOfRange;
+    final hasLuRange = widget.rangeLu?.hasRange == true;
+    final hasTempRange = widget.rangeTemp?.hasRange == true;
+    final hasLuValue = widget.luController.text.trim().isNotEmpty;
+    final hasTempValue = widget.tempController.text.trim().isNotEmpty;
+    final isLuWithinRange =
+        hasLuValue && hasLuRange && !_isLuOutOfRange && !_isLuInvalid;
+    final isTempWithinRange =
+        hasTempValue && hasTempRange && !_isTempOutOfRange && !_isTempInvalid;
+    final anyOutOfRange = _isLuOutOfRange || _isTempOutOfRange;
+    final anyInvalid = _isLuInvalid || _isTempInvalid;
+    final anyWithinRange = isLuWithinRange || isTempWithinRange;
+    final needsReviewHighlight =
+        widget.needsReviewLu || widget.needsReviewTemp;
+    final borderColor = _statusBorderColor(
+      isInvalid: anyInvalid,
+      isOutOfRange: anyOutOfRange,
+      isWithinRange: anyWithinRange,
+      needsReviewHighlight: needsReviewHighlight,
+    );
+    final backgroundColor = _statusBackgroundColor(
+      isInvalid: anyInvalid,
+      isOutOfRange: anyOutOfRange,
+      isWithinRange: anyWithinRange,
+    );
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color:
-            anyOutOfRange ? const Color(0xFF422006) : const Color(0xFF1E293B),
+        color: backgroundColor,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-            color: anyOutOfRange
-                ? const Color(0xFFF59E0B)
-                : const Color(0xFF334155)),
+        border: Border.all(color: borderColor),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1783,12 +2370,45 @@ class _AsentimetroInputRowState extends State<_AsentimetroInputRow> {
                     contentPadding:
                         const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                     filled: true,
-                    fillColor: _isLuOutOfRange
-                        ? const Color(0xFF78350F)
-                        : const Color(0xFF0F172A),
+                    fillColor: _statusFieldFillColor(
+                      isInvalid: _isLuInvalid,
+                      isOutOfRange: _isLuOutOfRange,
+                      isWithinRange: isLuWithinRange,
+                      needsReviewHighlight: widget.needsReviewLu,
+                    ),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide.none,
+                      borderSide: BorderSide(
+                        color: _statusBorderColor(
+                          isInvalid: _isLuInvalid,
+                          isOutOfRange: _isLuOutOfRange,
+                          isWithinRange: isLuWithinRange,
+                          needsReviewHighlight: widget.needsReviewLu,
+                        ),
+                      ),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide(
+                        color: _statusBorderColor(
+                          isInvalid: _isLuInvalid,
+                          isOutOfRange: _isLuOutOfRange,
+                          isWithinRange: isLuWithinRange,
+                          needsReviewHighlight: widget.needsReviewLu,
+                        ),
+                      ),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide(
+                        color: _statusBorderColor(
+                          isInvalid: _isLuInvalid,
+                          isOutOfRange: _isLuOutOfRange,
+                          isWithinRange: isLuWithinRange,
+                          needsReviewHighlight: widget.needsReviewLu,
+                        ),
+                        width: 1.2,
+                      ),
                     ),
                   ),
                 ),
@@ -1808,17 +2428,50 @@ class _AsentimetroInputRowState extends State<_AsentimetroInputRow> {
                     fontWeight: FontWeight.w500,
                   ),
                   decoration: InputDecoration(
-                    hintText: 'T (°C)',
+                    hintText: 'T',
                     hintStyle: TextStyle(color: Colors.grey[700]),
                     contentPadding:
                         const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                     filled: true,
-                    fillColor: _isTempOutOfRange
-                        ? const Color(0xFF78350F)
-                        : const Color(0xFF0F172A),
+                    fillColor: _statusFieldFillColor(
+                      isInvalid: _isTempInvalid,
+                      isOutOfRange: _isTempOutOfRange,
+                      isWithinRange: isTempWithinRange,
+                      needsReviewHighlight: widget.needsReviewTemp,
+                    ),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide.none,
+                      borderSide: BorderSide(
+                        color: _statusBorderColor(
+                          isInvalid: _isTempInvalid,
+                          isOutOfRange: _isTempOutOfRange,
+                          isWithinRange: isTempWithinRange,
+                          needsReviewHighlight: widget.needsReviewTemp,
+                        ),
+                      ),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide(
+                        color: _statusBorderColor(
+                          isInvalid: _isTempInvalid,
+                          isOutOfRange: _isTempOutOfRange,
+                          isWithinRange: isTempWithinRange,
+                          needsReviewHighlight: widget.needsReviewTemp,
+                        ),
+                      ),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide(
+                        color: _statusBorderColor(
+                          isInvalid: _isTempInvalid,
+                          isOutOfRange: _isTempOutOfRange,
+                          isWithinRange: isTempWithinRange,
+                          needsReviewHighlight: widget.needsReviewTemp,
+                        ),
+                        width: 1.2,
+                      ),
                     ),
                   ),
                 ),
@@ -1835,40 +2488,34 @@ class _AsentimetroInputRowState extends State<_AsentimetroInputRow> {
               ),
             ],
           ),
-          if ((widget.rangeLu != null && widget.rangeLu!.hasRange) ||
-              (widget.rangeTemp != null && widget.rangeTemp!.hasRange))
-            Padding(
-              padding: const EdgeInsets.only(top: 4, left: 70),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (widget.rangeLu != null && widget.rangeLu!.hasRange)
-                    Text(
-                      _isLuOutOfRange
-                          ? '⚠️ Fuera de rango [${widget.rangeLu!.fullLabel}]'
-                          : 'Ref LU: ${widget.rangeLu!.fullLabel}',
-                      style: TextStyle(
-                        fontSize: 9,
-                        color: _isLuOutOfRange
-                            ? const Color(0xFFFBBF24)
-                            : Colors.grey[600],
-                      ),
-                    ),
-                  if (widget.rangeTemp != null && widget.rangeTemp!.hasRange)
-                    Text(
-                      _isTempOutOfRange
-                          ? '⚠️ Fuera de rango [${widget.rangeTemp!.fullLabel}]'
-                          : 'Ref T: ${widget.rangeTemp!.fullLabel}',
-                      style: TextStyle(
-                        fontSize: 9,
-                        color: _isTempOutOfRange
-                            ? const Color(0xFFFBBF24)
-                            : Colors.grey[600],
-                      ),
-                    ),
-                ],
-              ),
+          Padding(
+            padding: const EdgeInsets.only(top: 4, left: 70),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildStatusLine(
+                  label: 'Lectura LU',
+                  isInvalid: _isLuInvalid,
+                  isOutOfRange: _isLuOutOfRange,
+                  isWithinRange: isLuWithinRange,
+                  hasRange: hasLuRange,
+                  range: widget.rangeLu,
+                  isWarningConfirmed: widget.isLuWarningConfirmed,
+                  needsReviewHighlight: widget.needsReviewLu,
+                ),
+                _buildStatusLine(
+                  label: 'Temperatura',
+                  isInvalid: _isTempInvalid,
+                  isOutOfRange: _isTempOutOfRange,
+                  isWithinRange: isTempWithinRange,
+                  hasRange: hasTempRange,
+                  range: widget.rangeTemp,
+                  isWarningConfirmed: widget.isTempWarningConfirmed,
+                  needsReviewHighlight: widget.needsReviewTemp,
+                ),
+              ],
             ),
+          ),
         ],
       ),
     );
@@ -1877,6 +2524,7 @@ class _AsentimetroInputRowState extends State<_AsentimetroInputRow> {
 
 class _TriaxialInputRow extends StatelessWidget {
   final String instrumentCode;
+  final bool hasCatalogReference;
   final TextEditingController controllerX;
   final TextEditingController controllerY;
   final TextEditingController controllerZ;
@@ -1890,9 +2538,16 @@ class _TriaxialInputRow extends StatelessWidget {
   final InstrumentRange? rangeX;
   final InstrumentRange? rangeY;
   final InstrumentRange? rangeZ;
+  final bool isWarningConfirmedX;
+  final bool isWarningConfirmedY;
+  final bool isWarningConfirmedZ;
+  final bool needsReviewX;
+  final bool needsReviewY;
+  final bool needsReviewZ;
 
   const _TriaxialInputRow({
     required this.instrumentCode,
+    required this.hasCatalogReference,
     required this.controllerX,
     required this.controllerY,
     required this.controllerZ,
@@ -1906,6 +2561,12 @@ class _TriaxialInputRow extends StatelessWidget {
     this.rangeX,
     this.rangeY,
     this.rangeZ,
+    this.isWarningConfirmedX = false,
+    this.isWarningConfirmedY = false,
+    this.isWarningConfirmedZ = false,
+    this.needsReviewX = false,
+    this.needsReviewY = false,
+    this.needsReviewZ = false,
   });
 
   @override
@@ -1947,6 +2608,26 @@ class _TriaxialInputRow extends StatelessWidget {
                   ),
                 ),
               ),
+              if (!hasCatalogReference) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1F2937),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFF475569)),
+                  ),
+                  child: const Text(
+                    'Sin referencia',
+                    style: TextStyle(
+                      color: Color(0xFFCBD5E1),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
               const Spacer(),
               IconButton(
                 icon: const Icon(Icons.save_as_outlined,
@@ -1969,6 +2650,8 @@ class _TriaxialInputRow extends StatelessWidget {
                   focusNode: focusNodeX,
                   onSubmitted: onXSubmitted,
                   range: rangeX,
+                  isWarningConfirmed: isWarningConfirmedX,
+                  needsReviewHighlight: needsReviewX,
                 ),
               ),
               const SizedBox(width: 8),
@@ -1979,6 +2662,8 @@ class _TriaxialInputRow extends StatelessWidget {
                   focusNode: focusNodeY,
                   onSubmitted: onYSubmitted,
                   range: rangeY,
+                  isWarningConfirmed: isWarningConfirmedY,
+                  needsReviewHighlight: needsReviewY,
                 ),
               ),
               const SizedBox(width: 8),
@@ -1989,6 +2674,8 @@ class _TriaxialInputRow extends StatelessWidget {
                   focusNode: focusNodeZ,
                   onSubmitted: onZSubmitted,
                   range: rangeZ,
+                  isWarningConfirmed: isWarningConfirmedZ,
+                  needsReviewHighlight: needsReviewZ,
                 ),
               ),
             ],
@@ -2005,6 +2692,8 @@ class _TriaxialAxisField extends StatefulWidget {
   final FocusNode focusNode;
   final VoidCallback onSubmitted;
   final InstrumentRange? range;
+  final bool isWarningConfirmed;
+  final bool needsReviewHighlight;
 
   const _TriaxialAxisField({
     required this.axisLabel,
@@ -2012,6 +2701,8 @@ class _TriaxialAxisField extends StatefulWidget {
     required this.focusNode,
     required this.onSubmitted,
     this.range,
+    this.isWarningConfirmed = false,
+    this.needsReviewHighlight = false,
   });
 
   @override
@@ -2020,6 +2711,7 @@ class _TriaxialAxisField extends StatefulWidget {
 
 class _TriaxialAxisFieldState extends State<_TriaxialAxisField> {
   bool _isOutOfRange = false;
+  bool _isInvalidValue = false;
 
   @override
   void initState() {
@@ -2031,9 +2723,11 @@ class _TriaxialAxisFieldState extends State<_TriaxialAxisField> {
   @override
   void didUpdateWidget(covariant _TriaxialAxisField oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.range != widget.range) {
-      _validateRange();
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.removeListener(_validateRange);
+      widget.controller.addListener(_validateRange);
     }
+    _validateRange();
   }
 
   @override
@@ -2043,24 +2737,46 @@ class _TriaxialAxisFieldState extends State<_TriaxialAxisField> {
   }
 
   void _validateRange() {
-    if (widget.range == null || !widget.range!.hasRange) {
-      if (_isOutOfRange) setState(() => _isOutOfRange = false);
-      return;
-    }
-    final text = widget.controller.text.replaceAll(',', '.');
-    final val = double.tryParse(text);
-    if (val == null) {
-      if (_isOutOfRange) setState(() => _isOutOfRange = false);
-      return;
-    }
-    final outOfRange = widget.range!.isOutOfRange(val);
-    if (_isOutOfRange != outOfRange) {
-      setState(() => _isOutOfRange = outOfRange);
+    final rawValue = widget.controller.text;
+    final invalid = Lectura.isInvalidRawValue(rawValue);
+    final parsedValue = Lectura.parseRawValue(rawValue);
+    final outOfRange = parsedValue != null &&
+        widget.range != null &&
+        widget.range!.hasRange &&
+        widget.range!.isOutOfRange(parsedValue);
+    if (_isOutOfRange != outOfRange || _isInvalidValue != invalid) {
+      setState(() {
+        _isOutOfRange = outOfRange;
+        _isInvalidValue = invalid;
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final hasRange = widget.range?.hasRange == true;
+    final hasTypedValue = widget.controller.text.trim().isNotEmpty;
+    final isWithinRange =
+        hasTypedValue && hasRange && !_isOutOfRange && !_isInvalidValue;
+    final borderColor = _statusBorderColor(
+      isInvalid: _isInvalidValue,
+      isOutOfRange: _isOutOfRange,
+      isWithinRange: isWithinRange,
+      needsReviewHighlight: widget.needsReviewHighlight,
+    );
+    final helperText = _statusHelperText(
+      isInvalid: _isInvalidValue,
+      isOutOfRange: _isOutOfRange,
+      isWithinRange: isWithinRange,
+      hasRange: hasRange,
+      range: widget.range,
+      labelPrefix: 'Eje ${widget.axisLabel}',
+    );
+    final helperColor = _statusHelperColor(
+      isInvalid: _isInvalidValue,
+      isOutOfRange: _isOutOfRange,
+      isWithinRange: isWithinRange,
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2078,37 +2794,70 @@ class _TriaxialAxisFieldState extends State<_TriaxialAxisField> {
           decoration: InputDecoration(
             labelText: widget.axisLabel,
             labelStyle: const TextStyle(color: Color(0xFF14B8A6), fontSize: 12),
-            hintText: '0,00',
+            hintText: '0.00',
             hintStyle: TextStyle(color: Colors.grey[700]),
             contentPadding:
                 const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             filled: true,
-            fillColor: _isOutOfRange
-                ? const Color(0xFF422006)
-                : const Color(0xFF0F172A),
+            fillColor: _statusFieldFillColor(
+              isInvalid: _isInvalidValue,
+              isOutOfRange: _isOutOfRange,
+              isWithinRange: isWithinRange,
+              needsReviewHighlight: widget.needsReviewHighlight,
+            ),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: _isOutOfRange
-                  ? const BorderSide(color: Color(0xFFF59E0B))
-                  : BorderSide.none,
+              borderSide: BorderSide(color: borderColor),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(color: borderColor),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(color: borderColor, width: 1.2),
             ),
           ),
         ),
-        if (widget.range != null && widget.range!.hasRange)
-          Padding(
-            padding: const EdgeInsets.only(top: 4, left: 2),
-            child: Text(
-              _isOutOfRange
-                  ? '⚠️ [${widget.range!.fullLabel}]'
-                  : '[${widget.range!.fullLabel}]',
-              style: TextStyle(
-                fontSize: 9,
-                color:
-                    _isOutOfRange ? const Color(0xFFFBBF24) : Colors.grey[600],
+        Padding(
+          padding: const EdgeInsets.only(top: 4, left: 2),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                helperText,
+                style: TextStyle(
+                  fontSize: 9,
+                  color: helperColor,
+                  fontWeight: isWithinRange || _isOutOfRange
+                      ? FontWeight.w600
+                      : FontWeight.w400,
+                ),
+                overflow: TextOverflow.ellipsis,
               ),
-              overflow: TextOverflow.ellipsis,
-            ),
+              if (_isOutOfRange && widget.isWarningConfirmed)
+                const Text(
+                  'Confirmado en campo',
+                  style: TextStyle(
+                    fontSize: 9,
+                    color: Color(0xFFFDE68A),
+                    fontWeight: FontWeight.w600,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              if (widget.needsReviewHighlight)
+                const Text(
+                  'Revisa este valor antes de continuar',
+                  style: TextStyle(
+                    fontSize: 9,
+                    color: Color(0xFFFBBF24),
+                    fontWeight: FontWeight.w600,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+            ],
           ),
+        ),
       ],
     );
   }

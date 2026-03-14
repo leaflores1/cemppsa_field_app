@@ -304,7 +304,7 @@ class _PlanillaDetailScreenState extends State<PlanillaDetailScreen> {
     final planillaRepo = context.read<PlanillaRepository>();
     final lectura = _planilla.lecturas[index];
     final valueController = TextEditingController(
-      text: lectura.value.toString(),
+      text: lectura.valorRaw ?? lectura.value?.toString() ?? '',
     );
     final notesController = TextEditingController(
       text: lectura.notes ?? '',
@@ -548,7 +548,7 @@ class _LecturaRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '${lectura.value} ${lectura.unit}',
+                  '${lectura.valorRaw ?? lectura.value?.toString() ?? ''} ${lectura.unit ?? ''}',
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,

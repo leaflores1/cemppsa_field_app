@@ -26,6 +26,7 @@ class CatalogRepository extends ChangeNotifier {
 
   /// Índice secundario por familia
   final Map<FamiliaInstrumento, List<Instrumento>> _byFamilia = {};
+  final Set<String> _loggedRangeMisses = {};
 
   String? _baseUrl;
 
@@ -40,6 +41,32 @@ class CatalogRepository extends ChangeNotifier {
   String? get lastError => _lastError;
   int get totalInstrumentos => _byCode.length;
   bool get isEmpty => _byCode.isEmpty;
+  DateTime? get lastSyncAt {
+    if (!_initialized) return null;
+    final raw = _box.get(_lastSyncKey) as String?;
+    if (raw == null) return null;
+    return DateTime.tryParse(raw);
+  }
+
+  int? get catalogVersion {
+    int? highestVersion;
+    for (final instrumento in _byCode.values) {
+      for (final range in instrumento.rangos) {
+        final version = range.version;
+        if (version == null) continue;
+        if (highestVersion == null || version > highestVersion) {
+          highestVersion = version;
+        }
+      }
+    }
+    return highestVersion;
+  }
+
+  int? get catalogAgeDays {
+    final lastSync = lastSyncAt;
+    if (lastSync == null) return null;
+    return DateTime.now().difference(lastSync).inDays;
+  }
 
   // ===========================================================================
   // Inicialización
@@ -85,6 +112,7 @@ class CatalogRepository extends ChangeNotifier {
   void _clearIndexes() {
     _byCode.clear();
     _byFamilia.clear();
+    _loggedRangeMisses.clear();
   }
 
   // ===========================================================================
@@ -93,6 +121,17 @@ class CatalogRepository extends ChangeNotifier {
 
   void setBaseUrl(String url) {
     _baseUrl = url.endsWith('/') ? url.substring(0, url.length - 1) : url;
+  }
+
+  Future<void> clearLocalCache() async {
+    if (!_initialized) {
+      _box = await Hive.openBox(_boxName);
+      _initialized = true;
+    }
+    _clearIndexes();
+    _lastError = null;
+    await _box.clear();
+    notifyListeners();
   }
 
   bool get needsSync {
@@ -173,8 +212,22 @@ class CatalogRepository extends ChangeNotifier {
   Instrumento? byCode(String code) => _byCode[code.toUpperCase()];
 
   InstrumentRange? rangeForInstrument(String code, String variableCodigo) {
+    final rangeKey = '${code.toUpperCase().trim()}|${variableCodigo.toUpperCase().trim()}';
     final inst = byCode(code);
-    return inst?.rangeForVariable(variableCodigo);
+    if (inst == null) {
+      if (kDebugMode && _loggedRangeMisses.add(rangeKey)) {
+        debugPrint(
+          'CatalogRepository range miss: instrumento $code no encontrado '
+          'para variable $variableCodigo',
+        );
+      }
+      return null;
+    }
+    final range = inst.rangeForVariable(variableCodigo);
+    if (range == null && kDebugMode && _loggedRangeMisses.add(rangeKey)) {
+      debugPrint('CatalogRepository range miss: ${inst.rangeDebugInfo(variableCodigo)}');
+    }
+    return range;
   }
 
   List<InstrumentRange> rangesForInstrument(String code) {

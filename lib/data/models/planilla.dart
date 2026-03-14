@@ -171,7 +171,7 @@ class Planilla {
           : null,
       'created_at': createdAt.toIso8601String(),
       'planilla_nombre': tipo.codigo,
-      'readings': lecturas.map((l) => l.toJson()).toList(),
+      'readings': lecturas.map((l) => l.toSyncJson()).toList(),
     };
   }
 
@@ -255,6 +255,9 @@ class Planilla {
 
   /// Total de lecturas en el lote
   int get totalLecturas => lecturas.length;
+
+  /// Lecturas con formato inválido todavía no corregidas.
+  bool get hasInvalidLecturas => lecturas.any((l) => l.valorInvalido == true);
 
   /// ¿Está vacía?
   bool get isEmpty => lecturas.isEmpty;

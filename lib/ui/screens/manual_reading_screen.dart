@@ -1,6 +1,6 @@
-// ==============================================================================
+﻿// ==============================================================================
 // CEMPPSA Field App - ManualReadingScreen
-// Pantalla de lecturas manuales (Casagrande, Freatímetros, Aforadores)
+// Pantalla de lecturas manuales (Casagrande, FreatÃ­metros, Aforadores)
 // ==============================================================================
 
 import 'package:flutter/material.dart';
@@ -15,6 +15,8 @@ import '../../repositories/planilla_repository.dart';
 import '../../data/models/schema_model.dart';
 import '../../core/config.dart';
 import '../../services/sync_service.dart';
+import '../widgets/catalog_freshness_banner.dart';
+import '../widgets/out_of_range_review_sheet.dart';
 
 class ManualReadingScreen extends StatefulWidget {
   const ManualReadingScreen({super.key});
@@ -31,6 +33,11 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
 
   final Map<String, TextEditingController> _controllers = {};
   final Map<String, FocusNode> _focusNodes = {};
+  final Map<String, String> _confirmedWarningRawByKey = {};
+  final Set<String> _reviewHighlightedKeys = {};
+
+  static const String _confirmedOutOfRangeNote =
+      'Valor fuera de rango confirmado por tecnico en campo';
 
   bool _initialized = false;
 
@@ -60,9 +67,14 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
         if (!_controllers.containsKey(lectura.instrumentCode)) {
           _controllers[lectura.instrumentCode] = TextEditingController();
         }
-        // Format value to remove trailing .0 if integer-like?
-        // simple toString for now or specific formatting
-        _controllers[lectura.instrumentCode]!.text = lectura.value.toString();
+        _controllers[lectura.instrumentCode]!.text = _controllerTextForLectura(
+          lectura,
+        );
+        if (lectura.advertenciaConfirmada == true && lectura.valorRaw != null) {
+          _confirmedWarningRawByKey[
+                  _readingKey(lectura.instrumentCode, lectura.parameter)] =
+              lectura.valorRaw!;
+        }
       }
     });
     _loadSchemaForType(planilla.tipo);
@@ -83,6 +95,8 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
     }
     _controllers.clear();
     _focusNodes.clear();
+    _confirmedWarningRawByKey.clear();
+    _reviewHighlightedKeys.clear();
   }
 
 // ... imports
@@ -114,7 +128,7 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
             actions: [
               if (_currentPlanilla != null)
                 TextButton.icon(
-                  onPressed: _sendPlanilla,
+                  onPressed: _hasInvalidInputs ? null : _sendPlanilla,
                   icon: const Icon(Icons.send,
                       color: Color(0xFF22C55E), size: 18),
                   label: const Text('Enviar',
@@ -183,6 +197,14 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
           onSave: (val) => _saveSingleReading(inst, val),
           range:
               _getRangeForInstrument(inst.codigo, _resolveVariableCode(inst)),
+          isWarningConfirmed: _isWarningConfirmed(
+            inst.codigo,
+            _resolveVariableCode(inst),
+            _getController(inst.codigo).text,
+          ),
+          needsReviewHighlight: _reviewHighlightedKeys
+              .contains(_readingKey(inst.codigo, _resolveVariableCode(inst))),
+          helperLabel: label ?? _labelForParameter(_resolveVariableCode(inst)),
         );
       },
     );
@@ -220,7 +242,9 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
             ),
             const SizedBox(width: 8),
             ElevatedButton(
-              onPressed: filledCount > 0 ? _saveDraft : null, // Now saves draft
+              onPressed: filledCount > 0 && !_hasInvalidInputs
+                  ? _saveDraft
+                  : null,
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF3B82F6), // Blue for draft
                 disabledBackgroundColor: const Color(0xFF334155),
@@ -289,6 +313,17 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
     final rowId = existingIndex >= 0
         ? _currentPlanilla!.lecturas[existingIndex].clientRowId
         : _currentPlanilla!.nextClientRowId;
+    final existingReading =
+        existingIndex >= 0 ? _currentPlanilla!.lecturas[existingIndex] : null;
+    final range = _getRangeForInstrument(instrumentCode, parameter);
+    final parsedValue = Lectura.parseRawValue(normalizedValue);
+    final hasRange = range?.hasRange == true;
+    final fueraDeRango =
+        parsedValue != null ? (hasRange ? range!.isOutOfRange(parsedValue) : null) : null;
+    final advertenciaConfirmada = fueraDeRango == true &&
+            _isWarningConfirmed(instrumentCode, parameter, normalizedValue)
+        ? true
+        : null;
 
     if (existingIndex >= 0) {
       _currentPlanilla!.lecturas.removeAt(existingIndex);
@@ -301,6 +336,15 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
       unit: unit,
       rawValue: normalizedValue,
       measuredAt: _batchDateTime,
+      fueraDeRango: fueraDeRango,
+      rangoMin: hasRange && parsedValue != null ? range!.min : null,
+      rangoMax: hasRange && parsedValue != null ? range!.max : null,
+      rangoVersion: hasRange && parsedValue != null ? range!.version : null,
+      advertenciaConfirmada: advertenciaConfirmada,
+      notes: _buildReadingNotes(
+        warningConfirmed: advertenciaConfirmada == true,
+        existingNotes: existingReading?.notes,
+      ),
     );
 
     _currentPlanilla!.agregarLectura(lectura);
@@ -348,10 +392,18 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
   // [MODIFIED] Send Logic (Top Button)
   Future<void> _sendPlanilla() async {
     if (_currentPlanilla == null) return;
+    if (_hasInvalidInputs) {
+      _showInvalidValuesMessage();
+      return;
+    }
 
     final catalog = context.read<CatalogRepository>();
     final instrumentos = _getInstrumentosForTipo(catalog);
-    _syncPlanillaFromInputs(instrumentos);
+    final readyToContinue =
+        await _ensureOutOfRangeConfirmation(instrumentos);
+    if (!readyToContinue) {
+      return;
+    }
 
     if (_currentPlanilla!.lecturas.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -396,7 +448,7 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-              'Sin conexión: planilla guardada como pendiente para sincronizar.',
+              'Sin conexiÃ³n: planilla guardada como pendiente para sincronizar.',
             ),
             backgroundColor: Color(0xFF64748B),
           ),
@@ -414,7 +466,7 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text(
-                'Sin conexión: planilla guardada como pendiente para sincronizar.',
+                'Sin conexiÃ³n: planilla guardada como pendiente para sincronizar.',
               ),
               backgroundColor: Color(0xFF64748B),
             ),
@@ -522,7 +574,7 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
           children: [
             Icon(Icons.error_outline, color: Color(0xFFEF4444)),
             SizedBox(width: 10),
-            Text('Errores de Validación',
+            Text('Errores de ValidaciÃ³n',
                 style: TextStyle(color: Colors.white, fontSize: 18)),
           ],
         ),
@@ -580,9 +632,17 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
   // [MODIFIED] Save Draft Logic (Bottom Button)
   Future<void> _saveDraft() async {
     if (_currentPlanilla == null) return;
+    if (_hasInvalidInputs) {
+      _showInvalidValuesMessage();
+      return;
+    }
     final instrumentos =
         _getInstrumentosForTipo(context.read<CatalogRepository>());
-    _syncPlanillaFromInputs(instrumentos);
+    final readyToContinue =
+        await _ensureOutOfRangeConfirmation(instrumentos);
+    if (!readyToContinue) {
+      return;
+    }
 
     _currentPlanilla!.estado = PlanillaEstado.borrador;
     await context.read<PlanillaRepository>().save(_currentPlanilla!);
@@ -638,7 +698,13 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
 
   TextEditingController _getController(String code) {
     if (!_controllers.containsKey(code)) {
-      _controllers[code] = TextEditingController();
+      final controller = TextEditingController();
+      controller.addListener(() {
+        if (mounted) {
+          setState(() {});
+        }
+      });
+      _controllers[code] = controller;
     }
     return _controllers[code]!;
   }
@@ -663,7 +729,177 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
     for (final controller in _controllers.values) {
       controller.clear();
     }
+    _confirmedWarningRawByKey.clear();
+    _reviewHighlightedKeys.clear();
     setState(() {});
+  }
+
+  String _controllerTextForLectura(Lectura lectura) {
+    if (lectura.valorRaw != null) {
+      return lectura.valorRaw!;
+    }
+    final value = lectura.value;
+    return value?.toString() ?? '';
+  }
+
+  String _readingKey(String instrumentCode, String? parameter) {
+    final canonicalCode =
+        CodigoHelper.canonicalize(instrumentCode.toUpperCase().trim());
+    final normalizedParameter = (parameter ?? '').trim().toUpperCase();
+    return '$canonicalCode|$normalizedParameter';
+  }
+
+  bool _isWarningConfirmed(
+    String instrumentCode,
+    String? parameter,
+    String rawValue,
+  ) {
+    final normalizedValue = Lectura.normalizeRawValue(rawValue);
+    if (normalizedValue.isEmpty) {
+      return false;
+    }
+    return _confirmedWarningRawByKey[_readingKey(instrumentCode, parameter)] ==
+        normalizedValue;
+  }
+
+  String _labelForParameter(String? parameter) {
+    final normalized = (parameter ?? '').trim().toUpperCase();
+    final schemaVariable = _defaultSchemaVariable();
+    if (schemaVariable != null &&
+        schemaVariable.code.trim().toUpperCase() == normalized &&
+        schemaVariable.name.trim().isNotEmpty) {
+      return schemaVariable.name.trim();
+    }
+
+    switch (normalized) {
+      case 'PROFUNDIDAD_M':
+        return 'Profundidad';
+      case 'ALTURA_MM':
+        return 'Altura';
+      case 'CONVERGENCIA_MM':
+        return 'Convergencia';
+      case 'LECTURA_CR10X':
+        return 'Lectura';
+      default:
+        return normalized.isEmpty ? 'Lectura' : normalized;
+    }
+  }
+
+  String? _buildReadingNotes({
+    required bool warningConfirmed,
+    String? existingNotes,
+  }) {
+    final cleanedExisting = existingNotes?.trim();
+    if (!warningConfirmed) {
+      if (cleanedExisting == null || cleanedExisting.isEmpty) {
+        return null;
+      }
+      if (cleanedExisting == _confirmedOutOfRangeNote) {
+        return null;
+      }
+      return cleanedExisting;
+    }
+
+    if (cleanedExisting == null || cleanedExisting.isEmpty) {
+      return _confirmedOutOfRangeNote;
+    }
+    if (cleanedExisting.contains(_confirmedOutOfRangeNote)) {
+      return cleanedExisting;
+    }
+    return '$cleanedExisting | $_confirmedOutOfRangeNote';
+  }
+
+  List<OutOfRangeReviewItem> _pendingOutOfRangeReviewItems(
+    List<Instrumento> instrumentos,
+  ) {
+    if (_currentPlanilla == null) {
+      return const [];
+    }
+
+    final pending = <OutOfRangeReviewItem>[];
+
+    for (final lectura in _currentPlanilla!.lecturas) {
+      if (lectura.fueraDeRango != true || lectura.advertenciaConfirmada == true) {
+        continue;
+      }
+      if (lectura.value == null ||
+          lectura.rangoMin == null ||
+          lectura.rangoMax == null ||
+          lectura.valorRaw == null) {
+        continue;
+      }
+
+      pending.add(
+        OutOfRangeReviewItem(
+          readingKey: _readingKey(lectura.instrumentCode, lectura.parameter),
+          instrumentCode: lectura.instrumentCode,
+          label: _labelForParameter(lectura.parameter),
+          rawValue: lectura.valorRaw!,
+          value: lectura.value!,
+          min: lectura.rangoMin!,
+          max: lectura.rangoMax!,
+        ),
+      );
+    }
+
+    return pending;
+  }
+
+  Future<bool> _ensureOutOfRangeConfirmation(
+    List<Instrumento> instrumentos,
+  ) async {
+    if (_currentPlanilla == null) {
+      return false;
+    }
+
+    _syncPlanillaFromInputs(instrumentos);
+    final pendingItems = _pendingOutOfRangeReviewItems(instrumentos);
+    if (pendingItems.isEmpty) {
+      setState(() => _reviewHighlightedKeys.clear());
+      return true;
+    }
+
+    final confirmed = await showOutOfRangeReviewSheet(
+      context,
+      items: pendingItems,
+    );
+    if (confirmed != true) {
+      if (!mounted) return false;
+      setState(() {
+        _reviewHighlightedKeys
+          ..clear()
+          ..addAll(pendingItems.map((item) => item.readingKey));
+      });
+      return false;
+    }
+
+    setState(() {
+      _reviewHighlightedKeys.clear();
+      for (final item in pendingItems) {
+        _confirmedWarningRawByKey[item.readingKey] = item.rawValue;
+      }
+    });
+
+    _syncPlanillaFromInputs(instrumentos);
+    return true;
+  }
+
+  bool _controllerHasInvalidValue(TextEditingController controller) {
+    return Lectura.isInvalidRawValue(controller.text);
+  }
+
+  bool get _hasInvalidInputs =>
+      _controllers.values.any(_controllerHasInvalidValue);
+
+  void _showInvalidValuesMessage() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Hay valores con formato incorrecto. RevisÃ¡ el formato antes de guardar o enviar.',
+        ),
+        backgroundColor: Color(0xFFEF4444),
+      ),
+    );
   }
 
   Widget _buildTipoSelector() {
@@ -761,7 +997,7 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
     await _loadSchemaForType(tipo);
   }
 
-  /// Obtiene el rango desde el catálogo local (sin requests en pantalla)
+  /// Obtiene el rango desde el catÃ¡logo local (sin requests en pantalla)
   InstrumentRange? _getRangeForInstrument(
       String codigo, String variableCodigo) {
     return context
@@ -780,6 +1016,10 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
   }
 
   Widget _buildBatchHeader() {
+    final catalog = context.watch<CatalogRepository>();
+    final syncService = context.watch<SyncService>();
+    final freshnessInfo = CatalogFreshnessInfo.fromRepository(catalog);
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: const BoxDecoration(
@@ -845,6 +1085,11 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
               ),
             ),
           ),
+          const SizedBox(height: 12),
+          CatalogFreshnessBanner(
+            info: freshnessInfo,
+            onTap: () => _showCatalogFreshnessPanel(catalog, syncService),
+          ),
         ],
       ),
     );
@@ -885,9 +1130,9 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
         context: context,
         builder: (ctx) => AlertDialog(
           backgroundColor: const Color(0xFF1E293B),
-          title: const Text('¿Salir?', style: TextStyle(color: Colors.white)),
+          title: const Text('Â¿Salir?', style: TextStyle(color: Colors.white)),
           content: const Text(
-            'Se perderán los cambios no guardados. ¿Volver a las familias?',
+            'Se perderÃ¡n los cambios no guardados. Â¿Volver a las familias?',
             style: TextStyle(color: Colors.white70),
           ),
           actions: [
@@ -923,6 +1168,32 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
         '${dt.hour.toString().padLeft(2, '0')}:'
         '${dt.minute.toString().padLeft(2, '0')}';
   }
+
+  Future<void> _showCatalogFreshnessPanel(
+    CatalogRepository catalog,
+    SyncService syncService,
+  ) {
+    return showCatalogFreshnessDetailsSheet(
+      context,
+      info: CatalogFreshnessInfo.fromRepository(catalog),
+      checkConnection: syncService.checkConnection,
+      initialIsConnected: syncService.isConnected,
+      isRefreshing: catalog.isSyncing,
+      onRefreshRequested: () => _refreshCatalogFromMeasurement(catalog),
+    );
+  }
+
+  Future<void> _refreshCatalogFromMeasurement(CatalogRepository catalog) async {
+    final ok = await catalog.syncFromBackend();
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(ok ? 'Catalogo actualizado' : 'Error al actualizar catalogo'),
+        backgroundColor: ok ? const Color(0xFF22C55E) : const Color(0xFFEF4444),
+      ),
+    );
+  }
 }
 
 // [MODIFIED] _InstrumentInputRow with Save Button
@@ -935,6 +1206,9 @@ class _InstrumentInputRow extends StatefulWidget {
   final String? customUnit;
   final Function(String) onSave;
   final InstrumentRange? range;
+  final bool isWarningConfirmed;
+  final String helperLabel;
+  final bool needsReviewHighlight;
 
   const _InstrumentInputRow({
     required this.instrumento,
@@ -945,6 +1219,9 @@ class _InstrumentInputRow extends StatefulWidget {
     this.customLabel,
     this.customUnit,
     this.range,
+    this.isWarningConfirmed = false,
+    required this.helperLabel,
+    this.needsReviewHighlight = false,
   });
 
   @override
@@ -953,11 +1230,13 @@ class _InstrumentInputRow extends StatefulWidget {
 
 class _InstrumentInputRowState extends State<_InstrumentInputRow> {
   bool _isOutOfRange = false;
+  bool _isInvalidValue = false;
 
   @override
   void initState() {
     super.initState();
     widget.controller.addListener(_checkRange);
+    _checkRange();
   }
 
   @override
@@ -971,14 +1250,20 @@ class _InstrumentInputRowState extends State<_InstrumentInputRow> {
   }
 
   void _checkRange() {
-    if (widget.range == null || !widget.range!.hasRange) {
-      if (_isOutOfRange) setState(() => _isOutOfRange = false);
-      return;
+    final rawValue = widget.controller.text;
+    final invalid = Lectura.isInvalidRawValue(rawValue);
+    final parsedValue = Lectura.parseRawValue(rawValue);
+    final outOfRange = parsedValue != null &&
+        widget.range != null &&
+        widget.range!.hasRange &&
+        widget.range!.isOutOfRange(parsedValue);
+
+    if (invalid != _isInvalidValue || outOfRange != _isOutOfRange) {
+      setState(() {
+        _isInvalidValue = invalid;
+        _isOutOfRange = outOfRange;
+      });
     }
-    final text = widget.controller.text.replaceAll(',', '.');
-    final val = double.tryParse(text);
-    final oor = val != null && widget.range!.isOutOfRange(val);
-    if (oor != _isOutOfRange) setState(() => _isOutOfRange = oor);
   }
 
   @override
@@ -989,17 +1274,50 @@ class _InstrumentInputRowState extends State<_InstrumentInputRow> {
 
   @override
   Widget build(BuildContext context) {
+    final hasRange = widget.range?.hasRange == true;
+    final hasTypedValue = widget.controller.text.trim().isNotEmpty;
+    final isWithinRange =
+        hasTypedValue && hasRange && !_isOutOfRange && !_isInvalidValue;
+    final borderColor = _isInvalidValue
+        ? const Color(0xFFEF4444)
+        : _isOutOfRange
+            ? const Color(0xFFF59E0B)
+            : isWithinRange
+                ? const Color(0xFF22C55E)
+                : widget.needsReviewHighlight
+                    ? const Color(0xFFF59E0B)
+                    : const Color(0xFF334155);
+    final backgroundColor = _isInvalidValue
+        ? const Color(0xFF3F1D1D)
+        : _isOutOfRange
+            ? const Color(0xFF422006)
+            : isWithinRange
+                ? const Color(0xFF13261B)
+                : const Color(0xFF1E293B);
+    final helperText = _isInvalidValue
+        ? 'Formato incorrecto | Usa punto como decimal'
+        : _isOutOfRange
+            ? 'Fuera de rango | Esperado: ${widget.range!.fullLabel}'
+            : isWithinRange
+                ? 'Dentro del rango esperado (${widget.range!.fullLabel})'
+                : !hasRange
+                    ? 'Sin referencia historica'
+                    : 'Esperado: ${widget.range!.fullLabel}';
+    final helperColor = _isInvalidValue
+        ? const Color(0xFFFCA5A5)
+        : _isOutOfRange
+            ? const Color(0xFFFBBF24)
+            : isWithinRange
+                ? const Color(0xFF86EFAC)
+                : Colors.grey[500]!;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color:
-            _isOutOfRange ? const Color(0xFF422006) : const Color(0xFF1E293B),
+        color: backgroundColor,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color:
-              _isOutOfRange ? const Color(0xFFF59E0B) : const Color(0xFF334155),
-        ),
+        border: Border.all(color: borderColor),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1033,15 +1351,25 @@ class _InstrumentInputRowState extends State<_InstrumentInputRow> {
                     fontWeight: FontWeight.w500,
                   ),
                   decoration: InputDecoration(
-                    hintText: widget.customLabel ?? '0,00',
+                    hintText: widget.customLabel ?? '0.00',
                     hintStyle: TextStyle(color: Colors.grey[700]),
                     contentPadding:
                         const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     filled: true,
-                    fillColor: const Color(0xFF0F172A),
+                    fillColor: _isInvalidValue
+                        ? const Color(0xFF451A1A)
+                        : const Color(0xFF0F172A),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide.none,
+                      borderSide: BorderSide(color: borderColor),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide(color: borderColor),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide(color: borderColor, width: 1.2),
                     ),
                   ),
                 ),
@@ -1069,22 +1397,48 @@ class _InstrumentInputRowState extends State<_InstrumentInputRow> {
               ),
             ],
           ),
-          // Rango esperado
-          if (widget.range != null && widget.range!.hasRange)
-            Padding(
-              padding: const EdgeInsets.only(top: 4, left: 78),
-              child: Text(
-                _isOutOfRange
-                    ? '⚠️ Fuera de rango [${widget.range!.fullLabel}]. Podés enviarlo igual.'
-                    : 'Ref Silver: ${widget.range!.fullLabel}',
-                style: TextStyle(
-                  fontSize: 10,
-                  color: _isOutOfRange
-                      ? const Color(0xFFFBBF24)
-                      : Colors.grey[600],
+          Padding(
+            padding: const EdgeInsets.only(top: 4, left: 78),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  helperText,
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: helperColor,
+                    fontWeight: isWithinRange || _isOutOfRange
+                        ? FontWeight.w600
+                        : FontWeight.w400,
+                  ),
                 ),
-              ),
+                if (_isOutOfRange && widget.isWarningConfirmed)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 2),
+                    child: Text(
+                      'Confirmado en campo',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Color(0xFFFDE68A),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                if (widget.needsReviewHighlight)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 2),
+                    child: Text(
+                      'Revisa este valor antes de continuar',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Color(0xFFFBBF24),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+              ],
             ),
+          ),
         ],
       ),
     );
@@ -1167,3 +1521,4 @@ class _FamilyCard extends StatelessWidget {
     );
   }
 }
+

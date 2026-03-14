@@ -54,7 +54,7 @@ class CsvExporter {
           lectura.instrumentCode,
           lectura.parameter,
           lectura.unit,
-          lectura.value.toString(),
+          lectura.valorRaw ?? lectura.value?.toString() ?? '',
           lectura.measuredAt.toIso8601String(),
           _escapeCsv(lectura.notes ?? ''),
           planilla.createdAt.toIso8601String(),
