@@ -20,19 +20,19 @@ class ServerDiscovery {
       return null;
     }
 
+    final subnets = ips
+        .map(_getSubnet)
+        .whereType<String>()
+        .toSet()
+        .toList();
     final candidatePorts = _resolveCandidatePorts();
     debugPrint('ServerDiscovery: IPs locales encontradas: $ips');
+    debugPrint('ServerDiscovery: Subredes priorizadas: $subnets');
     debugPrint('ServerDiscovery: Puertos objetivo: $candidatePorts');
 
     final client = http.Client();
     try {
-      final direct = await _probeConfiguredBaseUrl(client);
-      if (direct != null) return direct;
-
-      for (final ip in ips) {
-        final subnet = _getSubnet(ip);
-        if (subnet == null) continue;
-
+      for (final subnet in subnets) {
         for (final port in candidatePorts) {
           debugPrint(
             'ServerDiscovery: Escaneando subred: $subnet.0/24 (puerto $port)',
@@ -41,6 +41,9 @@ class ServerDiscovery {
           if (foundBaseUrl != null) return foundBaseUrl;
         }
       }
+
+      final direct = await _probeConfiguredBaseUrl(client);
+      if (direct != null) return direct;
     } finally {
       client.close();
     }
@@ -144,6 +147,10 @@ class ServerDiscovery {
   }
 
   static Future<String?> _probeConfiguredBaseUrl(http.Client client) async {
+    if (!ApiConfig.hasUsableCustomBaseUrl) {
+      return null;
+    }
+
     final configured = Uri.tryParse(ApiConfig.baseUrl);
     if (configured == null || configured.host.trim().isEmpty) return null;
     final host = configured.host.trim();
@@ -153,7 +160,7 @@ class ServerDiscovery {
         ? configured.port
         : (configured.scheme == 'https' ? 443 : 80);
     debugPrint(
-      'ServerDiscovery: Probando URL configurada primero: $host:$port',
+      'ServerDiscovery: Probando URL guardada como fallback: $host:$port',
     );
     return _checkIp(host, port, client);
   }

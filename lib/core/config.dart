@@ -5,9 +5,10 @@
 
 /// Configuración de la API del backend
 class ApiConfig {
-  static const String defaultBaseUrl = 'http://192.168.113.127:8000';
+  static const String defaultBaseUrl = 'http://127.0.0.1:8000';
   static const String settingsServerUrlKey = 'api_base_url';
   static String _baseUrl = defaultBaseUrl;
+  static bool _hasCustomBaseUrl = false;
 
   /// URL base del servidor
   /// Cambiar según el entorno:
@@ -17,6 +18,12 @@ class ApiConfig {
   /// 'http://192.168.113.103:8000'
   /// 'http://192.168.100.112:8000'
   static String get baseUrl => _baseUrl;
+  static bool get hasCustomBaseUrl => _hasCustomBaseUrl;
+  static bool get hasUsableCustomBaseUrl =>
+      _hasCustomBaseUrl && !isLoopbackHost(_baseUrl);
+  static String get serverLabel => hasCustomBaseUrl
+      ? _baseUrl
+      : 'Sin servidor guardado (autodeteccion o red local)';
 
   static String? normalizeBaseUrl(String raw) {
     var value = raw.trim();
@@ -35,11 +42,23 @@ class ApiConfig {
     return value;
   }
 
-  static bool setBaseUrl(String raw) {
+  static bool setBaseUrl(String raw, {bool markAsCustom = true}) {
     final normalized = normalizeBaseUrl(raw);
     if (normalized == null) return false;
     _baseUrl = normalized;
+    _hasCustomBaseUrl = markAsCustom;
     return true;
+  }
+
+  static void resetBaseUrlToDefault() {
+    _baseUrl = defaultBaseUrl;
+    _hasCustomBaseUrl = false;
+  }
+
+  static bool isLoopbackHost(String raw) {
+    final uri = Uri.tryParse(raw);
+    final host = uri?.host.trim().toLowerCase() ?? '';
+    return host == '127.0.0.1' || host == 'localhost';
   }
 
   /// Endpoints de la API

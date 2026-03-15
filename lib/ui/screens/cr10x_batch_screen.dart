@@ -29,16 +29,6 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
   static const List<String> _triaxAxes = ['X', 'Y', 'Z'];
   static final List<String> _triaxBaseCodes =
       List<String>.generate(15, (index) => 'J${index + 1}');
-  static const Set<String> _ejeCPiezometrosExtras = {
-    'PC05',
-    'PC13',
-    'PC15',
-    'PC16',
-    'PC17',
-    'PC23',
-    'PC25',
-    'PC26',
-  };
   static const String _tempSuffix = '__temp';
 
   TipoPlanilla? _selectedTipo;
@@ -724,13 +714,6 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
               .where((i) =>
                   i.familia == FamiliaInstrumento.piezometro && !i.esManual)
               .toList();
-          if (_selectedEje == 'C') {
-            _mergeEjeCPiezometroExtras(
-              instrumentos: instrumentos,
-              catalog: catalog,
-              subfamilia: subfamilia,
-            );
-          }
         } else {
           instrumentos = byAxis
               .where((i) =>
@@ -774,50 +757,6 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
     final sorted = List<Instrumento>.from(instrumentos)
       ..sort((a, b) => a.codigo.compareTo(b.codigo));
     return sorted;
-  }
-
-  void _mergeEjeCPiezometroExtras({
-    required List<Instrumento> instrumentos,
-    required CatalogRepository catalog,
-    required String subfamilia,
-  }) {
-    final existentes =
-        instrumentos.map((i) => CodigoHelper.canonicalize(i.codigo)).toSet();
-
-    for (final code in _ejeCPiezometrosExtras) {
-      if (existentes.contains(code)) {
-        continue;
-      }
-
-      final existingInCatalog = _findInstrumentByCode(catalog, code);
-      if (existingInCatalog != null) {
-        instrumentos.add(existingInCatalog);
-      } else {
-        instrumentos.add(
-          Instrumento(
-            codigo: code,
-            familia: FamiliaInstrumento.piezometro,
-            subfamilia: subfamilia,
-            defaultParameter: 'LECTURA_CR10X',
-            defaultUnit: 'Hz',
-          ),
-        );
-      }
-      existentes.add(code);
-    }
-  }
-
-  Instrumento? _findInstrumentByCode(CatalogRepository catalog, String code) {
-    final exact = catalog.byCode(code);
-    if (exact != null) {
-      return exact;
-    }
-    for (final inst in catalog.all()) {
-      if (CodigoHelper.codigoMatch(inst.codigo, code)) {
-        return inst;
-      }
-    }
-    return null;
   }
 
   List<Instrumento> _getTriaxialBaseInstrumentos(CatalogRepository catalog) {

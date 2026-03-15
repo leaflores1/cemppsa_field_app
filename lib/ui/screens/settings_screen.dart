@@ -92,8 +92,121 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: OutlinedButton.icon(
               onPressed: _logout,
               icon: const Icon(Icons.logout),
-              label: const Text('Cerrar sesiÃ³n'),
+              label: const Text('Cerrar sesiÃ³n completa'),
             ),
+          ),
+
+          const SizedBox(height: 24),
+
+          // =========================
+          // ACCESO OFFLINE
+          // =========================
+          const _SectionHeader(title: 'ACCESO OFFLINE'),
+          const SizedBox(height: 12),
+          _SettingsCard(
+            children: [
+              Consumer<AuthService>(
+                builder: (_, auth, __) {
+                  final pinStatus = auth.hasOfflinePin
+                      ? 'PIN local activo para reingresar sin backend'
+                      : 'Sin PIN. Si ya hay sesiÃ³n guardada, la app abre directo offline';
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _InfoTile(
+                        label: 'Desbloqueo local',
+                        value: pinStatus,
+                      ),
+                      const Divider(color: Color(0xFF334155)),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'UsÃ¡ un PIN local para proteger la sesiÃ³n guardada en el dispositivo. El backend queda solo para sincronizar o cambiar de cuenta.',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[500],
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            Wrap(
+                              spacing: 12,
+                              runSpacing: 12,
+                              children: [
+                                OutlinedButton.icon(
+                                  onPressed: () => _configureOfflinePin(auth),
+                                  icon: const Icon(Icons.pin_outlined),
+                                  label: Text(
+                                    auth.hasOfflinePin
+                                        ? 'Cambiar PIN'
+                                        : 'Activar PIN',
+                                  ),
+                                ),
+                                if (auth.hasOfflinePin)
+                                  OutlinedButton.icon(
+                                    onPressed: () => _removeOfflinePin(auth),
+                                    icon: const Icon(Icons.lock_reset_outlined),
+                                    label: const Text('Quitar PIN'),
+                                  ),
+                                if (auth.hasOfflinePin)
+                                  ElevatedButton.icon(
+                                    onPressed: () => _lockAppNow(auth),
+                                    icon: const Icon(Icons.lock_outline),
+                                    label: const Text('Bloquear ahora'),
+                                  ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Container(
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF0F172A),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: const Color(0xFF334155),
+                                ),
+                              ),
+                              child: SwitchListTile.adaptive(
+                                value: auth.offlineAutoLockEnabled,
+                                onChanged: auth.hasOfflinePin
+                                    ? (value) {
+                                        auth.setOfflineAutoLockEnabled(value);
+                                      }
+                                    : null,
+                                title: const Text(
+                                  'Bloquear al salir de la app',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                subtitle: Text(
+                                  auth.hasOfflinePin
+                                      ? 'Cuando la app pasa a segundo plano, vuelve a pedir el PIN local.'
+                                      : 'Activá un PIN para usar el bloqueo automático.',
+                                  style: TextStyle(
+                                    color: Colors.grey[500],
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                activeThumbColor: const Color(0xFF3B82F6),
+                                activeTrackColor: const Color(0xFF60A5FA),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 2,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ],
           ),
 
           const SizedBox(height: 24),
@@ -107,7 +220,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             children: [
               _InfoTile(
                 label: 'URL del servidor',
-                value: ApiConfig.baseUrl,
+                value: ApiConfig.serverLabel,
                 trailing: TextButton(
                   onPressed: _editServerUrl,
                   child: const Text('Editar'),
@@ -332,8 +445,187 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  Future<void> _configureOfflinePin(AuthService auth) async {
+    final pinController = TextEditingController();
+    final confirmController = TextEditingController();
+    var obscurePin = true;
+    var obscureConfirm = true;
+    String? formError;
+
+    final pin = await showDialog<String>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          backgroundColor: const Color(0xFF1E293B),
+          title: Text(
+            auth.hasOfflinePin ? 'Cambiar PIN offline' : 'Activar PIN offline',
+            style: const TextStyle(color: Colors.white),
+          ),
+          content: SizedBox(
+            width: 420,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: pinController,
+                  autofocus: true,
+                  keyboardType: TextInputType.number,
+                  obscureText: obscurePin,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    labelText: 'PIN',
+                    hintText: '4 a 8 dÃ­gitos',
+                    errorText: formError,
+                    suffixIcon: IconButton(
+                      onPressed: () {
+                        setDialogState(() => obscurePin = !obscurePin);
+                      },
+                      icon: Icon(
+                        obscurePin
+                            ? Icons.visibility_outlined
+                            : Icons.visibility_off_outlined,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: confirmController,
+                  keyboardType: TextInputType.number,
+                  obscureText: obscureConfirm,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    labelText: 'Repetir PIN',
+                    suffixIcon: IconButton(
+                      onPressed: () {
+                        setDialogState(
+                          () => obscureConfirm = !obscureConfirm,
+                        );
+                      },
+                      icon: Icon(
+                        obscureConfirm
+                            ? Icons.visibility_outlined
+                            : Icons.visibility_off_outlined,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Este PIN queda guardado en el dispositivo y sirve para volver a entrar sin red.',
+                    style: TextStyle(
+                      color: Color(0xFF94A3B8),
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancelar'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final pinValue = pinController.text.trim();
+                final confirmValue = confirmController.text.trim();
+                if (!RegExp(r'^\d{4,8}$').hasMatch(pinValue)) {
+                  setDialogState(() {
+                    formError = 'UsÃ¡ un PIN de 4 a 8 dÃ­gitos';
+                  });
+                  return;
+                }
+                if (pinValue != confirmValue) {
+                  setDialogState(() {
+                    formError = 'Los PIN no coinciden';
+                  });
+                  return;
+                }
+                Navigator.pop(ctx, pinValue);
+              },
+              child: const Text('Guardar'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      pinController.dispose();
+      confirmController.dispose();
+    });
+
+    if (pin == null) return;
+
+    final ok = await auth.setOfflinePin(pin);
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          ok
+              ? 'PIN offline guardado. La prÃ³xima vez podrÃ¡s entrar sin backend.'
+              : 'No se pudo guardar el PIN offline.',
+        ),
+        backgroundColor:
+            ok ? const Color(0xFF22C55E) : const Color(0xFFEF4444),
+      ),
+    );
+  }
+
+  Future<void> _removeOfflinePin(AuthService auth) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E293B),
+        title: const Text(
+          'Quitar PIN offline',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          'La sesiÃ³n seguirÃ¡ guardada, pero la app volverÃ¡ a abrir sin pedir PIN en este dispositivo.',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Quitar PIN'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    await auth.clearOfflinePin();
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('PIN offline eliminado'),
+        backgroundColor: Color(0xFF22C55E),
+      ),
+    );
+  }
+
+  Future<void> _lockAppNow(AuthService auth) async {
+    auth.lockLocally();
+    if (!mounted) return;
+    Navigator.pushNamedAndRemoveUntil(context, '/', (_) => false);
+  }
+
   Future<void> _editServerUrl() async {
-    final controller = TextEditingController(text: ApiConfig.baseUrl);
+    final controller = TextEditingController(
+      text: ApiConfig.hasCustomBaseUrl ? ApiConfig.baseUrl : '',
+    );
     final updated = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -451,7 +743,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _applyServerUrlChange(String normalized) async {
-    if (normalized == ApiConfig.baseUrl) {
+    if (normalized == ApiConfig.baseUrl && ApiConfig.hasCustomBaseUrl) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -462,7 +754,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return;
     }
 
-    ApiConfig.setBaseUrl(normalized);
+    ApiConfig.setBaseUrl(normalized, markAsCustom: true);
     final settingsBox = await Hive.openBox(StorageConfig.settingsBox);
     await settingsBox.put(ApiConfig.settingsServerUrlKey, normalized);
 

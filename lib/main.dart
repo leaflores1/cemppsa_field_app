@@ -36,6 +36,9 @@ import 'package:cemppsa_field_app/ui/screens/export_csv_screen.dart';
 import 'package:cemppsa_field_app/ui/screens/settings_screen.dart';
 import 'package:cemppsa_field_app/ui/screens/fotos_screen.dart';
 import 'package:cemppsa_field_app/ui/screens/login_screen.dart';
+import 'package:cemppsa_field_app/ui/screens/offline_unlock_screen.dart';
+
+final GlobalKey<NavigatorState> _appNavigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -63,7 +66,7 @@ void main() async {
   final persistedBaseUrl =
       settingsBox.get(ApiConfig.settingsServerUrlKey)?.toString();
   if (persistedBaseUrl != null && persistedBaseUrl.trim().isNotEmpty) {
-    ApiConfig.setBaseUrl(persistedBaseUrl);
+    ApiConfig.setBaseUrl(persistedBaseUrl, markAsCustom: true);
   }
 
   final persistedTechName = settingsBox.get('technician_name')?.toString();
@@ -75,9 +78,11 @@ void main() async {
   AppConfig.deviceId ??= 'android_${const Uuid().v4().substring(0, 8)}';
 
   // Inicializar repositorios
-  final catalogRepo = CatalogRepository(baseUrl: ApiConfig.baseUrl);
+  final catalogRepo = CatalogRepository(
+    baseUrl: ApiConfig.hasCustomBaseUrl ? ApiConfig.baseUrl : null,
+  );
   await catalogRepo.init();
-  if (catalogRepo.needsSync) {
+  if (ApiConfig.hasCustomBaseUrl && catalogRepo.needsSync) {
     // Primera lectura de catálogo+rango por instrumento (best effort).
     unawaited(catalogRepo.syncFromBackend());
   }
@@ -124,8 +129,11 @@ class _AuthGateScreen extends StatelessWidget {
             body: Center(child: CircularProgressIndicator()),
           );
         }
-        if (!auth.isAuthenticated) {
+        if (!auth.hasStoredSession) {
           return const LoginScreen();
+        }
+        if (auth.requiresLocalUnlock) {
+          return const OfflineUnlockScreen();
         }
         return const HomeScreen();
       },
@@ -133,17 +141,59 @@ class _AuthGateScreen extends StatelessWidget {
   }
 }
 
-class CEMPPSAFieldApp extends StatelessWidget {
+class CEMPPSAFieldApp extends StatefulWidget {
   const CEMPPSAFieldApp({super.key});
+
+  @override
+  State<CEMPPSAFieldApp> createState() => _CEMPPSAFieldAppState();
+}
+
+class _CEMPPSAFieldAppState extends State<CEMPPSAFieldApp>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!mounted) return;
+
+    final auth = context.read<AuthService>();
+
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
+      auth.lockLocallyIfNeeded();
+      return;
+    }
+
+    if (state == AppLifecycleState.resumed && auth.requiresLocalUnlock) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _appNavigatorKey.currentState?.pushNamedAndRemoveUntil(
+          '/',
+          (_) => false,
+        );
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: AppConfig.appName,
       debugShowCheckedModeBanner: false,
+      navigatorKey: _appNavigatorKey,
       theme: _buildTheme(),
-      home: const _AuthGateScreen(),
+      initialRoute: '/',
       routes: {
+        '/': (ctx) => const _AuthGateScreen(),
         // Flujos de carga de datos
         '/manual-reading': (ctx) => const ManualReadingScreen(),
         '/cr10x-batch': (ctx) => const CR10XBatchScreen(),

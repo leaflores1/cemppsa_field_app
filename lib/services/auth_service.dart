@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:crypto/crypto.dart';
 
 import '../api/api_client.dart';
 import '../core/config.dart';
@@ -10,21 +11,36 @@ import '../data/models/auth_session.dart';
 class AuthService extends ChangeNotifier {
   static const String _sessionKey = 'auth_session_v1';
   static const String _lastEmailKey = 'auth_last_email';
+  static const String _offlinePinHashKey = 'auth_offline_pin_hash_v1';
+  static const String _offlinePinOwnerKey = 'auth_offline_pin_owner_v1';
+  static const String _offlineAutoLockKey = 'auth_offline_auto_lock_v1';
 
   final ApiClient _apiClient;
 
   late Box _settingsBox;
   AuthSession? _session;
+  String? _offlinePinHash;
+  String? _offlinePinOwnerId;
   bool _initialized = false;
   bool _isLoading = false;
+  bool _isLocallyUnlocked = false;
+  bool _offlineAutoLockEnabled = true;
   String? _lastError;
 
   AuthService({required ApiClient apiClient}) : _apiClient = apiClient;
 
   bool get isInitialized => _initialized;
   bool get isLoading => _isLoading;
-  bool get isAuthenticated =>
-      _session != null && _session!.accessToken.trim().isNotEmpty;
+  bool get hasStoredSession => _session != null && _session!.user.id.isNotEmpty;
+  bool get hasOfflinePin =>
+      (_offlinePinHash?.trim().isNotEmpty ?? false) &&
+      (_offlinePinOwnerId?.trim().isNotEmpty ?? false) &&
+      _offlinePinOwnerId == _session?.user.id;
+  bool get offlineAutoLockEnabled => _offlineAutoLockEnabled;
+  bool get requiresLocalUnlock =>
+      hasStoredSession && hasOfflinePin && !_isLocallyUnlocked;
+  bool get isAuthenticated => hasStoredSession && !requiresLocalUnlock;
+  bool get isLocallyUnlocked => _isLocallyUnlocked;
   String? get lastError => _lastError;
   AuthUser? get currentUser => _session?.user;
   AuthSession? get currentSession => _session;
@@ -37,6 +53,12 @@ class AuthService extends ChangeNotifier {
     if (_initialized) return;
 
     _settingsBox = await Hive.openBox(StorageConfig.settingsBox);
+    _offlinePinHash = _settingsBox.get(_offlinePinHashKey)?.toString();
+    _offlinePinOwnerId = _settingsBox.get(_offlinePinOwnerKey)?.toString();
+    final storedAutoLock = _settingsBox.get(_offlineAutoLockKey);
+    if (storedAutoLock is bool) {
+      _offlineAutoLockEnabled = storedAutoLock;
+    }
     final rawSession = _settingsBox.get(_sessionKey);
 
     if (rawSession is Map) {
@@ -46,6 +68,7 @@ class AuthService extends ChangeNotifier {
         if (parsed.accessToken.isNotEmpty && parsed.user.id.isNotEmpty) {
           _session = parsed;
           _applySession(parsed);
+          _syncLocalUnlockState();
         }
       } catch (e) {
         debugPrint('AuthService: failed to restore session: $e');
@@ -99,12 +122,15 @@ class AuthService extends ChangeNotifier {
         return false;
       }
 
+      await _reconcileOfflinePinOwner(session.user.id);
       _session = session;
       _applySession(session);
+      _isLocallyUnlocked = true;
       await _settingsBox.put(_sessionKey, session.toJson());
       await _settingsBox.put(_lastEmailKey, normalizedEmail);
 
       _lastError = null;
+      notifyListeners();
       return true;
     } catch (e) {
       _lastError = 'Error de conexion: $e';
@@ -117,8 +143,86 @@ class AuthService extends ChangeNotifier {
   Future<void> logout() async {
     _session = null;
     _applySession(null);
+    _offlinePinHash = null;
+    _offlinePinOwnerId = null;
+    _isLocallyUnlocked = false;
     _lastError = null;
     await _settingsBox.delete(_sessionKey);
+    await _settingsBox.delete(_offlinePinHashKey);
+    await _settingsBox.delete(_offlinePinOwnerKey);
+    notifyListeners();
+  }
+
+  Future<bool> setOfflinePin(String pin) async {
+    final normalizedPin = pin.trim();
+    if (!_isValidPin(normalizedPin) || _session == null) {
+      return false;
+    }
+
+    final userId = _session!.user.id;
+    final hash = _hashPin(normalizedPin, userId);
+    _offlinePinHash = hash;
+    _offlinePinOwnerId = userId;
+    _isLocallyUnlocked = true;
+
+    await _settingsBox.put(_offlinePinHashKey, hash);
+    await _settingsBox.put(_offlinePinOwnerKey, userId);
+    notifyListeners();
+    return true;
+  }
+
+  Future<bool> unlockWithPin(String pin) async {
+    final normalizedPin = pin.trim();
+    if (!hasStoredSession || !hasOfflinePin || !_isValidPin(normalizedPin)) {
+      return false;
+    }
+
+    final expectedHash = _hashPin(normalizedPin, _session!.user.id);
+    if (expectedHash != _offlinePinHash) {
+      return false;
+    }
+
+    _isLocallyUnlocked = true;
+    _lastError = null;
+    notifyListeners();
+    return true;
+  }
+
+  Future<void> clearOfflinePin() async {
+    _offlinePinHash = null;
+    _offlinePinOwnerId = null;
+    _isLocallyUnlocked = true;
+    await _settingsBox.delete(_offlinePinHashKey);
+    await _settingsBox.delete(_offlinePinOwnerKey);
+    notifyListeners();
+  }
+
+  void lockLocally() {
+    if (!hasStoredSession || !hasOfflinePin) {
+      return;
+    }
+    _isLocallyUnlocked = false;
+    notifyListeners();
+  }
+
+  bool lockLocallyIfNeeded() {
+    if (!hasStoredSession || !hasOfflinePin || !_offlineAutoLockEnabled) {
+      return false;
+    }
+    if (!_isLocallyUnlocked) {
+      return false;
+    }
+    _isLocallyUnlocked = false;
+    notifyListeners();
+    return true;
+  }
+
+  Future<void> setOfflineAutoLockEnabled(bool value) async {
+    if (_offlineAutoLockEnabled == value) {
+      return;
+    }
+    _offlineAutoLockEnabled = value;
+    await _settingsBox.put(_offlineAutoLockKey, value);
     notifyListeners();
   }
 
@@ -158,6 +262,41 @@ class AuthService extends ChangeNotifier {
     if (_isLoading == value) return;
     _isLoading = value;
     notifyListeners();
+  }
+
+  void _syncLocalUnlockState() {
+    if (!hasStoredSession) {
+      _isLocallyUnlocked = false;
+      return;
+    }
+
+    if (!hasOfflinePin) {
+      _isLocallyUnlocked = true;
+      return;
+    }
+
+    _isLocallyUnlocked = false;
+  }
+
+  Future<void> _reconcileOfflinePinOwner(String newUserId) async {
+    final currentOwner = _offlinePinOwnerId?.trim();
+    if (currentOwner == null || currentOwner.isEmpty || currentOwner == newUserId) {
+      return;
+    }
+
+    _offlinePinHash = null;
+    _offlinePinOwnerId = null;
+    await _settingsBox.delete(_offlinePinHashKey);
+    await _settingsBox.delete(_offlinePinOwnerKey);
+  }
+
+  bool _isValidPin(String value) {
+    return RegExp(r'^\d{4,8}$').hasMatch(value);
+  }
+
+  String _hashPin(String pin, String userId) {
+    final digest = sha256.convert(utf8.encode('$userId::$pin'));
+    return digest.toString();
   }
 
   Map<String, dynamic> _toStringDynamicMap(Map raw) {
