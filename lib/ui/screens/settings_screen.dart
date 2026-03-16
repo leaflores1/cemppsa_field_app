@@ -1,4 +1,4 @@
-﻿// ==============================================================================
+// ==============================================================================
 // CEMPPSA Field App - SettingsScreen
 // Pantalla de configuraciÃ³n de la app (desacoplada de SyncService)
 // ==============================================================================
@@ -374,7 +374,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _editTechnicianName() async {
     try {
-      final controller = TextEditingController(text: AppConfig.technicianName ?? '');
+      final controller =
+          TextEditingController(text: AppConfig.technicianName ?? '');
       final updated = await showDialog<String>(
         context: context,
         builder: (ctx) => AlertDialog(
@@ -426,7 +427,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) setState(() {});
       });
-      
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Nombre actualizado'),
@@ -571,8 +572,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ? 'PIN offline guardado. La prÃ³xima vez podrÃ¡s entrar sin backend.'
               : 'No se pudo guardar el PIN offline.',
         ),
-        backgroundColor:
-            ok ? const Color(0xFF22C55E) : const Color(0xFFEF4444),
+        backgroundColor: ok ? const Color(0xFF22C55E) : const Color(0xFFEF4444),
       ),
     );
   }
@@ -624,7 +624,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _editServerUrl() async {
     final controller = TextEditingController(
-      text: ApiConfig.hasCustomBaseUrl ? ApiConfig.baseUrl : '',
+      text: ApiConfig.hasConfiguredBaseUrl ? ApiConfig.baseUrl : '',
     );
     final updated = await showDialog<String>(
       context: context,
@@ -638,7 +638,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           style: const TextStyle(color: Colors.white),
           decoration: const InputDecoration(
             labelText: 'URL o IP:puerto',
-            hintText: '192.168.100.112:8000',
+            hintText: 'http://192.168.111.112',
           ),
         ),
         actions: [
@@ -663,7 +663,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('URL invÃ¡lida. Ejemplo: 192.168.100.112:8000'),
+          content: Text('URL invÃ¡lida. Ejemplo: http://192.168.111.112'),
           backgroundColor: Color(0xFFEF4444),
         ),
       );
@@ -712,8 +712,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1E293B),
-        title: const Text('Servidor encontrado', style: TextStyle(color: Colors.white)),
-        content: Text('Se encontrÃ³ un servidor en $ip.\n\nÂ¿Deseas usar esta direcciÃ³n?'),
+        title: const Text('Servidor encontrado',
+            style: TextStyle(color: Colors.white)),
+        content: Text(
+            'Se encontrÃ³ un servidor en $ip.\n\nÂ¿Deseas usar esta direcciÃ³n?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -769,7 +771,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() {});
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Catalogo limpiado. Sincroniza antes de tomar mediciones.'),
+        content:
+            Text('Catalogo limpiado. Sincroniza antes de tomar mediciones.'),
         backgroundColor: Color(0xFFF59E0B),
       ),
     );

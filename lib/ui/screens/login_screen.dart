@@ -47,7 +47,7 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
     final auth = context.read<AuthService>();
-    if (!ApiConfig.hasCustomBaseUrl) {
+    if (!ApiConfig.hasConfiguredBaseUrl) {
       final foundServer = await _discoverAndApplyServer(showFeedback: true);
       if (!mounted || !foundServer) {
         if (mounted) {
@@ -116,7 +116,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _editServerUrl() async {
     final controller = TextEditingController(
-      text: ApiConfig.hasCustomBaseUrl ? ApiConfig.baseUrl : '',
+      text: ApiConfig.hasConfiguredBaseUrl ? ApiConfig.baseUrl : '',
     );
     final updated = await showDialog<String>(
       context: context,
@@ -130,7 +130,7 @@ class _LoginScreenState extends State<LoginScreen> {
           style: const TextStyle(color: Colors.white),
           decoration: const InputDecoration(
             labelText: 'URL o IP:puerto',
-            hintText: '192.168.100.112:8000',
+            hintText: 'http://192.168.111.112',
           ),
         ),
         actions: [
@@ -154,7 +154,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('URL invalida. Ejemplo: 192.168.100.112:8000'),
+          content: Text('URL invalida. Ejemplo: http://192.168.111.112'),
           backgroundColor: Color(0xFFEF4444),
         ),
       );

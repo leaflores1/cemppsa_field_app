@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:uuid/uuid.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'dart:async';
 
 // Core
@@ -25,6 +26,7 @@ import 'api/api_client.dart';
 import 'services/sync_service.dart';
 import 'services/foto_sync_service.dart';
 import 'services/auth_service.dart';
+import 'utils/server_discovery.dart';
 
 // Pantallas
 import 'package:cemppsa_field_app/ui/screens/home_screen.dart';
@@ -66,7 +68,17 @@ void main() async {
   final persistedBaseUrl =
       settingsBox.get(ApiConfig.settingsServerUrlKey)?.toString();
   if (persistedBaseUrl != null && persistedBaseUrl.trim().isNotEmpty) {
-    ApiConfig.setBaseUrl(persistedBaseUrl, markAsCustom: true);
+    if (ApiConfig.shouldReplacePersistedBaseUrl(persistedBaseUrl)) {
+      ApiConfig.setBaseUrl(ApiConfig.defaultBaseUrl, markAsCustom: false);
+      await settingsBox.put(
+        ApiConfig.settingsServerUrlKey,
+        ApiConfig.defaultBaseUrl,
+      );
+    } else {
+      ApiConfig.setBaseUrl(persistedBaseUrl, markAsCustom: true);
+    }
+  } else {
+    ApiConfig.setBaseUrl(ApiConfig.defaultBaseUrl, markAsCustom: false);
   }
 
   final persistedTechName = settingsBox.get('technician_name')?.toString();
@@ -79,10 +91,10 @@ void main() async {
 
   // Inicializar repositorios
   final catalogRepo = CatalogRepository(
-    baseUrl: ApiConfig.hasCustomBaseUrl ? ApiConfig.baseUrl : null,
+    baseUrl: ApiConfig.hasConfiguredBaseUrl ? ApiConfig.baseUrl : null,
   );
   await catalogRepo.init();
-  if (ApiConfig.hasCustomBaseUrl && catalogRepo.needsSync) {
+  if (ApiConfig.hasConfiguredBaseUrl && catalogRepo.needsSync) {
     // Primera lectura de catálogo+rango por instrumento (best effort).
     unawaited(catalogRepo.syncFromBackend());
   }
@@ -97,6 +109,14 @@ void main() async {
   final apiClient = ApiClient(baseUrl: ApiConfig.baseUrl);
   final authService = AuthService(apiClient: apiClient);
   await authService.init();
+  ApiConfig.refreshAuthToken = authService.refreshSession;
+  ApiConfig.handleSessionExpired = () async {
+    await authService.handleSessionExpired();
+    _appNavigatorKey.currentState?.pushNamedAndRemoveUntil(
+      '/login',
+      (_) => false,
+    );
+  };
 
   final syncService = SyncService(apiClient: apiClient);
   final fotoSyncService = FotoSyncService(repository: fotoRepo);
@@ -150,14 +170,27 @@ class CEMPPSAFieldApp extends StatefulWidget {
 
 class _CEMPPSAFieldAppState extends State<CEMPPSAFieldApp>
     with WidgetsBindingObserver {
+  final Connectivity _connectivity = Connectivity();
+  StreamSubscription<dynamic>? _connectivitySub;
+  bool _isResolvingServer = false;
+  DateTime? _lastServerResolveAttempt;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _connectivitySub = _connectivity.onConnectivityChanged.listen((result) {
+      if (!_hasAnyConnection(result)) return;
+      unawaited(_ensureReachableServer(reason: 'connectivity_changed'));
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_ensureReachableServer(reason: 'startup', force: true));
+    });
   }
 
   @override
   void dispose() {
+    _connectivitySub?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -168,7 +201,8 @@ class _CEMPPSAFieldAppState extends State<CEMPPSAFieldApp>
 
     final auth = context.read<AuthService>();
 
-    if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
       auth.lockLocallyIfNeeded();
       return;
     }
@@ -181,6 +215,91 @@ class _CEMPPSAFieldAppState extends State<CEMPPSAFieldApp>
           (_) => false,
         );
       });
+      return;
+    }
+
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_ensureReachableServer(reason: 'app_resumed'));
+    }
+  }
+
+  bool _hasAnyConnection(dynamic result) {
+    if (result is ConnectivityResult) {
+      return result != ConnectivityResult.none;
+    }
+    if (result is List<ConnectivityResult>) {
+      return result.any((value) => value != ConnectivityResult.none);
+    }
+    return false;
+  }
+
+  Future<void> _ensureReachableServer({
+    required String reason,
+    bool force = false,
+  }) async {
+    if (!mounted || _isResolvingServer) return;
+
+    final lastAttempt = _lastServerResolveAttempt;
+    if (!force &&
+        lastAttempt != null &&
+        DateTime.now().difference(lastAttempt) < const Duration(seconds: 15)) {
+      return;
+    }
+
+    final connectivity = await _connectivity.checkConnectivity();
+    if (!_hasAnyConnection(connectivity)) {
+      return;
+    }
+
+    _isResolvingServer = true;
+    _lastServerResolveAttempt = DateTime.now();
+
+    try {
+      if (!mounted) return;
+      final syncService = context.read<SyncService>();
+      final currentIsReachable = await syncService.checkConnection();
+      if (currentIsReachable) {
+        return;
+      }
+
+      final discoveredUrl = await ServerDiscovery.findServer();
+      final normalized = discoveredUrl == null
+          ? null
+          : ApiConfig.normalizeBaseUrl(discoveredUrl);
+      if (normalized == null) {
+        debugPrint(
+          'AutoServerResolver: sin hallazgos para reason=$reason baseUrl=${ApiConfig.baseUrl}',
+        );
+        return;
+      }
+
+      if (normalized == ApiConfig.baseUrl && ApiConfig.hasCustomBaseUrl) {
+        debugPrint(
+          'AutoServerResolver: el servidor detectado coincide con la URL actual ($normalized)',
+        );
+        return;
+      }
+
+      ApiConfig.setBaseUrl(normalized, markAsCustom: true);
+      final settingsBox = await Hive.openBox(StorageConfig.settingsBox);
+      await settingsBox.put(ApiConfig.settingsServerUrlKey, normalized);
+
+      if (!mounted) return;
+
+      context.read<AuthService>().updateApiBaseUrl(normalized);
+      syncService.updateApiBaseUrl(normalized);
+      context.read<CatalogRepository>().setBaseUrl(normalized);
+
+      debugPrint(
+        'AutoServerResolver: servidor actualizado automaticamente a $normalized (reason=$reason)',
+      );
+      if (mounted) {
+        setState(() {});
+      }
+    } catch (e) {
+      debugPrint('AutoServerResolver: error resolviendo servidor: $e');
+    } finally {
+      _isResolvingServer = false;
     }
   }
 

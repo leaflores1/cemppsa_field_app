@@ -5,8 +5,16 @@
 
 /// Configuración de la API del backend
 class ApiConfig {
-  static const String defaultBaseUrl = 'http://127.0.0.1:8000';
+  static const String defaultBaseUrl = String.fromEnvironment(
+    'CEMPPSA_API_BASE_URL',
+    defaultValue: 'http://192.168.111.112',
+  );
   static const String settingsServerUrlKey = 'api_base_url';
+  static const Set<String> legacyBaseUrls = {
+    'http://127.0.0.1:8000',
+    'http://localhost:8000',
+    'http://192.168.113.121:8000',
+  };
   static String _baseUrl = defaultBaseUrl;
   static bool _hasCustomBaseUrl = false;
 
@@ -19,11 +27,11 @@ class ApiConfig {
   /// 'http://192.168.100.112:8000'
   static String get baseUrl => _baseUrl;
   static bool get hasCustomBaseUrl => _hasCustomBaseUrl;
+  static bool get hasConfiguredBaseUrl => !isLoopbackHost(_baseUrl);
   static bool get hasUsableCustomBaseUrl =>
       _hasCustomBaseUrl && !isLoopbackHost(_baseUrl);
-  static String get serverLabel => hasCustomBaseUrl
-      ? _baseUrl
-      : 'Sin servidor guardado (autodeteccion o red local)';
+  static String get serverLabel =>
+      hasConfiguredBaseUrl ? _baseUrl : 'Sin servidor configurado';
 
   static String? normalizeBaseUrl(String raw) {
     var value = raw.trim();
@@ -55,6 +63,12 @@ class ApiConfig {
     _hasCustomBaseUrl = false;
   }
 
+  static bool shouldReplacePersistedBaseUrl(String? raw) {
+    final normalized = raw == null ? null : normalizeBaseUrl(raw);
+    if (normalized == null) return false;
+    return isLoopbackHost(normalized) || legacyBaseUrls.contains(normalized);
+  }
+
   static bool isLoopbackHost(String raw) {
     final uri = Uri.tryParse(raw);
     final host = uri?.host.trim().toLowerCase() ?? '';
@@ -69,11 +83,15 @@ class ApiConfig {
   static const String fotosEndpoint = '/api/v1/fotos';
   static const String authLoginEndpoint = '/api/v1/auth/login';
   static const String mobileAuthLoginEndpoint = '/api/v1/auth/mobile/login';
+  static const String mobileAuthRefreshEndpoint = '/api/v1/auth/mobile/refresh';
   static const String appVersionEndpoint = '/api/v1/app/version';
 
   /// Token Bearer opcional para endpoints protegidos
   /// Si no se configura, las requests se envían sin Authorization.
   static String? authToken;
+  static String? refreshToken;
+  static Future<bool> Function()? refreshAuthToken;
+  static Future<void> Function()? handleSessionExpired;
 
   /// Credenciales para sincronización de fotos (backend protegido).
   /// Recomendado: mover a ajustes/secure storage en próxima iteración.

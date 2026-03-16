@@ -165,11 +165,15 @@ class FotoSyncService extends ChangeNotifier {
       if (response.statusCode == 401 || response.statusCode == 403) {
         debugPrint(
             'FotoSyncService: token rechazado (${response.statusCode}), renovando...');
-        ApiConfig.authToken = null;
         final reauthed = await _ensureAuthToken(force: true);
         if (reauthed) {
           final retryStreamed = await _uploadMultipart(foto, file);
           response = await http.Response.fromStream(retryStreamed);
+        } else {
+          final onExpired = ApiConfig.handleSessionExpired;
+          if (onExpired != null) {
+            await onExpired();
+          }
         }
       }
 
@@ -286,9 +290,19 @@ class FotoSyncService extends ChangeNotifier {
 
   Future<bool> _ensureAuthToken({bool force = false}) async {
     final existing = ApiConfig.authToken?.trim();
-    if (existing != null && existing.isNotEmpty) {
+    if (!force && existing != null && existing.isNotEmpty) {
       return true;
     }
+
+    final refreshFn = ApiConfig.refreshAuthToken;
+    if (refreshFn != null) {
+      final refreshed = await refreshFn();
+      final renewed = ApiConfig.authToken?.trim();
+      if (refreshed && renewed != null && renewed.isNotEmpty) {
+        return true;
+      }
+    }
+
     debugPrint(
       'FotoSyncService: no hay token de sesion. Requiere login en la app.',
     );

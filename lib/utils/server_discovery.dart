@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -8,8 +9,13 @@ import '../core/config.dart';
 
 class ServerDiscovery {
   static const int _defaultPort = 8000;
+  static const int _httpFallbackPort = 80;
   static const String _healthPath = '/health';
   static const Duration _timeout = Duration(milliseconds: 2500);
+  static const Duration _udpTimeout = Duration(milliseconds: 1200);
+  static const int _udpDiscoveryPort = 42100;
+  static const String _udpMagicRequest = 'CEMPPSA_DISCOVER_V1';
+  static const String _udpMagicResponsePrefix = 'CEMPPSA_API_V1|';
 
   /// Escanea la red local y devuelve la primera URL base valida.
   static Future<String?> findServer() async {
@@ -20,18 +26,23 @@ class ServerDiscovery {
       return null;
     }
 
-    final subnets = ips
-        .map(_getSubnet)
-        .whereType<String>()
-        .toSet()
-        .toList();
+    final subnets = ips.map(_getSubnet).whereType<String>().toSet().toList();
     final candidatePorts = _resolveCandidatePorts();
     debugPrint('ServerDiscovery: IPs locales encontradas: $ips');
     debugPrint('ServerDiscovery: Subredes priorizadas: $subnets');
     debugPrint('ServerDiscovery: Puertos objetivo: $candidatePorts');
 
+    final udpResult = await _discoverViaUdp(subnets);
+    if (udpResult != null) {
+      debugPrint('ServerDiscovery: Servidor encontrado via UDP en $udpResult');
+      return udpResult;
+    }
+
     final client = http.Client();
     try {
+      final direct = await _probeConfiguredBaseUrl(client);
+      if (direct != null) return direct;
+
       for (final subnet in subnets) {
         for (final port in candidatePorts) {
           debugPrint(
@@ -41,9 +52,6 @@ class ServerDiscovery {
           if (foundBaseUrl != null) return foundBaseUrl;
         }
       }
-
-      final direct = await _probeConfiguredBaseUrl(client);
-      if (direct != null) return direct;
     } finally {
       client.close();
     }
@@ -79,12 +87,27 @@ class ServerDiscovery {
 
   static Future<String?> _checkIp(
       String ip, int port, http.Client client) async {
-    final url = Uri.parse('http://$ip:$port$_healthPath');
+    return _checkBaseUrl(
+      scheme: 'http',
+      host: ip,
+      port: port,
+      client: client,
+    );
+  }
+
+  static Future<String?> _checkBaseUrl({
+    required String scheme,
+    required String host,
+    required int port,
+    required http.Client client,
+  }) async {
+    final url = Uri.parse('$scheme://$host:$port$_healthPath');
     try {
       final response = await client.get(url).timeout(_timeout);
       if (response.statusCode == 200) {
-        debugPrint('ServerDiscovery: Servidor encontrado en $ip:$port');
-        return 'http://$ip:$port';
+        debugPrint(
+            'ServerDiscovery: Servidor encontrado en $scheme://$host:$port');
+        return '$scheme://$host:$port';
       }
     } catch (_) {
       // Timeout o error de conexion: ignorar y continuar
@@ -130,7 +153,7 @@ class ServerDiscovery {
   }
 
   static List<int> _resolveCandidatePorts() {
-    final ports = <int>{_defaultPort};
+    final ports = <int>{_defaultPort, _httpFallbackPort};
     final configured = Uri.tryParse(ApiConfig.baseUrl);
 
     if (configured != null) {
@@ -139,7 +162,7 @@ class ServerDiscovery {
       } else if (configured.scheme == 'https') {
         ports.add(443);
       } else if (configured.scheme == 'http') {
-        ports.add(80);
+        ports.add(_httpFallbackPort);
       }
     }
 
@@ -147,7 +170,7 @@ class ServerDiscovery {
   }
 
   static Future<String?> _probeConfiguredBaseUrl(http.Client client) async {
-    if (!ApiConfig.hasUsableCustomBaseUrl) {
+    if (!ApiConfig.hasConfiguredBaseUrl) {
       return null;
     }
 
@@ -156,12 +179,83 @@ class ServerDiscovery {
     final host = configured.host.trim();
     if (host == 'localhost' || host == '127.0.0.1') return null;
 
+    final scheme = configured.scheme.isNotEmpty ? configured.scheme : 'http';
     final port = configured.hasPort
         ? configured.port
-        : (configured.scheme == 'https' ? 443 : 80);
+        : (scheme == 'https' ? 443 : _httpFallbackPort);
     debugPrint(
-      'ServerDiscovery: Probando URL guardada como fallback: $host:$port',
+      'ServerDiscovery: Probando URL guardada como fallback: $scheme://$host:$port',
     );
-    return _checkIp(host, port, client);
+    return _checkBaseUrl(
+      scheme: scheme,
+      host: host,
+      port: port,
+      client: client,
+    );
+  }
+
+  static Future<String?> _discoverViaUdp(List<String> subnets) async {
+    RawDatagramSocket? socket;
+    StreamSubscription<RawSocketEvent>? subscription;
+    Timer? timer;
+
+    try {
+      socket = await RawDatagramSocket.bind(
+        InternetAddress.anyIPv4,
+        0,
+      );
+      socket.broadcastEnabled = true;
+      socket.readEventsEnabled = true;
+
+      final completer = Completer<String?>();
+      subscription = socket.listen((event) {
+        if (event != RawSocketEvent.read || completer.isCompleted) {
+          return;
+        }
+
+        final packet = socket?.receive();
+        if (packet == null) return;
+
+        final message = utf8.decode(packet.data, allowMalformed: true).trim();
+        if (!message.startsWith(_udpMagicResponsePrefix)) {
+          return;
+        }
+
+        final portRaw =
+            message.substring(_udpMagicResponsePrefix.length).trim();
+        final port = int.tryParse(portRaw);
+        if (port == null) {
+          debugPrint(
+            'ServerDiscovery: Respuesta UDP invalida desde ${packet.address.address}: $message',
+          );
+          return;
+        }
+
+        completer.complete('http://${packet.address.address}:$port');
+      });
+
+      final payload = utf8.encode(_udpMagicRequest);
+      for (final subnet in subnets) {
+        final broadcast = InternetAddress('$subnet.255');
+        socket.send(payload, broadcast, _udpDiscoveryPort);
+      }
+      socket.send(
+          payload, InternetAddress('255.255.255.255'), _udpDiscoveryPort);
+
+      timer = Timer(_udpTimeout, () {
+        if (!completer.isCompleted) {
+          completer.complete(null);
+        }
+      });
+
+      return await completer.future;
+    } catch (e) {
+      debugPrint('ServerDiscovery: Error en descubrimiento UDP: $e');
+      return null;
+    } finally {
+      timer?.cancel();
+      await subscription?.cancel();
+      socket?.close();
+    }
   }
 }

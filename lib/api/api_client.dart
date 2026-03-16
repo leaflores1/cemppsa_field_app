@@ -18,6 +18,7 @@ class ApiClient {
   String _baseUrl;
   final Duration _timeout;
   final Map<String, String> _defaultHeaders;
+  Future<bool>? _refreshInFlight;
 
   ApiClient({
     required String baseUrl,
@@ -102,6 +103,7 @@ class ApiClient {
     Map<String, String>? headers,
     Map<String, dynamic>? queryParams,
     Map<String, dynamic>? body,
+    bool allowRefresh = true,
   }) async {
     final uri = _buildUri(path, queryParams);
     final mergedHeaders = {..._defaultHeaders, ...?headers};
@@ -161,6 +163,25 @@ class ApiClient {
       debugPrint('API Response ${response.statusCode}');
       debugPrint('API Body: ${response.body}');
 
+      if (_shouldAttemptRefresh(
+        path: path,
+        statusCode: response.statusCode,
+        allowRefresh: allowRefresh,
+      )) {
+        final refreshed = await _refreshAccessToken();
+        if (refreshed) {
+          return _request(
+            method: method,
+            path: path,
+            headers: headers,
+            queryParams: queryParams,
+            body: body,
+            allowRefresh: false,
+          );
+        }
+        await _handleSessionExpired();
+      }
+
       return ApiResponse.fromHttp(response);
     } catch (e) {
       debugPrint('API ERROR [$method] $path → $e');
@@ -180,6 +201,63 @@ class ApiClient {
         (key, value) => MapEntry(key, value.toString()),
       ),
     );
+  }
+
+  bool _shouldAttemptRefresh({
+    required String path,
+    required int statusCode,
+    required bool allowRefresh,
+  }) {
+    if (!allowRefresh || statusCode != 401) {
+      return false;
+    }
+    if (_isAuthLoginPath(path) || _isAuthRefreshPath(path)) {
+      return false;
+    }
+    return true;
+  }
+
+  bool _isAuthLoginPath(String path) {
+    return path.contains(ApiConfig.mobileAuthLoginEndpoint) ||
+        path.contains(ApiConfig.authLoginEndpoint);
+  }
+
+  bool _isAuthRefreshPath(String path) {
+    return path.contains(ApiConfig.mobileAuthRefreshEndpoint);
+  }
+
+  Future<bool> _refreshAccessToken() {
+    final inFlight = _refreshInFlight;
+    if (inFlight != null) {
+      return inFlight;
+    }
+
+    final refreshFn = ApiConfig.refreshAuthToken;
+    if (refreshFn == null) {
+      return Future.value(false);
+    }
+
+    final future = refreshFn().catchError((error, stackTrace) {
+      debugPrint('ApiClient: token refresh failed: $error');
+      return false;
+    });
+
+    _refreshInFlight = future.whenComplete(() {
+      _refreshInFlight = null;
+    });
+    return _refreshInFlight!;
+  }
+
+  Future<void> _handleSessionExpired() async {
+    final handler = ApiConfig.handleSessionExpired;
+    if (handler == null) {
+      return;
+    }
+    try {
+      await handler();
+    } catch (e) {
+      debugPrint('ApiClient: error handling expired session: $e');
+    }
   }
 }
 

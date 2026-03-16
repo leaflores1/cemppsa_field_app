@@ -49,6 +49,20 @@ class AuthSession {
     required this.user,
   });
 
+  AuthSession copyWith({
+    String? accessToken,
+    String? refreshToken,
+    String? tokenType,
+    AuthUser? user,
+  }) {
+    return AuthSession(
+      accessToken: accessToken ?? this.accessToken,
+      refreshToken: refreshToken ?? this.refreshToken,
+      tokenType: tokenType ?? this.tokenType,
+      user: user ?? this.user,
+    );
+  }
+
   factory AuthSession.fromJson(Map<String, dynamic> json) {
     final userJson = json['user'];
     return AuthSession(

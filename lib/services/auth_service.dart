@@ -141,16 +141,60 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<void> logout() async {
-    _session = null;
-    _applySession(null);
-    _offlinePinHash = null;
-    _offlinePinOwnerId = null;
-    _isLocallyUnlocked = false;
-    _lastError = null;
-    await _settingsBox.delete(_sessionKey);
-    await _settingsBox.delete(_offlinePinHashKey);
-    await _settingsBox.delete(_offlinePinOwnerKey);
-    notifyListeners();
+    await _clearSession();
+  }
+
+  Future<bool> refreshSession() async {
+    final currentSession = _session;
+    final refreshToken = currentSession?.refreshToken.trim();
+    if (currentSession == null || refreshToken == null || refreshToken.isEmpty) {
+      return false;
+    }
+
+    try {
+      final response = await _apiClient.post(
+        ApiConfig.mobileAuthRefreshEndpoint,
+        body: {
+          'refresh_token': refreshToken,
+        },
+      );
+
+      if (!response.isSuccess || response.data is! Map) {
+        debugPrint('AuthService: mobile refresh failed: ${response.statusCode}');
+        return false;
+      }
+
+      final payload = _toStringDynamicMap(response.data as Map);
+      final newAccessToken = (payload['access_token'] ?? '').toString().trim();
+      if (newAccessToken.isEmpty) {
+        debugPrint('AuthService: mobile refresh returned empty token');
+        return false;
+      }
+
+      final updatedSession = currentSession.copyWith(
+        accessToken: newAccessToken,
+        tokenType: (payload['token_type'] ?? currentSession.tokenType)
+            .toString()
+            .trim(),
+      );
+
+      _session = updatedSession;
+      _applySession(updatedSession);
+      _isLocallyUnlocked = true;
+      _lastError = null;
+      await _settingsBox.put(_sessionKey, updatedSession.toJson());
+      notifyListeners();
+      return true;
+    } catch (e) {
+      debugPrint('AuthService: error refreshing mobile session: $e');
+      return false;
+    }
+  }
+
+  Future<void> handleSessionExpired() async {
+    await _clearSession(
+      errorMessage: 'Sesion expirada. Volve a iniciar sesion.',
+    );
   }
 
   Future<bool> setOfflinePin(String pin) async {
@@ -245,6 +289,7 @@ class AuthService extends ChangeNotifier {
 
   void _applySession(AuthSession? session) {
     ApiConfig.authToken = session?.accessToken;
+    ApiConfig.refreshToken = session?.refreshToken;
 
     if (session == null) {
       AppConfig.technicianId = null;
@@ -306,5 +351,18 @@ class AuthService extends ChangeNotifier {
       return decoded;
     }
     return <String, dynamic>{};
+  }
+
+  Future<void> _clearSession({String? errorMessage}) async {
+    _session = null;
+    _applySession(null);
+    _offlinePinHash = null;
+    _offlinePinOwnerId = null;
+    _isLocallyUnlocked = false;
+    _lastError = errorMessage;
+    await _settingsBox.delete(_sessionKey);
+    await _settingsBox.delete(_offlinePinHashKey);
+    await _settingsBox.delete(_offlinePinOwnerKey);
+    notifyListeners();
   }
 }
