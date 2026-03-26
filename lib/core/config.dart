@@ -7,7 +7,7 @@
 class ApiConfig {
   static const String defaultBaseUrl = String.fromEnvironment(
     'CEMPPSA_API_BASE_URL',
-    defaultValue: 'http://192.168.111.112',
+    defaultValue: 'http://127.0.0.1:8000',
   );
   static const String settingsServerUrlKey = 'api_base_url';
   static const Set<String> legacyBaseUrls = {
@@ -95,9 +95,6 @@ class ApiConfig {
 
   /// Credenciales para sincronización de fotos (backend protegido).
   /// Recomendado: mover a ajustes/secure storage en próxima iteración.
-  static String fieldAppEmail = 'admin@cemppsa.com';
-  static String fieldAppPassword = 'admin123';
-
   /// Timeouts
   static const Duration connectionTimeout = Duration(seconds: 10);
   static const Duration receiveTimeout = Duration(seconds: 30);

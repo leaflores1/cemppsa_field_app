@@ -6,6 +6,7 @@ import '../../core/config.dart';
 import '../../repositories/catalogo_repository.dart';
 import '../../services/auth_service.dart';
 import '../../services/sync_service.dart';
+import '../../utils/network_errors.dart';
 import '../../utils/server_discovery.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -71,7 +72,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (!mounted || ok) return;
 
-    if (_looksLikeConnectivityIssue(auth.lastError)) {
+    if (isConnectivityFailure(message: auth.lastError)) {
       ok = await _recoverServerAndRetryLogin(auth);
       if (!mounted || ok) return;
     }
@@ -82,17 +83,6 @@ class _LoginScreenState extends State<LoginScreen> {
         backgroundColor: const Color(0xFFEF4444),
       ),
     );
-  }
-
-  bool _looksLikeConnectivityIssue(String? error) {
-    final value = (error ?? '').toLowerCase();
-    if (value.isEmpty) return false;
-    return value.contains('timeoutexception') ||
-        value.contains('socketexception') ||
-        value.contains('failed host lookup') ||
-        value.contains('connection refused') ||
-        value.contains('network is unreachable') ||
-        value.contains('connection timed out');
   }
 
   Future<bool> _recoverServerAndRetryLogin(AuthService auth) async {
@@ -130,7 +120,7 @@ class _LoginScreenState extends State<LoginScreen> {
           style: const TextStyle(color: Colors.white),
           decoration: const InputDecoration(
             labelText: 'URL o IP:puerto',
-            hintText: 'http://192.168.111.112',
+            hintText: 'http://192.168.0.10:8000',
           ),
         ),
         actions: [
@@ -154,7 +144,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('URL invalida. Ejemplo: http://192.168.111.112'),
+          content: Text('URL invalida. Ejemplo: http://192.168.0.10:8000'),
           backgroundColor: Color(0xFFEF4444),
         ),
       );

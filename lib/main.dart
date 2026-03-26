@@ -101,6 +101,13 @@ void main() async {
 
   final planillaRepo = PlanillaRepository();
   await planillaRepo.init();
+  final recoveredSendingCount = await planillaRepo.recoverInterruptedSends();
+  if (recoveredSendingCount > 0) {
+    debugPrint(
+      'Main: recuperadas $recoveredSendingCount planillas que quedaron '
+      'ENVIANDO al cerrar la app.',
+    );
+  }
 
   final fotoRepo = FotoRepository();
   await fotoRepo.init();

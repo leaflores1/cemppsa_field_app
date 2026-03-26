@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 import '../../data/models/planilla.dart';
 import '../../data/models/lectura.dart';
 import '../../repositories/planilla_repository.dart';
+import '../../utils/decimal_input.dart';
 import '../widgets/estado_chip.dart';
 
 class PlanillaDetailScreen extends StatefulWidget {
@@ -175,8 +176,8 @@ class _PlanillaDetailScreenState extends State<PlanillaDetailScreen> {
               decoration: BoxDecoration(
                 color: const Color(0xFFEF4444).withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
-                border:
-                    Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.3)),
+                border: Border.all(
+                    color: const Color(0xFFEF4444).withValues(alpha: 0.3)),
               ),
               child: Row(
                 children: [
@@ -372,12 +373,14 @@ class _PlanillaDetailScreenState extends State<PlanillaDetailScreen> {
                     child: ElevatedButton(
                       onPressed: () {
                         final normalized =
-                            valueController.text.replaceAll(',', '.').trim();
-                        final parsed = double.tryParse(normalized);
+                            Lectura.normalizeRawValue(valueController.text);
+                        final parsed = parseDecimalInput(normalized);
                         if (parsed == null) {
                           ScaffoldMessenger.of(ctx).showSnackBar(
                             const SnackBar(
-                              content: Text('Valor numerico invalido'),
+                              content: Text(
+                                'Valor numerico invalido. Usa coma o punto como decimal',
+                              ),
                             ),
                           );
                           return;
@@ -387,6 +390,8 @@ class _PlanillaDetailScreenState extends State<PlanillaDetailScreen> {
                           ctx,
                           lectura.copyWith(
                             value: parsed,
+                            valorRaw: normalized.isEmpty ? null : normalized,
+                            valorInvalido: null,
                             notes: notes.isEmpty ? null : notes,
                           ),
                         );

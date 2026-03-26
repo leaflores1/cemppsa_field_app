@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import '../data/models/planilla.dart';
+import '../utils/json_maps.dart';
 
 /// Repositorio de planillas con persistencia local (Hive)
 class PlanillaRepository extends ChangeNotifier {
@@ -38,7 +39,7 @@ class PlanillaRepository extends ChangeNotifier {
     for (final value in _box.values) {
       if (value is Map) {
         try {
-          final json = _convertToStringDynamic(value);
+          final json = convertToStringDynamicMap(value);
           final planilla = Planilla.fromJson(json);
           _planillas[planilla.batchUuid] = planilla;
         } catch (e) {
@@ -47,33 +48,6 @@ class PlanillaRepository extends ChangeNotifier {
       }
     }
     debugPrint('Planillas cargadas del cache: ${_planillas.length}');
-  }
-
-  /// Convierte recursivamente Map<dynamic, dynamic> a Map<String, dynamic>
-  /// Necesario porque Hive deserializa como _Map<dynamic, dynamic>
-  Map<String, dynamic> _convertToStringDynamic(Map map) {
-    return map.map((key, value) {
-      if (value is Map) {
-        return MapEntry(key.toString(), _convertToStringDynamic(value));
-      } else if (value is List) {
-        return MapEntry(key.toString(), _convertList(value));
-      } else {
-        return MapEntry(key.toString(), value);
-      }
-    });
-  }
-
-  /// Convierte recursivamente elementos de lista
-  List _convertList(List list) {
-    return list.map((item) {
-      if (item is Map) {
-        return _convertToStringDynamic(item);
-      } else if (item is List) {
-        return _convertList(item);
-      } else {
-        return item;
-      }
-    }).toList();
   }
 
   // =========================================================================
@@ -85,6 +59,28 @@ class PlanillaRepository extends ChangeNotifier {
     _planillas[planilla.batchUuid] = planilla;
     await _box.put(planilla.batchUuid, planilla.toJson());
     notifyListeners();
+  }
+
+  Future<int> recoverInterruptedSends() async {
+    final interrupted = _planillas.values
+        .where((planilla) => planilla.estado == PlanillaEstado.enviando)
+        .toList();
+
+    if (interrupted.isEmpty) {
+      return 0;
+    }
+
+    for (final planilla in interrupted) {
+      planilla.recoverInterruptedSend();
+      await _box.put(planilla.batchUuid, planilla.toJson());
+    }
+
+    debugPrint(
+      'PlanillaRepository: recuperadas ${interrupted.length} planillas '
+      'que quedaron en ENVIANDO tras un cierre abrupto.',
+    );
+    notifyListeners();
+    return interrupted.length;
   }
 
   /// Obtiene una planilla por UUID

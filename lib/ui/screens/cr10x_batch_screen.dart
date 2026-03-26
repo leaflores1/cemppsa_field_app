@@ -1,4 +1,4 @@
-﻿// ==============================================================================
+// ==============================================================================
 // CEMPPSA Field App - CR10XBatchScreen
 // Pantalla de carga masiva CR10X (contingencia cuando falla automatico)
 // ==============================================================================
@@ -15,6 +15,8 @@ import '../../repositories/planilla_repository.dart';
 import '../../services/sync_service.dart';
 import 'dart:convert';
 import '../../core/config.dart';
+import '../../utils/decimal_input.dart';
+import '../../utils/network_errors.dart';
 import '../widgets/catalog_freshness_banner.dart';
 import '../widgets/out_of_range_review_sheet.dart';
 
@@ -1067,8 +1069,9 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
     );
     final parsedValue = Lectura.parseRawValue(normalizedValue);
     final hasRange = range?.hasRange == true;
-    final fueraDeRango =
-        parsedValue != null ? (hasRange ? range!.isOutOfRange(parsedValue) : null) : null;
+    final fueraDeRango = parsedValue != null
+        ? (hasRange ? range!.isOutOfRange(parsedValue) : null)
+        : null;
     final advertenciaConfirmada = fueraDeRango == true &&
             _isWarningConfirmed(
               resolvedInstrumentCode,
@@ -1206,8 +1209,7 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
 
     // Save local pending (always rebuild from current form state)
     final instrumentos = _getInstrumentosForGrid();
-    final readyToContinue =
-        await _ensureOutOfRangeConfirmation(instrumentos);
+    final readyToContinue = await _ensureOutOfRangeConfirmation(instrumentos);
     if (!readyToContinue) {
       return;
     }
@@ -1272,7 +1274,7 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
       }
     } catch (e) {
       if (mounted) {
-        if (_looksLikeConnectivityError(e.toString())) {
+        if (isConnectivityFailure(message: e.toString())) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text(
@@ -1287,16 +1289,6 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
         _showSimpleErrorDialog('Error de conexion: $e');
       }
     }
-  }
-
-  bool _looksLikeConnectivityError(String raw) {
-    final text = raw.toLowerCase();
-    return text.contains('socketexception') ||
-        text.contains('network is unreachable') ||
-        text.contains('failed host lookup') ||
-        text.contains('connection failed') ||
-        text.contains('clientexception') ||
-        text.contains('timed out');
   }
 
   void _parseErrorDetails(String errorMsg) {
@@ -1329,8 +1321,7 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
       return;
     }
     final instrumentos = _getInstrumentosForGrid();
-    final readyToContinue =
-        await _ensureOutOfRangeConfirmation(instrumentos);
+    final readyToContinue = await _ensureOutOfRangeConfirmation(instrumentos);
     if (!readyToContinue) {
       return;
     }
@@ -1354,11 +1345,11 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
 
     if (!hasData) {
       setState(() {
-      _disposeInputs();
-      _batchDateTime = DateTime.now();
-      _selectedTipo = null;
-      _selectedEje = null;
-      _currentPlanilla = null;
+        _disposeInputs();
+        _batchDateTime = DateTime.now();
+        _selectedTipo = null;
+        _selectedEje = null;
+        _currentPlanilla = null;
       });
       return;
     }
@@ -1508,7 +1499,8 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(ok ? 'Catalogo actualizado' : 'Error al actualizar catalogo'),
+        content:
+            Text(ok ? 'Catalogo actualizado' : 'Error al actualizar catalogo'),
         backgroundColor: ok ? const Color(0xFF22C55E) : const Color(0xFFEF4444),
       ),
     );
@@ -1595,7 +1587,8 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
     final pending = <OutOfRangeReviewItem>[];
 
     for (final lectura in _currentPlanilla!.lecturas) {
-      if (lectura.fueraDeRango != true || lectura.advertenciaConfirmada == true) {
+      if (lectura.fueraDeRango != true ||
+          lectura.advertenciaConfirmada == true) {
         continue;
       }
       if (lectura.value == null ||
@@ -1813,7 +1806,7 @@ String _statusHelperText({
 }) {
   final prefix = labelPrefix == null ? '' : '$labelPrefix | ';
   if (isInvalid) {
-    return '${prefix}Formato incorrecto | Usa punto como decimal';
+    return '${prefix}Formato incorrecto | $decimalInputFormatHelp';
   }
   if (isOutOfRange && range != null) {
     return '${prefix}Fuera de rango | Esperado: ${range.fullLabel}';
@@ -2207,8 +2200,9 @@ class _AsentimetroInputRowState extends State<_AsentimetroInputRow> {
             style: TextStyle(
               fontSize: 9,
               color: helperColor,
-              fontWeight:
-                  isWithinRange || isOutOfRange ? FontWeight.w600 : FontWeight.w400,
+              fontWeight: isWithinRange || isOutOfRange
+                  ? FontWeight.w600
+                  : FontWeight.w400,
             ),
           ),
           if (isOutOfRange && isWarningConfirmed)
@@ -2247,8 +2241,7 @@ class _AsentimetroInputRowState extends State<_AsentimetroInputRow> {
     final anyOutOfRange = _isLuOutOfRange || _isTempOutOfRange;
     final anyInvalid = _isLuInvalid || _isTempInvalid;
     final anyWithinRange = isLuWithinRange || isTempWithinRange;
-    final needsReviewHighlight =
-        widget.needsReviewLu || widget.needsReviewTemp;
+    final needsReviewHighlight = widget.needsReviewLu || widget.needsReviewTemp;
     final borderColor = _statusBorderColor(
       isInvalid: anyInvalid,
       isOutOfRange: anyOutOfRange,

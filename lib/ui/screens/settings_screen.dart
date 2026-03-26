@@ -638,7 +638,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           style: const TextStyle(color: Colors.white),
           decoration: const InputDecoration(
             labelText: 'URL o IP:puerto',
-            hintText: 'http://192.168.111.112',
+            hintText: 'http://192.168.0.10:8000',
           ),
         ),
         actions: [
@@ -663,7 +663,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('URL invÃ¡lida. Ejemplo: http://192.168.111.112'),
+          content: Text('URL invÃ¡lida. Ejemplo: http://192.168.0.10:8000'),
           backgroundColor: Color(0xFFEF4444),
         ),
       );

@@ -3,6 +3,7 @@
 // Alineado con: backend LecturaAppRequest (POST /api/v1/ingesta/planillas)
 // ==============================================================================
 
+import '../../utils/decimal_input.dart';
 import 'instrumento.dart';
 
 /// Lectura individual cruda para Bronze.
@@ -78,32 +79,15 @@ class Lectura {
     this.advertenciaConfirmada,
   });
 
-  static String normalizeRawValue(String rawValue) => rawValue.trim();
+  static String normalizeRawValue(String rawValue) =>
+      normalizeDecimalInput(rawValue);
 
-  static double? parseRawValue(String rawValue) {
-    final normalized = normalizeRawValue(rawValue);
-    if (normalized.isEmpty || normalized.contains(',')) {
-      return null;
-    }
+  static double? parseRawValue(String rawValue) => parseDecimalInput(rawValue);
 
-    final parsedValue = double.tryParse(normalized);
-    if (parsedValue == null || !parsedValue.isFinite) {
-      return null;
-    }
+  static bool isInvalidRawValue(String rawValue) =>
+      isInvalidDecimalInput(rawValue);
 
-    return parsedValue;
-  }
-
-  static bool isInvalidRawValue(String rawValue) {
-    final normalized = normalizeRawValue(rawValue);
-    if (normalized.isEmpty) {
-      return false;
-    }
-
-    return parseRawValue(normalized) == null;
-  }
-
-  /// Constructor desde formulario con manejo de decimales con coma
+  /// Constructor desde formulario con manejo de decimales con coma o punto
   factory Lectura.fromForm({
     required int clientRowId,
     required String instrumentCode,
@@ -140,8 +124,7 @@ class Lectura {
       rangoMin: invalidValue ? null : rangoMin,
       rangoMax: invalidValue ? null : rangoMax,
       rangoVersion: invalidValue ? null : rangoVersion,
-      advertenciaConfirmada:
-          invalidValue ? null : advertenciaConfirmada,
+      advertenciaConfirmada: invalidValue ? null : advertenciaConfirmada,
     );
   }
 
@@ -266,7 +249,7 @@ double? _readDouble(dynamic raw) {
   if (raw == null) {
     return null;
   }
-  return double.tryParse(raw.toString());
+  return parseDecimalInput(raw.toString());
 }
 
 bool? _readBool(dynamic raw) {

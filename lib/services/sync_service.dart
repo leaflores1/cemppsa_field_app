@@ -13,6 +13,8 @@ import '../data/models/instrumento.dart';
 import '../data/models/planilla.dart';
 import '../repositories/catalogo_repository.dart';
 import '../repositories/planilla_repository.dart';
+import '../utils/network_errors.dart';
+import '../utils/planilla_family.dart';
 
 /// Estado de conexiÃ³n con el backend
 enum ConnectionStatus {
@@ -125,8 +127,8 @@ class SyncService extends ChangeNotifier {
         .where((l) => l.valorInvalido == true || l.value == null)
         .toList();
     if (invalidLecturas.isNotEmpty) {
-      final codes = invalidLecturas.map((l) => l.instrumentCode).toSet().toList()
-        ..sort();
+      final codes =
+          invalidLecturas.map((l) => l.instrumentCode).toSet().toList()..sort();
       final error = 'La planilla contiene valores inválidos o incompletos: '
           '${codes.join(', ')}';
       _lastError = error;
@@ -200,8 +202,10 @@ class SyncService extends ChangeNotifier {
         extra: 'unexpected_status=$status',
       );
       _lastError = errorMessage;
-      _lastWasConnectivityIssue =
-          _isConnectivityFailure(response: response, message: errorMessage);
+      _lastWasConnectivityIssue = isConnectivityFailure(
+        statusCode: response.statusCode,
+        message: errorMessage,
+      );
       if (!_lastWasConnectivityIssue) {
         planilla.errorMessage = errorMessage;
       }
@@ -214,8 +218,10 @@ class SyncService extends ChangeNotifier {
       responseBody: responseBody,
     );
     _lastError = errorMessage;
-    _lastWasConnectivityIssue =
-        _isConnectivityFailure(response: response, message: errorMessage);
+    _lastWasConnectivityIssue = isConnectivityFailure(
+      statusCode: response.statusCode,
+      message: errorMessage,
+    );
     if (!_lastWasConnectivityIssue) {
       planilla.errorMessage = errorMessage;
     }
@@ -404,29 +410,6 @@ class SyncService extends ChangeNotifier {
         '$extraPart body=$responseBody';
   }
 
-  bool _isConnectivityFailure({
-    ApiResponse? response,
-    String? message,
-  }) {
-    if (response?.statusCode == null) {
-      return true;
-    }
-
-    final text = (message ?? response?.error ?? '').toLowerCase();
-    if (text.isEmpty) {
-      return false;
-    }
-
-    return text.contains('socketexception') ||
-        text.contains('network is unreachable') ||
-        text.contains('failed host lookup') ||
-        text.contains('connection failed') ||
-        text.contains('connection refused') ||
-        text.contains('connection reset') ||
-        text.contains('timed out') ||
-        text.contains('clientexception');
-  }
-
   static const Map<String, String> _aforadorAliases = {
     'AFCIZQ': 'CAV-IZQ',
     'CAVIZQ': 'CAV-IZQ',
@@ -583,7 +566,11 @@ class SyncService extends ChangeNotifier {
       return false;
     }
 
-    final familiaId = _mapTipoToFamiliaId(planilla.tipo);
+    final familiaId = familiaIdFromTipoPlanilla(
+          planilla.tipo,
+          unsupportedFallback: 'general_app',
+        ) ??
+        'general_app';
     final archivoOrigen =
         'app_${planilla.batchUuid}_${DateTime.now().millisecondsSinceEpoch}.json';
     final metadata = _resolveSenderMetadata(planilla);
@@ -625,8 +612,10 @@ class SyncService extends ChangeNotifier {
         extra: 'Manual Flow Error',
       );
       _lastError = errorMsg;
-      _lastWasConnectivityIssue =
-          _isConnectivityFailure(response: response, message: errorMsg);
+      _lastWasConnectivityIssue = isConnectivityFailure(
+        statusCode: response.statusCode,
+        message: errorMsg,
+      );
       if (!_lastWasConnectivityIssue) {
         planilla.errorMessage = errorMsg;
       }
@@ -643,24 +632,6 @@ class SyncService extends ChangeNotifier {
       }
     }
     return planilla.lecturas.map((lectura) => lectura.toSyncJson()).toList();
-  }
-
-  String _mapTipoToFamiliaId(TipoPlanilla tipo) {
-    switch (tipo) {
-      case TipoPlanilla.casagrande:
-        return 'piezometros_casagrande';
-      case TipoPlanilla.freatimetros:
-        return 'freatimetros';
-      case TipoPlanilla.aforadores:
-        return 'aforadores';
-      case TipoPlanilla.drenes:
-        return 'drenes';
-      case TipoPlanilla.triaxiales:
-        return 'triaxiales';
-      default:
-        // Fallback for generic manual if any
-        return 'general_app';
-    }
   }
 
   Future<List<RejectedPlanillaNotice>> refreshRemoteStatuses(

@@ -11,6 +11,24 @@ import 'package:hive_flutter/hive_flutter.dart';
 import '../data/models/instrumento.dart';
 import '../data/models/schema_model.dart';
 
+enum MobileSchemaSource {
+  backend,
+  cache,
+  unavailable,
+}
+
+class MobileSchemaLoadResult {
+  final MobileSchema? schema;
+  final MobileSchemaSource source;
+
+  const MobileSchemaLoadResult({
+    required this.schema,
+    required this.source,
+  });
+
+  bool get hasSchema => schema != null;
+}
+
 class CatalogRepository extends ChangeNotifier {
   static const String _boxName = 'catalog_v3';
   static const String _lastSyncKey = '__last_sync__';
@@ -212,7 +230,8 @@ class CatalogRepository extends ChangeNotifier {
   Instrumento? byCode(String code) => _byCode[code.toUpperCase()];
 
   InstrumentRange? rangeForInstrument(String code, String variableCodigo) {
-    final rangeKey = '${code.toUpperCase().trim()}|${variableCodigo.toUpperCase().trim()}';
+    final rangeKey =
+        '${code.toUpperCase().trim()}|${variableCodigo.toUpperCase().trim()}';
     final inst = byCode(code);
     if (inst == null) {
       if (kDebugMode && _loggedRangeMisses.add(rangeKey)) {
@@ -225,7 +244,8 @@ class CatalogRepository extends ChangeNotifier {
     }
     final range = inst.rangeForVariable(variableCodigo);
     if (range == null && kDebugMode && _loggedRangeMisses.add(rangeKey)) {
-      debugPrint('CatalogRepository range miss: ${inst.rangeDebugInfo(variableCodigo)}');
+      debugPrint(
+          'CatalogRepository range miss: ${inst.rangeDebugInfo(variableCodigo)}');
     }
     return range;
   }
@@ -298,7 +318,7 @@ class CatalogRepository extends ChangeNotifier {
   // Mobile Schema (Planillas)
   // ===========================================================================
 
-  Future<MobileSchema?> fetchMobileSchema(String familyId) async {
+  Future<MobileSchemaLoadResult> loadMobileSchema(String familyId) async {
     final cacheKey = 'schema_$familyId';
 
     // 1. Try Online
@@ -318,7 +338,10 @@ class CatalogRepository extends ChangeNotifier {
           // Cache it
           // Store complete JSON object to avoid serialization issues
           await _box.put(cacheKey, json);
-          return schema;
+          return MobileSchemaLoadResult(
+            schema: schema,
+            source: MobileSchemaSource.backend,
+          );
         } else {
           debugPrint(
               'Error fetching schema ($familyId): ${response.statusCode}');
@@ -339,12 +362,23 @@ class CatalogRepository extends ChangeNotifier {
             : Map<String, dynamic>.from(cached);
 
         debugPrint('Loaded schema from cache: $familyId');
-        return MobileSchema.fromJson(jsonMap);
+        return MobileSchemaLoadResult(
+          schema: MobileSchema.fromJson(jsonMap),
+          source: MobileSchemaSource.cache,
+        );
       } catch (e) {
         debugPrint('Cache parsing error ($familyId): $e');
       }
     }
 
-    return null;
+    return const MobileSchemaLoadResult(
+      schema: null,
+      source: MobileSchemaSource.unavailable,
+    );
+  }
+
+  Future<MobileSchema?> fetchMobileSchema(String familyId) async {
+    final result = await loadMobileSchema(familyId);
+    return result.schema;
   }
 }

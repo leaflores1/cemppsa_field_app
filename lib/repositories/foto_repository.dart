@@ -3,6 +3,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 
 import '../core/config.dart';
 import '../data/models/foto_inspeccion.dart';
+import '../utils/json_maps.dart';
 
 class FotoRepository extends ChangeNotifier {
   late Box _box;
@@ -24,7 +25,7 @@ class FotoRepository extends ChangeNotifier {
     for (final value in _box.values) {
       if (value is Map) {
         try {
-          final map = _convertToStringDynamic(value);
+          final map = convertToStringDynamicMap(value);
           final foto = FotoInspeccion.fromJson(map);
           _fotos[foto.localId] = foto;
         } catch (e) {
@@ -32,26 +33,6 @@ class FotoRepository extends ChangeNotifier {
         }
       }
     }
-  }
-
-  Map<String, dynamic> _convertToStringDynamic(Map map) {
-    return map.map((key, value) {
-      if (value is Map) {
-        return MapEntry(key.toString(), _convertToStringDynamic(value));
-      }
-      if (value is List) {
-        return MapEntry(key.toString(), _convertList(value));
-      }
-      return MapEntry(key.toString(), value);
-    });
-  }
-
-  List _convertList(List list) {
-    return list.map((item) {
-      if (item is Map) return _convertToStringDynamic(item);
-      if (item is List) return _convertList(item);
-      return item;
-    }).toList();
   }
 
   Future<void> save(FotoInspeccion foto) async {

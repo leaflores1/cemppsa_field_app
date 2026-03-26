@@ -310,6 +310,15 @@ class Planilla {
     syncRetries++;
   }
 
+  /// Recovery defensivo al boot: si la app se cerrÃ³ durante el envÃ­o, el lote
+  /// vuelve a pendiente para que el reintento sea manual y determinista.
+  void recoverInterruptedSend() {
+    if (estado != PlanillaEstado.enviando) {
+      return;
+    }
+    estado = PlanillaEstado.pendiente;
+  }
+
   /// Marca como enviada exitosamente
   void marcarEnviada() {
     estado = PlanillaEstado.enviada;

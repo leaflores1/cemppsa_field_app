@@ -1,4 +1,4 @@
-﻿// ==============================================================================
+// ==============================================================================
 // CEMPPSA Field App - ManualReadingScreen
 // Pantalla de lecturas manuales (Casagrande, FreatÃ­metros, Aforadores)
 // ==============================================================================
@@ -15,6 +15,9 @@ import '../../repositories/planilla_repository.dart';
 import '../../data/models/schema_model.dart';
 import '../../core/config.dart';
 import '../../services/sync_service.dart';
+import '../../utils/decimal_input.dart';
+import '../../utils/network_errors.dart';
+import '../../utils/planilla_family.dart';
 import '../widgets/catalog_freshness_banner.dart';
 import '../widgets/out_of_range_review_sheet.dart';
 
@@ -30,6 +33,8 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
   Planilla? _currentPlanilla;
   DateTime _batchDateTime = DateTime.now();
   MobileSchema? _loadedSchema;
+  MobileSchemaSource _schemaSource = MobileSchemaSource.unavailable;
+  bool _isLoadingSchema = false;
 
   final Map<String, TextEditingController> _controllers = {};
   final Map<String, FocusNode> _focusNodes = {};
@@ -58,6 +63,9 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
       _disposeInputs();
       _currentPlanilla = planilla;
       _selectedTipo = planilla.tipo;
+      _loadedSchema = null;
+      _schemaSource = MobileSchemaSource.unavailable;
+      _isLoadingSchema = true;
       if (planilla.lecturas.isNotEmpty) {
         _batchDateTime = planilla.lecturas.first.measuredAt;
       }
@@ -242,9 +250,8 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
             ),
             const SizedBox(width: 8),
             ElevatedButton(
-              onPressed: filledCount > 0 && !_hasInvalidInputs
-                  ? _saveDraft
-                  : null,
+              onPressed:
+                  filledCount > 0 && !_hasInvalidInputs ? _saveDraft : null,
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF3B82F6), // Blue for draft
                 disabledBackgroundColor: const Color(0xFF334155),
@@ -318,8 +325,9 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
     final range = _getRangeForInstrument(instrumentCode, parameter);
     final parsedValue = Lectura.parseRawValue(normalizedValue);
     final hasRange = range?.hasRange == true;
-    final fueraDeRango =
-        parsedValue != null ? (hasRange ? range!.isOutOfRange(parsedValue) : null) : null;
+    final fueraDeRango = parsedValue != null
+        ? (hasRange ? range!.isOutOfRange(parsedValue) : null)
+        : null;
     final advertenciaConfirmada = fueraDeRango == true &&
             _isWarningConfirmed(instrumentCode, parameter, normalizedValue)
         ? true
@@ -399,8 +407,7 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
 
     final catalog = context.read<CatalogRepository>();
     final instrumentos = _getInstrumentosForTipo(catalog);
-    final readyToContinue =
-        await _ensureOutOfRangeConfirmation(instrumentos);
+    final readyToContinue = await _ensureOutOfRangeConfirmation(instrumentos);
     if (!readyToContinue) {
       return;
     }
@@ -463,7 +470,7 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
     } catch (e) {
       debugPrint('Error sending planilla: $e');
       if (mounted) {
-        if (_looksLikeConnectivityError(e.toString())) {
+        if (isConnectivityFailure(message: e.toString())) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text(
@@ -478,16 +485,6 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
         _handleSendError(e.toString());
       }
     }
-  }
-
-  bool _looksLikeConnectivityError(String raw) {
-    final text = raw.toLowerCase();
-    return text.contains('socketexception') ||
-        text.contains('network is unreachable') ||
-        text.contains('failed host lookup') ||
-        text.contains('connection failed') ||
-        text.contains('clientexception') ||
-        text.contains('timed out');
   }
 
   void _handleSendError(String? errorMsg) {
@@ -522,32 +519,28 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
   }
 
   Future<void> _loadSchemaForType(TipoPlanilla tipo) async {
-    final familyId = _mapTipoToSchemaFamilyId(tipo);
+    final familyId = familiaIdFromTipoPlanilla(tipo);
     if (familyId == null) {
       if (!mounted) return;
-      setState(() => _loadedSchema = null);
+      setState(() {
+        _loadedSchema = null;
+        _schemaSource = MobileSchemaSource.unavailable;
+        _isLoadingSchema = false;
+      });
       return;
     }
 
-    final schema =
-        await context.read<CatalogRepository>().fetchMobileSchema(familyId);
-    if (!mounted) return;
-    setState(() => _loadedSchema = schema);
-  }
-
-  String? _mapTipoToSchemaFamilyId(TipoPlanilla tipo) {
-    switch (tipo) {
-      case TipoPlanilla.casagrande:
-        return 'piezometros_casagrande';
-      case TipoPlanilla.freatimetros:
-        return 'freatimetros';
-      case TipoPlanilla.aforadores:
-        return 'aforadores';
-      case TipoPlanilla.drenes:
-        return 'drenes';
-      default:
-        return null;
+    if (mounted) {
+      setState(() => _isLoadingSchema = true);
     }
+    final result =
+        await context.read<CatalogRepository>().loadMobileSchema(familyId);
+    if (!mounted) return;
+    setState(() {
+      _loadedSchema = result.schema;
+      _schemaSource = result.source;
+      _isLoadingSchema = false;
+    });
   }
 
   Map<String, dynamic>? _parseErrorDetails(String errorMsg) {
@@ -639,8 +632,7 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
     }
     final instrumentos =
         _getInstrumentosForTipo(context.read<CatalogRepository>());
-    final readyToContinue =
-        await _ensureOutOfRangeConfirmation(instrumentos);
+    final readyToContinue = await _ensureOutOfRangeConfirmation(instrumentos);
     if (!readyToContinue) {
       return;
     }
@@ -821,7 +813,8 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
     final pending = <OutOfRangeReviewItem>[];
 
     for (final lectura in _currentPlanilla!.lecturas) {
-      if (lectura.fueraDeRango != true || lectura.advertenciaConfirmada == true) {
+      if (lectura.fueraDeRango != true ||
+          lectura.advertenciaConfirmada == true) {
         continue;
       }
       if (lectura.value == null ||
@@ -995,6 +988,8 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
         lecturas: [],
       )..estado = PlanillaEstado.borrador;
       _loadedSchema = null;
+      _schemaSource = MobileSchemaSource.unavailable;
+      _isLoadingSchema = true;
     });
     await _loadSchemaForType(tipo);
   }
@@ -1021,6 +1016,7 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
     final catalog = context.watch<CatalogRepository>();
     final syncService = context.watch<SyncService>();
     final freshnessInfo = CatalogFreshnessInfo.fromRepository(catalog);
+    final schemaBanner = _buildSchemaFallbackBanner();
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1092,9 +1088,80 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
             info: freshnessInfo,
             onTap: () => _showCatalogFreshnessPanel(catalog, syncService),
           ),
+          if (schemaBanner != null) ...[
+            const SizedBox(height: 12),
+            schemaBanner,
+          ],
         ],
       ),
     );
+  }
+
+  Widget? _buildSchemaFallbackBanner() {
+    if (_isLoadingSchema) {
+      return null;
+    }
+
+    switch (_schemaSource) {
+      case MobileSchemaSource.backend:
+        return null;
+      case MobileSchemaSource.cache:
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF3A2A0A),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0xFFF59E0B)),
+          ),
+          child: const Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.inventory_2_outlined,
+                  color: Color(0xFFFBBF24), size: 18),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Schema backend no disponible. Se usa la ultima version guardada localmente.',
+                  style: TextStyle(
+                    color: Color(0xFFFDE68A),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      case MobileSchemaSource.unavailable:
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF3F1D1D),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0xFFEF4444)),
+          ),
+          child: const Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.warning_amber_rounded,
+                  color: Color(0xFFFCA5A5), size: 18),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Sin schema del backend ni cache local. La captura usa nombres y unidades inferidos en la app; revisa los valores antes de enviar.',
+                  style: TextStyle(
+                    color: Color(0xFFFECACA),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+    }
   }
 
   Future<void> _pickBatchDateTime() async {
@@ -1159,6 +1226,8 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
         _selectedTipo = null;
         _currentPlanilla = null;
         _loadedSchema = null;
+        _schemaSource = MobileSchemaSource.unavailable;
+        _isLoadingSchema = false;
       });
     }
   }
@@ -1191,7 +1260,8 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(ok ? 'Catalogo actualizado' : 'Error al actualizar catalogo'),
+        content:
+            Text(ok ? 'Catalogo actualizado' : 'Error al actualizar catalogo'),
         backgroundColor: ok ? const Color(0xFF22C55E) : const Color(0xFFEF4444),
       ),
     );
@@ -1297,7 +1367,7 @@ class _InstrumentInputRowState extends State<_InstrumentInputRow> {
                 ? const Color(0xFF13261B)
                 : const Color(0xFF1E293B);
     final helperText = _isInvalidValue
-        ? 'Formato incorrecto | Usa punto como decimal'
+        ? 'Formato incorrecto | $decimalInputFormatHelp'
         : _isOutOfRange
             ? 'Fuera de rango | Esperado: ${widget.range!.fullLabel}'
             : isWithinRange
@@ -1518,4 +1588,3 @@ class _FamilyCard extends StatelessWidget {
     );
   }
 }
-
