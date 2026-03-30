@@ -3,7 +3,7 @@
 // Alineado con: backend Instrumento (familia_instrumento_enum)
 // ==============================================================================
 
-/// Familia de instrumento segÃºn el backend
+/// Familia de instrumento según el backend
 /// Mapea exactamente a: familia_instrumento_enum en MySQL
 enum FamiliaInstrumento {
   piezometro('PIEZOMETRO', 'Piezometro'),
@@ -36,25 +36,25 @@ enum FamiliaInstrumento {
     );
   }
 
-  /// Infiere familia a partir del cÃ³digo del instrumento
+  /// Infiere familia a partir del código del instrumento
   static FamiliaInstrumento inferFromCode(String code) {
     final upper = code.toUpperCase();
 
-    // Casagrande (lecturas manuales en cÃ¡mara de compuertas)
+    // Casagrande (lecturas manuales en cámara de compuertas)
     // Solo PC01-PC26 y PC*SEC (con SEC sufijo)
     if (RegExp(r'^PC\d{2}(SEC)?$').hasMatch(upper) &&
         (int.tryParse(upper.substring(2, 4)) ?? 0) <= 26) {
       return FamiliaInstrumento.casagrande;
     }
 
-    // PiezÃ³metros de cuerda vibrante (P + letra de eje)
+    // Piezómetros de cuerda vibrante (P + letra de eje)
     // Incluye: PA, PB, PC (solo PC31+), PD, PE, PF, PG
-    // PC31, PC41, PC43, PC45, PC48, etc. son piezÃ³metros del Eje C
+    // PC31, PC41, PC43, PC45, PC48, etc. son piezómetros del Eje C
     if (RegExp(r'^P[ABCDEFG]').hasMatch(upper)) {
       return FamiliaInstrumento.piezometro;
     }
 
-    // FreatÃ­metros
+    // Freatímetros
     if (upper.startsWith('PP') ||
         upper.startsWith('D1') ||
         upper.startsWith('D2')) {
@@ -71,12 +71,12 @@ enum FamiliaInstrumento {
       return FamiliaInstrumento.aforador;
     }
 
-    // AsentÃ­metros
+    // Asentímetros
     if (upper.startsWith('AD') || upper.startsWith('AE')) {
       return FamiliaInstrumento.asentimetro;
     }
 
-    // Triaxiales (formato: J + nÃºmero + opcional [XYZ])
+    // Triaxiales (formato: J + número + opcional [XYZ])
     // Ejemplos: J1, J2, J1X, J1Y, J1Z, etc.
     if (RegExp(r'^J\d+[XYZ]?$').hasMatch(upper)) {
       return FamiliaInstrumento.triaxial;
@@ -87,19 +87,19 @@ enum FamiliaInstrumento {
       return FamiliaInstrumento.uniaxial;
     }
 
-    // ClinÃ³metros (juntas perimetrales)
+    // Clinómetros (juntas perimetrales)
     if (upper.startsWith('JP')) {
       return FamiliaInstrumento.juntaPerimetral;
     }
 
-    // TermÃ³metros
+    // Termómetros
     if (upper.startsWith('TE') ||
         upper.startsWith('TG') ||
         RegExp(r'^T\d').hasMatch(upper)) {
       return FamiliaInstrumento.termometro;
     }
 
-    // Celdas de presiÃ³n
+    // Celdas de presión
     if (upper.startsWith('CP') || upper.startsWith('CQ')) {
       return FamiliaInstrumento.celdaPresion;
     }
@@ -109,7 +109,7 @@ enum FamiliaInstrumento {
       return FamiliaInstrumento.limnimetro;
     }
 
-    // BarÃ³metro
+    // Barómetro
     if (upper.contains('BAR') || upper == 'P_BAR') {
       return FamiliaInstrumento.barometro;
     }
@@ -119,14 +119,14 @@ enum FamiliaInstrumento {
   }
 }
 
-/// Utilidades para cÃ³digos de instrumento
+/// Utilidades para códigos de instrumento
 class CodigoHelper {
-  /// Canonicaliza cÃ³digo de instrumento.
+  /// Canonicaliza código de instrumento.
   ///
   /// Elimina variantes para formato uniforme:
-  /// - PC-05 â†’ PC05
-  /// - AE1-41 â†’ AE141
-  /// - PP7* â†’ PP7
+  /// - PC-05 -> PC05
+  /// - AE1-41 -> AE141
+  /// - PP7* -> PP7
   static String canonicalize(String codigo) {
     var canonical = codigo.toUpperCase();
 
@@ -136,16 +136,16 @@ class CodigoHelper {
     return canonical;
   }
 
-  /// Compara dos cÃ³digos ignorando variantes
+  /// Compara dos códigos ignorando variantes
   static bool codigoMatch(String codigo1, String codigo2) {
     return canonicalize(codigo1) == canonicalize(codigo2);
   }
 }
 
-/// Subfamilias comunes (para clasificaciÃ³n mÃ¡s fina)
+/// Subfamilias comunes (para clasificación más fina)
 /// Corresponde al campo `subfamilia` VARCHAR(50) del backend
 class Subfamilia {
-  // PiezÃ³metros
+  // Piezómetros
   static const String casagrande = 'CASAGRANDE';
   static const String ejeA = 'EJE_A';
   static const String ejeB = 'EJE_B';
@@ -165,25 +165,25 @@ class Subfamilia {
   static const String acueducto = 'ACUEDUCTO';
   static const String aliviadero = 'ALIVIADERO';
 
-  /// Infiere subfamilia desde el cÃ³digo
+  /// Infiere subfamilia desde el código
   static String? inferFromCode(String code) {
     final upper = code.toUpperCase();
 
-    // PiezÃ³metros Casagrande (lectura manual) - Solo PC01-PC26
+    // Piezómetros Casagrande (lectura manual) - Solo PC01-PC26
     if (RegExp(r'^PC\d{2}(SEC)?$').hasMatch(upper) &&
         (int.tryParse(upper.substring(2, 4)) ?? 0) <= 26) {
       return casagrande;
     }
 
-    // Por eje (PiezÃ³metros & AsentÃ­metros)
-    // AsentÃ­metros: AD -> EJE_D, AE/AE1 -> EJE_E1
+    // Por eje (Piezómetros & Asentímetros)
+    // Asentímetros: AD -> EJE_D, AE/AE1 -> EJE_E1
     if (upper.startsWith('AD')) return ejeD;
     if (upper.startsWith('AE')) return ejeE1;
 
-    // PiezÃ³metros
+    // Piezómetros
     if (upper.startsWith('PA')) return ejeA;
     if (upper.startsWith('PB')) return ejeB;
-    if (upper.startsWith('PC')) return ejeC; // PC31, PC41, etc. â†’ EJE_C
+    if (upper.startsWith('PC')) return ejeC; // PC31, PC41, etc. -> EJE_C
     if (upper.startsWith('PD')) return ejeD;
 
     // Logic for E vs E1:
@@ -271,13 +271,13 @@ class InstrumentRange {
   }
 }
 
-/// Modelo de Instrumento para el catÃ¡logo local
+/// Modelo de Instrumento para el catálogo local
 /// Alineado con: GET /api/v1/catalog/instrumentos response
 class Instrumento {
   /// ID del backend (null si solo existe localmente)
   final int? idInstrumento;
 
-  /// CÃ³digo Ãºnico del instrumento (PK lÃ³gica en la app)
+  /// Código único del instrumento (PK lógica en la app)
   final String codigo;
 
   /// Nombre descriptivo
@@ -286,13 +286,13 @@ class Instrumento {
   /// Familia principal
   final FamiliaInstrumento familia;
 
-  /// Subfamilia (clasificaciÃ³n mÃ¡s fina)
+  /// Subfamilia (clasificación más fina)
   final String? subfamilia;
 
   /// Estado activo/inactivo
   final bool activo;
 
-  /// ParÃ¡metro por defecto para este tipo
+  /// Parámetro por defecto para este tipo
   final String defaultParameter;
 
   /// Unidad por defecto
@@ -313,7 +313,7 @@ class Instrumento {
     this.rangos = const [],
   });
 
-  /// Constructor desde respuesta del catÃ¡logo del backend
+  /// Constructor desde respuesta del catálogo del backend
   factory Instrumento.fromJson(Map<String, dynamic> json) {
     var familiaStr = json['familia'] as String? ?? 'PIEZOMETRO';
 
@@ -347,7 +347,7 @@ class Instrumento {
       subfamilia:
           (json['subfamilia'] as String?) ?? Subfamilia.inferFromCode(codigo),
       activo: json['activo'] as bool? ?? true,
-      // Usar defaults del backend si estÃ¡n disponibles
+      // Usar defaults del backend si están disponibles
       defaultParameter: defaultParam?.trim().isNotEmpty == true
           ? defaultParam!.trim()
           : _inferDefaultParameter(finalFam.backendValue),
@@ -358,7 +358,7 @@ class Instrumento {
     );
   }
 
-  /// Constructor rÃ¡pido desde cÃ³digo (infiere familia y subfamilia)
+  /// Constructor rápido desde código (infiere familia y subfamilia)
   factory Instrumento.fromCode(String code) {
     final familia = FamiliaInstrumento.inferFromCode(code);
     final subfamilia = Subfamilia.inferFromCode(code);
@@ -421,7 +421,7 @@ class Instrumento {
   /// Nombre para mostrar en UI
   String get displayName => nombre ?? codigo;
 
-  /// Â¿Es lectura manual (Casagrande, freatÃ­metros, aforadores)?
+  /// ¿Es lectura manual (Casagrande, freatímetros, aforadores)?
   bool get esManual {
     if (familia == FamiliaInstrumento.casagrande) return true;
     if (subfamilia == Subfamilia.casagrande) return true;
@@ -430,10 +430,10 @@ class Instrumento {
     return false;
   }
 
-  /// Â¿Es del CR10X?
+  /// ¿Es del CR10X?
   bool get esCR10X => !esManual && familia == FamiliaInstrumento.piezometro;
 
-  /// ParÃ¡metro recomendado para ingesta (variable backend)
+  /// Parámetro recomendado para ingesta (variable backend)
   String? get ingestaParameter {
     switch (familia) {
       case FamiliaInstrumento.piezometro:
@@ -472,7 +472,7 @@ class Instrumento {
     }
   }
 
-  /// Unidad recomendada para ingesta (segÃºn variable de entrada).
+  /// Unidad recomendada para ingesta (según variable de entrada).
   /// Si devuelve null, se omite el campo `unit` en la API.
   String? get ingestaUnit {
     switch (familia) {

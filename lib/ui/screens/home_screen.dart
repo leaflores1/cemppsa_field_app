@@ -71,7 +71,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (syncService.isSyncing) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Ya hay una sincronizaciÃ³n en curso'),
+          content: Text('Ya hay una sincronización en curso'),
           backgroundColor: Color(0xFFF59E0B),
         ),
       );
@@ -143,9 +143,9 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1E293B),
         title:
-            const Text('Cerrar sesiÃ³n', style: TextStyle(color: Colors.white)),
+            const Text('Cerrar sesión', style: TextStyle(color: Colors.white)),
         content: const Text(
-          'Â¿QuerÃ©s cerrar la sesiÃ³n actual?',
+          '¿Querés cerrar la sesión actual?',
           style: TextStyle(color: Colors.white70),
         ),
         actions: [
@@ -155,7 +155,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Cerrar sesiÃ³n'),
+            child: const Text('Cerrar sesión'),
           ),
         ],
       ),
@@ -177,7 +177,7 @@ class _HomeScreenState extends State<HomeScreen> {
           slivers: [
             SliverToBoxAdapter(child: _buildHeader()),
 
-            // Banner de conectividad (fuente Ãºnica de verdad)
+            // Banner de conectividad (fuente única de verdad)
             const SliverToBoxAdapter(
               child: ConnectivityBanner(),
             ),
@@ -354,7 +354,7 @@ class _HomeScreenState extends State<HomeScreen> {
           IconButton(
             onPressed: _confirmLogout,
             icon: const Icon(Icons.logout, color: Colors.white70),
-            tooltip: 'Cerrar sesiÃ³n',
+            tooltip: 'Cerrar sesión',
           ),
         ],
       ),

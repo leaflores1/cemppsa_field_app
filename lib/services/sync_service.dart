@@ -16,7 +16,7 @@ import '../repositories/planilla_repository.dart';
 import '../utils/network_errors.dart';
 import '../utils/planilla_family.dart';
 
-/// Estado de conexiÃ³n con el backend
+/// Estado de conexión con el backend
 enum ConnectionStatus {
   unknown,
   connected,
@@ -24,7 +24,7 @@ enum ConnectionStatus {
   syncing,
 }
 
-/// Resultado de sincronizaciÃ³n
+/// Resultado de sincronización
 class SyncResult {
   final int sent;
   final int failed;
@@ -52,7 +52,7 @@ class RejectedPlanillaNotice {
   });
 }
 
-/// Servicio de sincronizaciÃ³n principal
+/// Servicio de sincronización principal
 class SyncService extends ChangeNotifier {
   final ApiClient _api;
 
@@ -86,7 +86,7 @@ class SyncService extends ChangeNotifier {
   // ===========================================================================
 
   Future<bool> checkConnection() async {
-    debugPrint('SyncService: Verificando conexiÃ³n...');
+    debugPrint('SyncService: Verificando conexión...');
     final response = await _api.get('/health');
 
     debugPrint('SyncService: Response isSuccess=${response.isSuccess}');
@@ -99,7 +99,7 @@ class SyncService extends ChangeNotifier {
       final db = response.data?['database'];
 
       if (status == 'ok' || db == 'ok') {
-        debugPrint('SyncService: âœ“ Conectado');
+        debugPrint('SyncService: Conectado');
         _status = ConnectionStatus.connected;
         _lastError = null;
         notifyListeners();
@@ -107,7 +107,7 @@ class SyncService extends ChangeNotifier {
       }
     }
 
-    debugPrint('SyncService: âœ— Desconectado');
+    debugPrint('SyncService: Desconectado');
     _status = ConnectionStatus.disconnected;
     _lastError = response.error ?? 'Servidor no disponible';
     notifyListeners();
@@ -115,7 +115,7 @@ class SyncService extends ChangeNotifier {
   }
 
   // ===========================================================================
-  // ENVÃO DE PLANILLA
+  // ENVÍO DE PLANILLA
   // ===========================================================================
 
   Future<bool> sendPlanilla(
@@ -240,7 +240,7 @@ class SyncService extends ChangeNotifier {
       return SyncResult(
         sent: 0,
         failed: 0,
-        message: 'Ya hay una sincronizaciÃ³n en curso',
+        message: 'Ya hay una sincronización en curso',
       );
     }
 
@@ -257,7 +257,7 @@ class SyncService extends ChangeNotifier {
       return SyncResult(
         sent: 0,
         failed: 0,
-        message: 'Sin conexiÃ³n al servidor',
+        message: 'Sin conexión al servidor',
       );
     }
 
@@ -518,7 +518,7 @@ class SyncService extends ChangeNotifier {
     if (missing.isNotEmpty) {
       final list = missing.toList()..sort();
       debugPrint(
-        'SyncService: instrumentos no encontrados en catÃ¡logo (se envÃ­an igual): '
+        'SyncService: instrumentos no encontrados en catálogo (se envían igual): '
         '${list.join(', ')}',
       );
     }
@@ -560,7 +560,7 @@ class SyncService extends ChangeNotifier {
     _lastWasConnectivityIssue = false;
     final rows = _buildManualRows(planilla);
     if (rows.isEmpty) {
-      _lastError = 'Planilla manual sin lecturas vÃ¡lidas';
+      _lastError = 'Planilla manual sin lecturas válidas';
       _lastWasConnectivityIssue = false;
       planilla.errorMessage = _lastError;
       return false;

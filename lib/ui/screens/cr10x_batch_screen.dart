@@ -361,7 +361,7 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
     });
   }
 
-  /// Obtiene el rango desde el catÃ¡logo local (sin requests en pantalla)
+  /// Obtiene el rango desde el catálogo local (sin requests en pantalla)
   InstrumentRange? _getRangeForInstrument(
       String codigo, String variableCodigo) {
     return context
@@ -567,6 +567,8 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
           final baseCode = _triaxBaseCode(inst.codigo);
           return _TriaxialInputRow(
             instrumentCode: baseCode,
+            instrumentName: inst.nombre,
+            unitLabel: _resolveTriaxialUnit(inst) ?? inst.defaultUnit,
             hasCatalogReference:
                 context.read<CatalogRepository>().byCode(baseCode) != null,
             controllerX: _getController(_triaxAxisKey(baseCode, 'X')),
@@ -671,17 +673,26 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
       children: [
         Container(
           margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-          padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
             color: const Color(0x1A14B8A6),
             borderRadius: BorderRadius.circular(10),
             border: Border.all(color: const Color(0x4D14B8A6)),
           ),
-          child: const Row(
+          child: const ExpansionTile(
+            leading:
+                Icon(Icons.info_outline, color: Color(0xFF14B8A6), size: 18),
+            title: Text(
+              'Info sobre lecturas triaxiales',
+              style: TextStyle(color: Colors.white, fontSize: 13),
+            ),
+            iconColor: Color(0xFF14B8A6),
+            collapsedIconColor: Color(0xFF14B8A6),
+            initiallyExpanded: false,
+            childrenPadding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+            tilePadding: EdgeInsets.symmetric(horizontal: 12, vertical: 2),
             children: [
-              Icon(Icons.info_outline, color: Color(0xFF14B8A6), size: 18),
-              SizedBox(width: 8),
-              Expanded(
+              Align(
+                alignment: Alignment.centerLeft,
                 child: Text(
                   'Cada instrumento triaxial tiene 3 lecturas: Eje X, Eje Y y Eje Z.',
                   style: TextStyle(color: Colors.white, fontSize: 12),
@@ -942,7 +953,7 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
       instrumento: inst,
       rawValue: rawTempValue,
       parameter: 'TEMPERATURA',
-      unit: 'Â°C',
+      unit: '°C',
     );
 
     _currentPlanilla!.estado = PlanillaEstado.borrador;
@@ -1140,7 +1151,7 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
           instrumento: inst,
           rawValue: _controllers[_tempControllerKey(inst.codigo)]?.text ?? '',
           parameter: 'TEMPERATURA',
-          unit: 'Â°C',
+          unit: '°C',
         );
         continue;
       }
@@ -1258,7 +1269,7 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-              'Sin conexiÃ³n: planilla guardada como pendiente para sincronizar.',
+              'Sin conexión: planilla guardada como pendiente para sincronizar.',
             ),
             backgroundColor: Color(0xFF64748B),
           ),
@@ -1278,7 +1289,7 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text(
-                'Sin conexiÃ³n: planilla guardada como pendiente para sincronizar.',
+                'Sin conexión: planilla guardada como pendiente para sincronizar.',
               ),
               backgroundColor: Color(0xFF64748B),
             ),
@@ -1664,7 +1675,7 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text(
-          'Hay valores con formato incorrecto. RevisÃ¡ el formato antes de guardar o enviar.',
+          'Hay valores con formato incorrecto. Revisá el formato antes de guardar o enviar.',
         ),
         backgroundColor: Color(0xFFEF4444),
       ),
@@ -1796,6 +1807,18 @@ Color _statusHelperColor({
   return Colors.grey[500]!;
 }
 
+String _formatExpectedRange(InstrumentRange range, {String? unitLabel}) {
+  if (!range.hasRange) {
+    return '';
+  }
+
+  final normalizedUnit = unitLabel?.trim();
+  final suffix = normalizedUnit == null || normalizedUnit.isEmpty
+      ? ''
+      : ' $normalizedUnit';
+  return '${range.min!.toStringAsFixed(2)} — ${range.max!.toStringAsFixed(2)}$suffix';
+}
+
 String _statusHelperText({
   required bool isInvalid,
   required bool isOutOfRange,
@@ -1803,22 +1826,23 @@ String _statusHelperText({
   required bool hasRange,
   required InstrumentRange? range,
   String? labelPrefix,
+  String? unitLabel,
 }) {
   final prefix = labelPrefix == null ? '' : '$labelPrefix | ';
   if (isInvalid) {
     return '${prefix}Formato incorrecto | $decimalInputFormatHelp';
   }
   if (isOutOfRange && range != null) {
-    return '${prefix}Fuera de rango | Esperado: ${range.fullLabel}';
+    return '${prefix}Fuera de rango | Esperado: ${_formatExpectedRange(range, unitLabel: unitLabel)}';
   }
   if (isWithinRange && range != null) {
-    return '${prefix}Dentro del rango esperado (${range.fullLabel})';
+    return '${prefix}Dentro del rango esperado (${_formatExpectedRange(range, unitLabel: unitLabel)})';
   }
   if (!hasRange) {
     return '${prefix}Sin referencia historica';
   }
   if (range != null) {
-    return '${prefix}Esperado: ${range.fullLabel}';
+    return '${prefix}Esperado: ${_formatExpectedRange(range, unitLabel: unitLabel)}';
   }
   return '${prefix}Sin referencia historica';
 }
@@ -1916,6 +1940,7 @@ class _InstrumentInputRowState extends State<_InstrumentInputRow> {
       isWithinRange: isWithinRange,
       hasRange: hasRange,
       range: widget.range,
+      unitLabel: widget.unitLabel,
     );
     final helperColor = _statusHelperColor(
       isInvalid: _isInvalidValue,
@@ -1938,14 +1963,20 @@ class _InstrumentInputRowState extends State<_InstrumentInputRow> {
             children: [
               SizedBox(
                 width: 70,
-                child: Text(
-                  widget.instrumento.codigo,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
-                    fontSize: 12,
+                child: Tooltip(
+                  message: widget.instrumento.nombre?.trim().isNotEmpty == true
+                      ? '${widget.instrumento.codigo} - ${widget.instrumento.nombre!.trim()}'
+                      : widget.instrumento.codigo,
+                  child: Text(
+                    widget.instrumento.codigo,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                      fontSize: 12,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
                   ),
-                  overflow: TextOverflow.ellipsis,
                 ),
               ),
               const SizedBox(width: 8),
@@ -2173,6 +2204,7 @@ class _AsentimetroInputRowState extends State<_AsentimetroInputRow> {
     required bool isWithinRange,
     required bool hasRange,
     required InstrumentRange? range,
+    required String unitLabel,
     required bool isWarningConfirmed,
     required bool needsReviewHighlight,
   }) {
@@ -2183,6 +2215,7 @@ class _AsentimetroInputRowState extends State<_AsentimetroInputRow> {
       hasRange: hasRange,
       range: range,
       labelPrefix: label,
+      unitLabel: unitLabel,
     );
     final helperColor = _statusHelperColor(
       isInvalid: isInvalid,
@@ -2269,14 +2302,20 @@ class _AsentimetroInputRowState extends State<_AsentimetroInputRow> {
             children: [
               SizedBox(
                 width: 62,
-                child: Text(
-                  widget.instrumento.codigo,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
-                    fontSize: 12,
+                child: Tooltip(
+                  message: widget.instrumento.nombre?.trim().isNotEmpty == true
+                      ? '${widget.instrumento.codigo} - ${widget.instrumento.nombre!.trim()}'
+                      : widget.instrumento.codigo,
+                  child: Text(
+                    widget.instrumento.codigo,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                      fontSize: 12,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
                   ),
-                  overflow: TextOverflow.ellipsis,
                 ),
               ),
               const SizedBox(width: 8),
@@ -2429,6 +2468,7 @@ class _AsentimetroInputRowState extends State<_AsentimetroInputRow> {
                   isWithinRange: isLuWithinRange,
                   hasRange: hasLuRange,
                   range: widget.rangeLu,
+                  unitLabel: 'LU',
                   isWarningConfirmed: widget.isLuWarningConfirmed,
                   needsReviewHighlight: widget.needsReviewLu,
                 ),
@@ -2439,6 +2479,7 @@ class _AsentimetroInputRowState extends State<_AsentimetroInputRow> {
                   isWithinRange: isTempWithinRange,
                   hasRange: hasTempRange,
                   range: widget.rangeTemp,
+                  unitLabel: '°C',
                   isWarningConfirmed: widget.isTempWarningConfirmed,
                   needsReviewHighlight: widget.needsReviewTemp,
                 ),
@@ -2453,6 +2494,8 @@ class _AsentimetroInputRowState extends State<_AsentimetroInputRow> {
 
 class _TriaxialInputRow extends StatelessWidget {
   final String instrumentCode;
+  final String? instrumentName;
+  final String unitLabel;
   final bool hasCatalogReference;
   final TextEditingController controllerX;
   final TextEditingController controllerY;
@@ -2476,6 +2519,8 @@ class _TriaxialInputRow extends StatelessWidget {
 
   const _TriaxialInputRow({
     required this.instrumentCode,
+    this.instrumentName,
+    required this.unitLabel,
     required this.hasCatalogReference,
     required this.controllerX,
     required this.controllerY,
@@ -2512,12 +2557,17 @@ class _TriaxialInputRow extends StatelessWidget {
         children: [
           Row(
             children: [
-              Text(
-                instrumentCode,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
+              Tooltip(
+                message: instrumentName?.trim().isNotEmpty == true
+                    ? '$instrumentCode - ${instrumentName!.trim()}'
+                    : instrumentCode,
+                child: Text(
+                  instrumentCode,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
@@ -2579,6 +2629,7 @@ class _TriaxialInputRow extends StatelessWidget {
                   focusNode: focusNodeX,
                   onSubmitted: onXSubmitted,
                   range: rangeX,
+                  unitLabel: unitLabel,
                   isWarningConfirmed: isWarningConfirmedX,
                   needsReviewHighlight: needsReviewX,
                 ),
@@ -2591,6 +2642,7 @@ class _TriaxialInputRow extends StatelessWidget {
                   focusNode: focusNodeY,
                   onSubmitted: onYSubmitted,
                   range: rangeY,
+                  unitLabel: unitLabel,
                   isWarningConfirmed: isWarningConfirmedY,
                   needsReviewHighlight: needsReviewY,
                 ),
@@ -2603,6 +2655,7 @@ class _TriaxialInputRow extends StatelessWidget {
                   focusNode: focusNodeZ,
                   onSubmitted: onZSubmitted,
                   range: rangeZ,
+                  unitLabel: unitLabel,
                   isWarningConfirmed: isWarningConfirmedZ,
                   needsReviewHighlight: needsReviewZ,
                 ),
@@ -2621,6 +2674,7 @@ class _TriaxialAxisField extends StatefulWidget {
   final FocusNode focusNode;
   final VoidCallback onSubmitted;
   final InstrumentRange? range;
+  final String unitLabel;
   final bool isWarningConfirmed;
   final bool needsReviewHighlight;
 
@@ -2630,6 +2684,7 @@ class _TriaxialAxisField extends StatefulWidget {
     required this.focusNode,
     required this.onSubmitted,
     this.range,
+    required this.unitLabel,
     this.isWarningConfirmed = false,
     this.needsReviewHighlight = false,
   });
@@ -2700,6 +2755,7 @@ class _TriaxialAxisFieldState extends State<_TriaxialAxisField> {
       hasRange: hasRange,
       range: widget.range,
       labelPrefix: 'Eje ${widget.axisLabel}',
+      unitLabel: widget.unitLabel,
     );
     final helperColor = _statusHelperColor(
       isInvalid: _isInvalidValue,

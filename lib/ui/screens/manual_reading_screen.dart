@@ -1,6 +1,6 @@
 // ==============================================================================
 // CEMPPSA Field App - ManualReadingScreen
-// Pantalla de lecturas manuales (Casagrande, FreatÃ­metros, Aforadores)
+// Pantalla de lecturas manuales (Casagrande, Freatímetros, Aforadores)
 // ==============================================================================
 
 import 'package:flutter/material.dart';
@@ -456,7 +456,7 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-              'Sin conexiÃ³n: planilla guardada como pendiente para sincronizar.',
+              'Sin conexión: planilla guardada como pendiente para sincronizar.',
             ),
             backgroundColor: Color(0xFF64748B),
           ),
@@ -474,7 +474,7 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text(
-                'Sin conexiÃ³n: planilla guardada como pendiente para sincronizar.',
+                'Sin conexión: planilla guardada como pendiente para sincronizar.',
               ),
               backgroundColor: Color(0xFF64748B),
             ),
@@ -568,7 +568,7 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
           children: [
             Icon(Icons.error_outline, color: Color(0xFFEF4444)),
             SizedBox(width: 10),
-            Text('Errores de ValidaciÃ³n',
+            Text('Errores de Validación',
                 style: TextStyle(color: Colors.white, fontSize: 18)),
           ],
         ),
@@ -890,7 +890,7 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text(
-          'Hay valores con formato incorrecto. RevisÃ¡ el formato antes de guardar o enviar.',
+          'Hay valores con formato incorrecto. Revisá el formato antes de guardar o enviar.',
         ),
         backgroundColor: Color(0xFFEF4444),
       ),
@@ -994,7 +994,7 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
     await _loadSchemaForType(tipo);
   }
 
-  /// Obtiene el rango desde el catÃ¡logo local (sin requests en pantalla)
+  /// Obtiene el rango desde el catálogo local (sin requests en pantalla)
   InstrumentRange? _getRangeForInstrument(
       String codigo, String variableCodigo) {
     return context
@@ -1199,9 +1199,9 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
         context: context,
         builder: (ctx) => AlertDialog(
           backgroundColor: const Color(0xFF1E293B),
-          title: const Text('Â¿Salir?', style: TextStyle(color: Colors.white)),
+          title: const Text('¿Salir?', style: TextStyle(color: Colors.white)),
           content: const Text(
-            'Se perderÃ¡n los cambios no guardados. Â¿Volver a las familias?',
+            'Se perderán los cambios no guardados. ¿Volver a las familias?',
             style: TextStyle(color: Colors.white70),
           ),
           actions: [
@@ -1266,6 +1266,18 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
       ),
     );
   }
+}
+
+String _formatExpectedRange(InstrumentRange range, {String? unitLabel}) {
+  if (!range.hasRange) {
+    return '';
+  }
+
+  final normalizedUnit = unitLabel?.trim();
+  final suffix = normalizedUnit == null || normalizedUnit.isEmpty
+      ? ''
+      : ' $normalizedUnit';
+  return '${range.min!.toStringAsFixed(2)} — ${range.max!.toStringAsFixed(2)}$suffix';
 }
 
 // [MODIFIED] _InstrumentInputRow with Save Button
@@ -1369,12 +1381,12 @@ class _InstrumentInputRowState extends State<_InstrumentInputRow> {
     final helperText = _isInvalidValue
         ? 'Formato incorrecto | $decimalInputFormatHelp'
         : _isOutOfRange
-            ? 'Fuera de rango | Esperado: ${widget.range!.fullLabel}'
+            ? 'Fuera de rango | Esperado: ${_formatExpectedRange(widget.range!, unitLabel: widget.customUnit ?? widget.instrumento.defaultUnit)}'
             : isWithinRange
-                ? 'Dentro del rango esperado (${widget.range!.fullLabel})'
+                ? 'Dentro del rango esperado (${_formatExpectedRange(widget.range!, unitLabel: widget.customUnit ?? widget.instrumento.defaultUnit)})'
                 : !hasRange
                     ? 'Sin referencia historica'
-                    : 'Esperado: ${widget.range!.fullLabel}';
+                    : 'Esperado: ${_formatExpectedRange(widget.range!, unitLabel: widget.customUnit ?? widget.instrumento.defaultUnit)}';
     final helperColor = _isInvalidValue
         ? const Color(0xFFFCA5A5)
         : _isOutOfRange
@@ -1398,14 +1410,20 @@ class _InstrumentInputRowState extends State<_InstrumentInputRow> {
             children: [
               SizedBox(
                 width: 70,
-                child: Text(
-                  widget.instrumento.codigo,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
-                    fontSize: 12,
+                child: Tooltip(
+                  message: widget.instrumento.nombre?.trim().isNotEmpty == true
+                      ? '${widget.instrumento.codigo} - ${widget.instrumento.nombre!.trim()}'
+                      : widget.instrumento.codigo,
+                  child: Text(
+                    widget.instrumento.codigo,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                      fontSize: 12,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
                   ),
-                  overflow: TextOverflow.ellipsis,
                 ),
               ),
               const SizedBox(width: 8),

@@ -41,6 +41,33 @@ class FotoRepository extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<int> recoverInterruptedSyncs() async {
+    final interrupted = _fotos.values
+        .where((foto) => foto.status == FotoSyncStatus.sincronizando)
+        .toList();
+
+    if (interrupted.isEmpty) {
+      return 0;
+    }
+
+    for (final foto in interrupted) {
+      final recovered = foto.copyWith(
+        status: FotoSyncStatus.pendiente,
+        lastError: 'Recuperado al reiniciar la app',
+        nextRetryAt: null,
+      );
+      _fotos[foto.localId] = recovered;
+      await _box.put(foto.localId, recovered.toJson());
+    }
+
+    debugPrint(
+      'FotoRepository: recuperadas ${interrupted.length} fotos '
+      'que quedaron en SINCRONIZANDO tras un cierre abrupto.',
+    );
+    notifyListeners();
+    return interrupted.length;
+  }
+
   FotoInspeccion? get(String localId) => _fotos[localId];
 
   Future<void> delete(String localId) async {

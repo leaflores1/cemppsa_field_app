@@ -1,6 +1,6 @@
 // ==============================================================================
 // CEMPPSA Field App - SettingsScreen
-// Pantalla de configuraciÃ³n de la app (desacoplada de SyncService)
+// Pantalla de configuración de la app (desacoplada de SyncService)
 // ==============================================================================
 
 import 'package:flutter/material.dart';
@@ -34,7 +34,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       appBar: AppBar(
         backgroundColor: const Color(0xFF1E293B),
         foregroundColor: Colors.white,
-        title: const Text('ConfiguraciÃ³n'),
+        title: const Text('Configuración'),
         elevation: 0,
       ),
       body: ListView(
@@ -56,7 +56,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         label: 'Nombre',
                         value: AppConfig.technicianName ??
                             user?.displayName ??
-                            'Sin sesiÃ³n',
+                            'Sin sesión',
                         trailing: TextButton(
                           onPressed: _editTechnicianName,
                           child: const Text('Editar'),
@@ -64,14 +64,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                       const Divider(color: Color(0xFF334155)),
                       _InfoTile(
-                        label: 'ID tÃ©cnico',
+                        label: 'ID técnico',
                         value:
-                            AppConfig.technicianId ?? user?.id ?? 'Sin sesiÃ³n',
+                            AppConfig.technicianId ?? user?.id ?? 'Sin sesión',
                       ),
                       const Divider(color: Color(0xFF334155)),
                       _InfoTile(
                         label: 'Email',
-                        value: user?.email ?? 'Sin sesiÃ³n',
+                        value: user?.email ?? 'Sin sesión',
                       ),
                     ],
                   );
@@ -92,7 +92,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: OutlinedButton.icon(
               onPressed: _logout,
               icon: const Icon(Icons.logout),
-              label: const Text('Cerrar sesiÃ³n completa'),
+              label: const Text('Cerrar sesión completa'),
             ),
           ),
 
@@ -109,7 +109,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 builder: (_, auth, __) {
                   final pinStatus = auth.hasOfflinePin
                       ? 'PIN local activo para reingresar sin backend'
-                      : 'Sin PIN. Si ya hay sesiÃ³n guardada, la app abre directo offline';
+                      : 'Sin PIN. Si ya hay sesión guardada, la app abre directo offline';
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -124,7 +124,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'UsÃ¡ un PIN local para proteger la sesiÃ³n guardada en el dispositivo. El backend queda solo para sincronizar o cambiar de cuenta.',
+                              'Usá un PIN local para proteger la sesión guardada en el dispositivo. El backend queda solo para sincronizar o cambiar de cuenta.',
                               style: TextStyle(
                                 fontSize: 12,
                                 color: Colors.grey[500],
@@ -237,7 +237,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 title: Text(
                   _isDiscoveringServer
                       ? 'Buscando en red local...'
-                      : 'Buscar servidor automÃ¡ticamente',
+                      : 'Buscar servidor automáticamente',
                   style: const TextStyle(fontSize: 14),
                 ),
                 onTap: _isDiscoveringServer ? null : _discoverServer,
@@ -387,7 +387,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             style: const TextStyle(color: Colors.white),
             decoration: const InputDecoration(
               labelText: 'Tu Nombre',
-              hintText: 'Ej: Juan PÃ©rez',
+              hintText: 'Ej: Juan Pérez',
             ),
           ),
           actions: [
@@ -411,7 +411,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('El nombre no puede estar vacÃ­o'),
+            content: Text('El nombre no puede estar vacío'),
             backgroundColor: Color(0xFFEF4444),
           ),
         );
@@ -475,7 +475,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   style: const TextStyle(color: Colors.white),
                   decoration: InputDecoration(
                     labelText: 'PIN',
-                    hintText: '4 a 8 dÃ­gitos',
+                    hintText: '4 a 8 dígitos',
                     errorText: formError,
                     suffixIcon: IconButton(
                       onPressed: () {
@@ -536,7 +536,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 final confirmValue = confirmController.text.trim();
                 if (!RegExp(r'^\d{4,8}$').hasMatch(pinValue)) {
                   setDialogState(() {
-                    formError = 'UsÃ¡ un PIN de 4 a 8 dÃ­gitos';
+                    formError = 'Usá un PIN de 4 a 8 dígitos';
                   });
                   return;
                 }
@@ -569,7 +569,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       SnackBar(
         content: Text(
           ok
-              ? 'PIN offline guardado. La prÃ³xima vez podrÃ¡s entrar sin backend.'
+              ? 'PIN offline guardado. La próxima vez podrás entrar sin backend.'
               : 'No se pudo guardar el PIN offline.',
         ),
         backgroundColor: ok ? const Color(0xFF22C55E) : const Color(0xFFEF4444),
@@ -587,7 +587,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           style: TextStyle(color: Colors.white),
         ),
         content: const Text(
-          'La sesiÃ³n seguirÃ¡ guardada, pero la app volverÃ¡ a abrir sin pedir PIN en este dispositivo.',
+          'La sesión seguirá guardada, pero la app volverá a abrir sin pedir PIN en este dispositivo.',
           style: TextStyle(color: Colors.white70),
         ),
         actions: [
@@ -663,7 +663,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('URL invÃ¡lida. Ejemplo: http://192.168.0.10:8000'),
+          content: Text('URL inválida. Ejemplo: http://192.168.0.10:8000'),
           backgroundColor: Color(0xFFEF4444),
         ),
       );
@@ -675,7 +675,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _discoverServer() async {
     setState(() => _isDiscoveringServer = true);
     try {
-      debugPrint('DiscoverServer: Iniciando bÃºsqueda...');
+      debugPrint('DiscoverServer: Iniciando búsqueda...');
       final ip = await ServerDiscovery.findServer();
       debugPrint('DiscoverServer: Resultado=$ip');
       if (!mounted) return;
@@ -688,7 +688,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('No se encontrÃ³ ningÃºn servidor en la red local'),
+            content: Text('No se encontró ningún servidor en la red local'),
             backgroundColor: Color(0xFFF59E0B),
           ),
         );
@@ -698,7 +698,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error en bÃºsqueda: $e'),
+          content: Text('Error en búsqueda: $e'),
           backgroundColor: const Color(0xFFEF4444),
         ),
       );
@@ -715,7 +715,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         title: const Text('Servidor encontrado',
             style: TextStyle(color: Colors.white)),
         content: Text(
-            'Se encontrÃ³ un servidor en $ip.\n\nÂ¿Deseas usar esta direcciÃ³n?'),
+            'Se encontró un servidor en $ip.\n\n¿Deseas usar esta dirección?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -723,7 +723,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Usar esta direcciÃ³n'),
+            child: const Text('Usar esta dirección'),
           ),
         ],
       ),
@@ -737,7 +737,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          ok ? 'CatÃ¡logo actualizado' : 'Error al sincronizar catÃ¡logo',
+          ok ? 'Catálogo actualizado' : 'Error al sincronizar catálogo',
         ),
         backgroundColor: ok ? const Color(0xFF22C55E) : const Color(0xFFEF4444),
       ),

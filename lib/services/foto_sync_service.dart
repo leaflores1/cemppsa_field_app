@@ -12,6 +12,9 @@ import '../data/models/foto_inspeccion.dart';
 import '../repositories/foto_repository.dart';
 
 class FotoSyncService extends ChangeNotifier {
+  static const String _authUploadErrorMessage =
+      'No se pudo autenticar contra el backend para subir fotos. Revisá tu conexión o volvé a iniciar sesión.';
+
   final FotoRepository _repository;
   final Connectivity _connectivity = Connectivity();
   StreamSubscription<dynamic>? _connectivitySub;
@@ -145,17 +148,15 @@ class FotoSyncService extends ChangeNotifier {
       if (!authed) {
         final retryCount = foto.retries + 1;
         final waitSeconds = min(1800, 30 * pow(2, min(retryCount, 6)).toInt());
-        const message =
-            'No se pudo autenticar contra backend para subir fotos (revisá credenciales).';
         await _repository.save(
           foto.copyWith(
             status: FotoSyncStatus.error,
             retries: retryCount,
             nextRetryAt: DateTime.now().add(Duration(seconds: waitSeconds)),
-            lastError: message,
+            lastError: _authUploadErrorMessage,
           ),
         );
-        _lastError = message;
+        _lastError = _authUploadErrorMessage;
         return;
       }
 
@@ -164,7 +165,8 @@ class FotoSyncService extends ChangeNotifier {
 
       if (response.statusCode == 401 || response.statusCode == 403) {
         debugPrint(
-            'FotoSyncService: token rechazado (${response.statusCode}), renovando...');
+          'FotoSyncService: token rechazado (${response.statusCode}), renovando...',
+        );
         final reauthed = await _ensureAuthToken(force: true);
         if (reauthed) {
           final retryStreamed = await _uploadMultipart(foto, file);
@@ -213,7 +215,10 @@ class FotoSyncService extends ChangeNotifier {
 
       final retryCount = foto.retries + 1;
       final waitSeconds = min(3600, 30 * pow(2, min(retryCount, 7)).toInt());
-      final errorMessage = _extractErrorMessage(response.body) ??
+      final errorMessage = _normalizeUploadErrorMessage(
+            _extractErrorMessage(response.body),
+            statusCode: response.statusCode,
+          ) ??
           'Error HTTP ${response.statusCode} en sincronización de foto';
 
       await _repository.save(
@@ -228,7 +233,8 @@ class FotoSyncService extends ChangeNotifier {
     } catch (e) {
       final retryCount = foto.retries + 1;
       final waitSeconds = min(3600, 30 * pow(2, min(retryCount, 7)).toInt());
-      final message = 'Error de red en foto: $e';
+      final message = _normalizeUploadErrorMessage(e.toString()) ??
+          'Error de red en foto: $e';
       await _repository.save(
         foto.copyWith(
           status: FotoSyncStatus.error,
@@ -270,9 +276,9 @@ class FotoSyncService extends ChangeNotifier {
       'local_id': foto.localId,
     });
 
-    if (ApiConfig.authToken != null && ApiConfig.authToken!.trim().isNotEmpty) {
-      request.headers['Authorization'] =
-          'Bearer ${ApiConfig.authToken!.trim()}';
+    final token = ApiConfig.authToken?.trim();
+    if (token != null && token.isNotEmpty) {
+      request.headers['Authorization'] = 'Bearer $token';
     }
 
     request.files.add(
@@ -304,7 +310,7 @@ class FotoSyncService extends ChangeNotifier {
     }
 
     debugPrint(
-      'FotoSyncService: no hay token de sesion. Requiere login en la app.',
+      'FotoSyncService: no hay token de sesión. Requiere login en la app.',
     );
     return false;
   }
@@ -331,5 +337,25 @@ class FotoSyncService extends ChangeNotifier {
     } catch (_) {
       return body;
     }
+  }
+
+  String? _normalizeUploadErrorMessage(String? rawMessage, {int? statusCode}) {
+    if (statusCode == 401 || statusCode == 403) {
+      return _authUploadErrorMessage;
+    }
+
+    final normalized = rawMessage?.trim();
+    if (normalized == null || normalized.isEmpty) {
+      return null;
+    }
+
+    final lower = normalized.toLowerCase();
+    if (lower.contains('could not validate credentials') ||
+        lower.contains('not authenticated') ||
+        lower.contains('unauthorized')) {
+      return _authUploadErrorMessage;
+    }
+
+    return normalized;
   }
 }

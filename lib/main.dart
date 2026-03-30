@@ -111,6 +111,13 @@ void main() async {
 
   final fotoRepo = FotoRepository();
   await fotoRepo.init();
+  final recoveredPhotoCount = await fotoRepo.recoverInterruptedSyncs();
+  if (recoveredPhotoCount > 0) {
+    debugPrint(
+      'Main: recuperadas $recoveredPhotoCount fotos que quedaron '
+      'SINCRONIZANDO al cerrar la app.',
+    );
+  }
 
   // Inicializar servicios
   final apiClient = ApiClient(baseUrl: ApiConfig.baseUrl);

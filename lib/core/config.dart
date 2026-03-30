@@ -86,15 +86,13 @@ class ApiConfig {
   static const String mobileAuthRefreshEndpoint = '/api/v1/auth/mobile/refresh';
   static const String appVersionEndpoint = '/api/v1/app/version';
 
-  /// Token Bearer opcional para endpoints protegidos
+  /// Token Bearer opcional para endpoints protegidos.
   /// Si no se configura, las requests se envían sin Authorization.
   static String? authToken;
   static String? refreshToken;
   static Future<bool> Function()? refreshAuthToken;
   static Future<void> Function()? handleSessionExpired;
 
-  /// Credenciales para sincronización de fotos (backend protegido).
-  /// Recomendado: mover a ajustes/secure storage en próxima iteración.
   /// Timeouts
   static const Duration connectionTimeout = Duration(seconds: 10);
   static const Duration receiveTimeout = Duration(seconds: 30);
