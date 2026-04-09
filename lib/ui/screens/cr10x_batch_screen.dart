@@ -583,9 +583,12 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
                 _getFocusNode(_triaxAxisKey(baseCode, 'Z')).requestFocus(),
             onZSubmitted: () => _focusNextTriaxial(instrumentos, index),
             onSave: (x, y, z) => _saveTriaxialReadings(inst, x, y, z),
-            rangeX: _getRangeForInstrument(baseCode, 'EJE_X'),
-            rangeY: _getRangeForInstrument(baseCode, 'EJE_Y'),
-            rangeZ: _getRangeForInstrument(baseCode, 'EJE_Z'),
+            rangeX:
+                _getRangeForInstrument(_triaxAxisKey(baseCode, 'X'), 'EJE_X'),
+            rangeY:
+                _getRangeForInstrument(_triaxAxisKey(baseCode, 'Y'), 'EJE_Y'),
+            rangeZ:
+                _getRangeForInstrument(_triaxAxisKey(baseCode, 'Z'), 'EJE_Z'),
             isWarningConfirmedX: _isWarningConfirmed(
               _triaxAxisKey(baseCode, 'X'),
               'PERIODO_X',
@@ -983,13 +986,14 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
 
     final baseCode = _triaxBaseCode(inst.codigo);
     for (final axis in _triaxAxes) {
+      final axisCode = _triaxAxisKey(baseCode, axis);
       _upsertReading(
         instrumento: inst,
-        instrumentCode: _triaxAxisKey(baseCode, axis),
+        instrumentCode: axisCode,
         rawValue: values[axis] ?? '',
         parameter: 'PERIODO_$axis',
         unit: _resolveTriaxialUnit(inst),
-        rangeInstrumentCode: baseCode,
+        rangeInstrumentCode: axisCode,
         rangeVariableCode: 'EJE_$axis',
       );
     }
@@ -1127,13 +1131,14 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
       if (_selectedTipo == TipoPlanilla.cr10xTriaxiales) {
         final baseCode = _triaxBaseCode(inst.codigo);
         for (final axis in _triaxAxes) {
+          final axisCode = _triaxAxisKey(baseCode, axis);
           _upsertReading(
             instrumento: inst,
-            instrumentCode: _triaxAxisKey(baseCode, axis),
-            rawValue: _controllers[_triaxAxisKey(baseCode, axis)]?.text ?? '',
+            instrumentCode: axisCode,
+            rawValue: _controllers[axisCode]?.text ?? '',
             parameter: 'PERIODO_$axis',
             unit: _resolveTriaxialUnit(inst),
-            rangeInstrumentCode: baseCode,
+            rangeInstrumentCode: axisCode,
             rangeVariableCode: 'EJE_$axis',
           );
         }

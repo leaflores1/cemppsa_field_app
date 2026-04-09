@@ -288,7 +288,15 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
     return schema.variables.first;
   }
 
+  bool _usesInstrumentSpecificAforadorParameter(Instrumento inst) {
+    return inst.familia == FamiliaInstrumento.aforador &&
+        inst.ingestaParameter == 'TIEMPO_S';
+  }
+
   String _resolveVariableCode(Instrumento inst) {
+    if (_usesInstrumentSpecificAforadorParameter(inst)) {
+      return inst.ingestaParameter ?? inst.defaultParameter;
+    }
     final schemaVariable = _defaultSchemaVariable();
     if (schemaVariable != null && schemaVariable.code.trim().isNotEmpty) {
       return schemaVariable.code;
@@ -297,6 +305,9 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
   }
 
   String? _resolveVariableUnit(Instrumento inst) {
+    if (_usesInstrumentSpecificAforadorParameter(inst)) {
+      return inst.ingestaUnit ?? inst.defaultUnit;
+    }
     final schemaVariable = _defaultSchemaVariable();
     if (schemaVariable != null && schemaVariable.unit.trim().isNotEmpty) {
       return schemaVariable.unit;
@@ -770,10 +781,15 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
         return 'Profundidad';
       case 'ALTURA_MM':
         return 'Altura';
+      case 'TIEMPO_S':
+        return 'Tiempo';
       case 'CONVERGENCIA_MM':
         return 'Convergencia';
       case 'LECTURA_CR10X':
+      case 'LECTURA_MV':
         return 'Lectura';
+      case 'PERIODO':
+        return 'Periodo';
       default:
         return normalized.isEmpty ? 'Lectura' : normalized;
     }

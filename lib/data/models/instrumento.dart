@@ -443,7 +443,7 @@ class Instrumento {
       case FamiliaInstrumento.freatimetro:
         return 'PROFUNDIDAD_M';
       case FamiliaInstrumento.aforador:
-        return 'LECTURA_MANUAL';
+        return _usaTiempoSegundosEnIngreso ? 'TIEMPO_S' : 'ALTURA_MM';
       case FamiliaInstrumento.asentimetro:
         return 'LECTURA_LU';
       case FamiliaInstrumento.celdaPresion:
@@ -453,7 +453,7 @@ class Instrumento {
         if (axis == 'T') return 'TEMPERATURA';
         return axis != null ? 'PERIODO_$axis' : 'PERIODO_X';
       case FamiliaInstrumento.uniaxial:
-        return 'LECTURA_MM';
+        return 'PERIODO';
       case FamiliaInstrumento.termometro:
         return 'TEMPERATURA';
       case FamiliaInstrumento.clinometro:
@@ -489,7 +489,9 @@ class Instrumento {
       case FamiliaInstrumento.casagrande:
         return 'm';
       case FamiliaInstrumento.aforador:
-        return 'cm'; // Default manual reading unit
+        return _usaTiempoSegundosEnIngreso ? 's' : 'mm';
+      case FamiliaInstrumento.uniaxial:
+        return 'us';
       case FamiliaInstrumento.barometro:
         return 'hPa';
       case FamiliaInstrumento.embalse:
@@ -510,6 +512,11 @@ class Instrumento {
     // Usually J01X, J01Y, J01Z, J01T
     final match = RegExp(r'([XYZT])$').firstMatch(normalized);
     return match?.group(1);
+  }
+
+  bool get _usaTiempoSegundosEnIngreso {
+    final normalized = CodigoHelper.canonicalize(codigo);
+    return normalized == 'ALIV' || normalized.startsWith('DC');
   }
 
   @override
