@@ -94,8 +94,9 @@ void main() async {
     baseUrl: ApiConfig.hasConfiguredBaseUrl ? ApiConfig.baseUrl : null,
   );
   await catalogRepo.init();
-  if (ApiConfig.hasConfiguredBaseUrl && catalogRepo.needsSync) {
-    // Primera lectura de catálogo+rango por instrumento (best effort).
+  if (ApiConfig.hasConfiguredBaseUrl) {
+    // Refresca el catálogo en cada arranque para no quedar pegados a un cache
+    // viejo cuando cambian rangos o familias en backend.
     unawaited(catalogRepo.syncFromBackend());
   }
 

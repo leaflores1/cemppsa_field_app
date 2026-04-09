@@ -443,7 +443,7 @@ class Instrumento {
       case FamiliaInstrumento.freatimetro:
         return 'PROFUNDIDAD_M';
       case FamiliaInstrumento.aforador:
-        return _usaTiempoSegundosEnIngreso ? 'TIEMPO_S' : 'ALTURA_MM';
+        return _preferredAforadorInputParameter;
       case FamiliaInstrumento.asentimetro:
         return 'LECTURA_LU';
       case FamiliaInstrumento.celdaPresion:
@@ -489,7 +489,7 @@ class Instrumento {
       case FamiliaInstrumento.casagrande:
         return 'm';
       case FamiliaInstrumento.aforador:
-        return _usaTiempoSegundosEnIngreso ? 's' : 'mm';
+        return _preferredAforadorInputParameter == 'TIEMPO_S' ? 's' : 'mm';
       case FamiliaInstrumento.uniaxial:
         return 'us';
       case FamiliaInstrumento.barometro:
@@ -512,6 +512,19 @@ class Instrumento {
     // Usually J01X, J01Y, J01Z, J01T
     final match = RegExp(r'([XYZT])$').firstMatch(normalized);
     return match?.group(1);
+  }
+
+  String get _preferredAforadorInputParameter {
+    final hasTiempoRange = rangeForVariable('TIEMPO_S')?.hasRange == true;
+    final hasAlturaRange = rangeForVariable('ALTURA_MM')?.hasRange == true;
+
+    if (hasTiempoRange && !hasAlturaRange) {
+      return 'TIEMPO_S';
+    }
+    if (hasAlturaRange && !hasTiempoRange) {
+      return 'ALTURA_MM';
+    }
+    return _usaTiempoSegundosEnIngreso ? 'TIEMPO_S' : 'ALTURA_MM';
   }
 
   bool get _usaTiempoSegundosEnIngreso {

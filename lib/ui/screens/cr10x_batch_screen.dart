@@ -565,12 +565,18 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
         final inst = instrumentos[index];
         if (_selectedTipo == TipoPlanilla.cr10xTriaxiales) {
           final baseCode = _triaxBaseCode(inst.codigo);
+          final rangeX =
+              _getRangeForInstrument(_triaxAxisKey(baseCode, 'X'), 'EJE_X');
+          final rangeY =
+              _getRangeForInstrument(_triaxAxisKey(baseCode, 'Y'), 'EJE_Y');
+          final rangeZ =
+              _getRangeForInstrument(_triaxAxisKey(baseCode, 'Z'), 'EJE_Z');
           return _TriaxialInputRow(
             instrumentCode: baseCode,
             instrumentName: inst.nombre,
             unitLabel: _resolveTriaxialUnit(inst) ?? inst.defaultUnit,
-            hasCatalogReference:
-                context.read<CatalogRepository>().byCode(baseCode) != null,
+            hasCatalogReference: [rangeX, rangeY, rangeZ]
+                .any((range) => range?.hasRange == true),
             controllerX: _getController(_triaxAxisKey(baseCode, 'X')),
             controllerY: _getController(_triaxAxisKey(baseCode, 'Y')),
             controllerZ: _getController(_triaxAxisKey(baseCode, 'Z')),
@@ -583,12 +589,9 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
                 _getFocusNode(_triaxAxisKey(baseCode, 'Z')).requestFocus(),
             onZSubmitted: () => _focusNextTriaxial(instrumentos, index),
             onSave: (x, y, z) => _saveTriaxialReadings(inst, x, y, z),
-            rangeX:
-                _getRangeForInstrument(_triaxAxisKey(baseCode, 'X'), 'EJE_X'),
-            rangeY:
-                _getRangeForInstrument(_triaxAxisKey(baseCode, 'Y'), 'EJE_Y'),
-            rangeZ:
-                _getRangeForInstrument(_triaxAxisKey(baseCode, 'Z'), 'EJE_Z'),
+            rangeX: rangeX,
+            rangeY: rangeY,
+            rangeZ: rangeZ,
             isWarningConfirmedX: _isWarningConfirmed(
               _triaxAxisKey(baseCode, 'X'),
               'PERIODO_X',
@@ -2550,6 +2553,8 @@ class _TriaxialInputRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final useCompactAxisLayout = MediaQuery.of(context).size.width < 430;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(10),
@@ -2561,58 +2566,72 @@ class _TriaxialInputRow extends StatelessWidget {
       child: Column(
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Tooltip(
-                message: instrumentName?.trim().isNotEmpty == true
-                    ? '$instrumentCode - ${instrumentName!.trim()}'
-                    : instrumentCode,
-                child: Text(
-                  instrumentCode,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 13,
-                  ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Tooltip(
+                      message: instrumentName?.trim().isNotEmpty == true
+                          ? '$instrumentCode - ${instrumentName!.trim()}'
+                          : instrumentCode,
+                      child: Text(
+                        instrumentCode,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: const Color(0x1A14B8A6),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0x4D14B8A6)),
+                          ),
+                          child: const Text(
+                            'Ejes X/Y/Z',
+                            style: TextStyle(
+                              color: Color(0xFF14B8A6),
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        if (!hasCatalogReference)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF1F2937),
+                              borderRadius: BorderRadius.circular(12),
+                              border:
+                                  Border.all(color: const Color(0xFF475569)),
+                            ),
+                            child: const Text(
+                              'Sin referencia',
+                              style: TextStyle(
+                                color: Color(0xFFCBD5E1),
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: const Color(0x1A14B8A6),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0x4D14B8A6)),
-                ),
-                child: const Text(
-                  'Ejes X/Y/Z',
-                  style: TextStyle(
-                    color: Color(0xFF14B8A6),
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              if (!hasCatalogReference) ...[
-                const SizedBox(width: 8),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1F2937),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFF475569)),
-                  ),
-                  child: const Text(
-                    'Sin referencia',
-                    style: TextStyle(
-                      color: Color(0xFFCBD5E1),
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ],
-              const Spacer(),
               IconButton(
                 icon: const Icon(Icons.save_as_outlined,
                     color: Color(0xFF3B82F6), size: 20),
@@ -2625,48 +2644,85 @@ class _TriaxialInputRow extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: _TriaxialAxisField(
-                  axisLabel: 'X',
-                  controller: controllerX,
-                  focusNode: focusNodeX,
-                  onSubmitted: onXSubmitted,
-                  range: rangeX,
-                  unitLabel: unitLabel,
-                  isWarningConfirmed: isWarningConfirmedX,
-                  needsReviewHighlight: needsReviewX,
+          useCompactAxisLayout
+              ? Column(
+                  children: [
+                    _TriaxialAxisField(
+                      axisLabel: 'X',
+                      controller: controllerX,
+                      focusNode: focusNodeX,
+                      onSubmitted: onXSubmitted,
+                      range: rangeX,
+                      unitLabel: unitLabel,
+                      isWarningConfirmed: isWarningConfirmedX,
+                      needsReviewHighlight: needsReviewX,
+                    ),
+                    const SizedBox(height: 8),
+                    _TriaxialAxisField(
+                      axisLabel: 'Y',
+                      controller: controllerY,
+                      focusNode: focusNodeY,
+                      onSubmitted: onYSubmitted,
+                      range: rangeY,
+                      unitLabel: unitLabel,
+                      isWarningConfirmed: isWarningConfirmedY,
+                      needsReviewHighlight: needsReviewY,
+                    ),
+                    const SizedBox(height: 8),
+                    _TriaxialAxisField(
+                      axisLabel: 'Z',
+                      controller: controllerZ,
+                      focusNode: focusNodeZ,
+                      onSubmitted: onZSubmitted,
+                      range: rangeZ,
+                      unitLabel: unitLabel,
+                      isWarningConfirmed: isWarningConfirmedZ,
+                      needsReviewHighlight: needsReviewZ,
+                    ),
+                  ],
+                )
+              : Row(
+                  children: [
+                    Expanded(
+                      child: _TriaxialAxisField(
+                        axisLabel: 'X',
+                        controller: controllerX,
+                        focusNode: focusNodeX,
+                        onSubmitted: onXSubmitted,
+                        range: rangeX,
+                        unitLabel: unitLabel,
+                        isWarningConfirmed: isWarningConfirmedX,
+                        needsReviewHighlight: needsReviewX,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _TriaxialAxisField(
+                        axisLabel: 'Y',
+                        controller: controllerY,
+                        focusNode: focusNodeY,
+                        onSubmitted: onYSubmitted,
+                        range: rangeY,
+                        unitLabel: unitLabel,
+                        isWarningConfirmed: isWarningConfirmedY,
+                        needsReviewHighlight: needsReviewY,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _TriaxialAxisField(
+                        axisLabel: 'Z',
+                        controller: controllerZ,
+                        focusNode: focusNodeZ,
+                        onSubmitted: onZSubmitted,
+                        range: rangeZ,
+                        unitLabel: unitLabel,
+                        isWarningConfirmed: isWarningConfirmedZ,
+                        needsReviewHighlight: needsReviewZ,
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _TriaxialAxisField(
-                  axisLabel: 'Y',
-                  controller: controllerY,
-                  focusNode: focusNodeY,
-                  onSubmitted: onYSubmitted,
-                  range: rangeY,
-                  unitLabel: unitLabel,
-                  isWarningConfirmed: isWarningConfirmedY,
-                  needsReviewHighlight: needsReviewY,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _TriaxialAxisField(
-                  axisLabel: 'Z',
-                  controller: controllerZ,
-                  focusNode: focusNodeZ,
-                  onSubmitted: onZSubmitted,
-                  range: rangeZ,
-                  unitLabel: unitLabel,
-                  isWarningConfirmed: isWarningConfirmedZ,
-                  needsReviewHighlight: needsReviewZ,
-                ),
-              ),
-            ],
-          ),
         ],
       ),
     );
@@ -2823,7 +2879,8 @@ class _TriaxialAxisFieldState extends State<_TriaxialAxisField> {
                       ? FontWeight.w600
                       : FontWeight.w400,
                 ),
-                overflow: TextOverflow.ellipsis,
+                maxLines: 4,
+                softWrap: true,
               ),
               if (_isOutOfRange && widget.isWarningConfirmed)
                 const Text(
@@ -2833,7 +2890,6 @@ class _TriaxialAxisFieldState extends State<_TriaxialAxisField> {
                     color: Color(0xFFFDE68A),
                     fontWeight: FontWeight.w600,
                   ),
-                  overflow: TextOverflow.ellipsis,
                 ),
               if (widget.needsReviewHighlight)
                 const Text(
@@ -2843,7 +2899,8 @@ class _TriaxialAxisFieldState extends State<_TriaxialAxisField> {
                     color: Color(0xFFFBBF24),
                     fontWeight: FontWeight.w600,
                   ),
-                  overflow: TextOverflow.ellipsis,
+                  maxLines: 3,
+                  softWrap: true,
                 ),
             ],
           ),
