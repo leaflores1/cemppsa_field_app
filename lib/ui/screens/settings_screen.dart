@@ -26,6 +26,7 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _isDiscoveringServer = false;
+  bool _diagnosticsUnlocked = false;
 
   @override
   Widget build(BuildContext context) {
@@ -92,7 +93,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: OutlinedButton.icon(
               onPressed: _logout,
               icon: const Icon(Icons.logout),
-              label: const Text('Cerrar sesión completa'),
+              label: const Text('Cerrar sesion completa'),
             ),
           ),
 
@@ -214,38 +215,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
           // =========================
           // SERVIDOR
           // =========================
-          const _SectionHeader(title: 'SERVIDOR'),
-          const SizedBox(height: 12),
-          _SettingsCard(
-            children: [
-              _InfoTile(
-                label: 'URL del servidor',
-                value: ApiConfig.serverLabel,
-                trailing: TextButton(
-                  onPressed: _editServerUrl,
-                  child: const Text('Editar'),
+          if (_diagnosticsUnlocked) ...[
+            const _SectionHeader(title: 'DIAGNOSTICO'),
+            const SizedBox(height: 12),
+            _SettingsCard(
+              children: [
+                _InfoTile(
+                  label: 'URL del servidor',
+                  value: ApiConfig.serverLabel,
+                  trailing: TextButton(
+                    onPressed: _editServerUrl,
+                    child: const Text('Editar'),
+                  ),
                 ),
-              ),
-              const Divider(color: Color(0xFF334155)),
-              ListTile(
-                leading: _isDiscoveringServer
-                    ? const SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.radar, color: Colors.blue),
-                title: Text(
-                  _isDiscoveringServer
-                      ? 'Buscando en red local...'
-                      : 'Buscar servidor automáticamente',
-                  style: const TextStyle(fontSize: 14),
+                const Divider(color: Color(0xFF334155)),
+                ListTile(
+                  leading: _isDiscoveringServer
+                      ? const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.radar, color: Colors.blue),
+                  title: Text(
+                    _isDiscoveringServer
+                        ? 'Buscando en red local...'
+                        : 'Buscar servidor automáticamente',
+                    style: const TextStyle(fontSize: 14),
+                  ),
+                  onTap: _isDiscoveringServer ? null : _discoverServer,
                 ),
-                onTap: _isDiscoveringServer ? null : _discoverServer,
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 24),
+              ],
+            ),
+            const SizedBox(height: 24),
+          ],
 
           // =========================
           // DATOS LOCALES
@@ -344,16 +346,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
           // =========================
           const _SectionHeader(title: 'ACERCA DE'),
           const SizedBox(height: 12),
-          const _SettingsCard(
+          _SettingsCard(
             children: [
-              _InfoTile(
+              const _InfoTile(
                 label: 'Aplicacion',
                 value: AppConfig.appName,
               ),
-              Divider(color: Color(0xFF334155)),
+              const Divider(color: Color(0xFF334155)),
               _InfoTile(
                 label: 'Version',
                 value: AppConfig.version,
+                onLongPress: _showDiagnosticsUnlock,
               ),
             ],
           ),
@@ -370,6 +373,76 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   static void _copyToClipboard(String text) {
     Clipboard.setData(ClipboardData(text: text));
+  }
+
+  Future<void> _showDiagnosticsUnlock() async {
+    if (_diagnosticsUnlocked) {
+      setState(() => _diagnosticsUnlocked = false);
+      return;
+    }
+
+    final controller = TextEditingController();
+    final unlocked = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E293B),
+        title: const Text(
+          'Diagnostico tecnico',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          obscureText: true,
+          keyboardType: TextInputType.number,
+          style: const TextStyle(color: Colors.white),
+          decoration: const InputDecoration(
+            labelText: 'PIN de soporte',
+          ),
+          onSubmitted: (_) {
+            Navigator.pop(
+                ctx, controller.text.trim() == ApiConfig.diagnosticPin);
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(
+                ctx,
+                controller.text.trim() == ApiConfig.diagnosticPin,
+              );
+            },
+            child: const Text('Desbloquear'),
+          ),
+        ],
+      ),
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) => controller.dispose());
+
+    if (!mounted) return;
+    if (unlocked == true) {
+      setState(() => _diagnosticsUnlocked = true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Diagnostico tecnico habilitado'),
+          backgroundColor: Color(0xFF22C55E),
+        ),
+      );
+      return;
+    }
+
+    if (unlocked == false) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('PIN incorrecto'),
+          backgroundColor: Color(0xFFEF4444),
+        ),
+      );
+    }
   }
 
   Future<void> _editTechnicianName() async {
@@ -818,7 +891,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _logout() async {
-    await context.read<AuthService>().logout();
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E293B),
+        title: const Text(
+          'Cerrar sesion completa',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          'Se borraran la sesion, los tokens, el acceso offline guardado y el catalogo local. Las planillas locales se conservan. Para volver a habilitar este dispositivo vas a necesitar conexion al servidor.',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Cerrar completa'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true || !mounted) return;
+
+    final auth = context.read<AuthService>();
+    final catalog = context.read<CatalogRepository>();
+    await auth.logoutCompletely();
+    await catalog.clearLocalCache();
     if (!mounted) return;
     Navigator.pushNamedAndRemoveUntil(context, '/', (_) => false);
   }
@@ -868,42 +971,47 @@ class _InfoTile extends StatelessWidget {
   final String value;
   final VoidCallback? onCopy;
   final Widget? trailing;
+  final VoidCallback? onLongPress;
 
   const _InfoTile({
     required this.label,
     required this.value,
     this.onCopy,
     this.trailing,
+    this.onLongPress,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(label,
-                    style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.white)),
-                const SizedBox(height: 4),
-                Text(value,
-                    style: TextStyle(fontSize: 12, color: Colors.grey[500])),
-              ],
+    return InkWell(
+      onLongPress: onLongPress,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label,
+                      style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.white)),
+                  const SizedBox(height: 4),
+                  Text(value,
+                      style: TextStyle(fontSize: 12, color: Colors.grey[500])),
+                ],
+              ),
             ),
-          ),
-          if (trailing != null) trailing!,
-          if (onCopy != null)
-            IconButton(
-              icon: const Icon(Icons.copy, size: 18),
-              onPressed: onCopy,
-            ),
-        ],
+            if (trailing != null) trailing!,
+            if (onCopy != null)
+              IconButton(
+                icon: const Icon(Icons.copy, size: 18),
+                onPressed: onCopy,
+              ),
+          ],
+        ),
       ),
     );
   }

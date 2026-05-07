@@ -5,9 +5,14 @@
 
 /// Configuración de la API del backend
 class ApiConfig {
+  static const String productionBaseUrl = 'http://192.168.111.112';
   static const String defaultBaseUrl = String.fromEnvironment(
     'CEMPPSA_API_BASE_URL',
-    defaultValue: 'http://127.0.0.1:8000',
+    defaultValue: productionBaseUrl,
+  );
+  static const String diagnosticPin = String.fromEnvironment(
+    'CEMPPSA_DIAGNOSTIC_PIN',
+    defaultValue: '2468',
   );
   static const String settingsServerUrlKey = 'api_base_url';
   static const Set<String> legacyBaseUrls = {
@@ -102,6 +107,7 @@ class ApiConfig {
 class AppConfig {
   static const String appName = 'CEMPPSA Field';
   static const String version = '2.0.0';
+  static const String settingsDeviceIdKey = 'device_id';
 
   /// ID del dispositivo (generado automáticamente)
   static String? deviceId;

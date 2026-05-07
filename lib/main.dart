@@ -86,8 +86,15 @@ void main() async {
     AppConfig.technicianName = persistedTechName;
   }
 
-  // Generar device ID si no existe
-  AppConfig.deviceId ??= 'android_${const Uuid().v4().substring(0, 8)}';
+  // Generar y persistir device ID estable para trazabilidad/backend.
+  final persistedDeviceId =
+      settingsBox.get(AppConfig.settingsDeviceIdKey)?.toString().trim();
+  if (persistedDeviceId != null && persistedDeviceId.isNotEmpty) {
+    AppConfig.deviceId = persistedDeviceId;
+  } else {
+    AppConfig.deviceId = 'android_${const Uuid().v4().substring(0, 8)}';
+    await settingsBox.put(AppConfig.settingsDeviceIdKey, AppConfig.deviceId);
+  }
 
   // Inicializar repositorios
   final catalogRepo = CatalogRepository(

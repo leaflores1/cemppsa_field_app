@@ -1,13 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:hive_flutter/hive_flutter.dart';
 import 'package:provider/provider.dart';
 
-import '../../core/config.dart';
-import '../../repositories/catalogo_repository.dart';
 import '../../services/auth_service.dart';
-import '../../services/sync_service.dart';
 import '../../utils/network_errors.dart';
-import '../../utils/server_discovery.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -22,7 +17,6 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
 
   bool _obscurePassword = true;
-  bool _isDiscoveringServer = false;
 
   @override
   void initState() {
@@ -48,192 +42,45 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
     final auth = context.read<AuthService>();
-    if (!ApiConfig.hasConfiguredBaseUrl) {
-      final foundServer = await _discoverAndApplyServer(showFeedback: true);
-      if (!mounted || !foundServer) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'No hay servidor configurado. Conectate a la red de la empresa o ingresá la IP manualmente.',
-              ),
-              backgroundColor: Color(0xFFF59E0B),
-            ),
-          );
-        }
-        return;
-      }
-    }
-
-    var ok = await auth.login(
+    final ok = await auth.login(
       email: _emailController.text,
       password: _passwordController.text,
     );
 
-    if (!mounted || ok) return;
+    if (!mounted) return;
 
-    if (isConnectivityFailure(message: auth.lastError)) {
-      ok = await _recoverServerAndRetryLogin(auth);
-      if (!mounted || ok) return;
+    if (ok) {
+      if (auth.lastLoginWasOffline) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Ingresaste en modo offline. Las mediciones se sincronizaran cuando vuelva la conexion.',
+            ),
+            backgroundColor: Color(0xFF22C55E),
+          ),
+        );
+      }
+      return;
     }
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(auth.lastError ?? 'No se pudo iniciar sesion'),
+        content: Text(_loginErrorMessage(auth.lastError)),
         backgroundColor: const Color(0xFFEF4444),
       ),
     );
   }
 
-  Future<bool> _recoverServerAndRetryLogin(AuthService auth) async {
-    if (_isDiscoveringServer) return false;
-
-    setState(() => _isDiscoveringServer = true);
-    try {
-      final found = await _discoverAndApplyServer(showFeedback: true);
-      if (!mounted || !found) return false;
-
-      return auth.login(
-        email: _emailController.text,
-        password: _passwordController.text,
-      );
-    } finally {
-      if (mounted) {
-        setState(() => _isDiscoveringServer = false);
-      }
-    }
-  }
-
-  Future<void> _editServerUrl() async {
-    final controller = TextEditingController(
-      text: ApiConfig.hasConfiguredBaseUrl ? ApiConfig.baseUrl : '',
-    );
-    final updated = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E293B),
-        title: const Text('Servidor', style: TextStyle(color: Colors.white)),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          keyboardType: TextInputType.url,
-          style: const TextStyle(color: Colors.white),
-          decoration: const InputDecoration(
-            labelText: 'URL o IP:puerto',
-            hintText: 'http://192.168.0.10:8000',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancelar'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
-            child: const Text('Guardar'),
-          ),
-        ],
-      ),
-    );
-    controller.dispose();
-
-    if (updated == null) return;
-
-    final normalized = ApiConfig.normalizeBaseUrl(updated);
-    if (normalized == null) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('URL invalida. Ejemplo: http://192.168.0.10:8000'),
-          backgroundColor: Color(0xFFEF4444),
-        ),
-      );
-      return;
+  String _loginErrorMessage(String? raw) {
+    if (isConnectivityFailure(message: raw)) {
+      return 'No se pudo conectar al servidor de CEMPPSA. Revisa la red e intenta nuevamente.';
     }
 
-    await _applyServerUrlChange(normalized, showFeedback: true);
-  }
-
-  Future<void> _discoverServer() async {
-    setState(() => _isDiscoveringServer = true);
-
-    try {
-      final found = await _discoverAndApplyServer(showFeedback: true);
-      if (!mounted) return;
-
-      if (!found) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No se pudo encontrar el servidor en la red local.'),
-            backgroundColor: Color(0xFFF59E0B),
-          ),
-        );
-      }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error al buscar servidor: $e'),
-          backgroundColor: const Color(0xFFEF4444),
-        ),
-      );
-    } finally {
-      if (mounted) {
-        setState(() => _isDiscoveringServer = false);
-      }
+    final message = raw?.trim();
+    if (message == null || message.isEmpty) {
+      return 'No se pudo iniciar sesion';
     }
-  }
-
-  Future<bool> _discoverAndApplyServer({
-    required bool showFeedback,
-  }) async {
-    final foundUrl = await ServerDiscovery.findServer();
-    if (!mounted || foundUrl == null) {
-      return false;
-    }
-
-    final normalized = ApiConfig.normalizeBaseUrl(foundUrl);
-    if (normalized == null) {
-      return false;
-    }
-
-    await _applyServerUrlChange(normalized, showFeedback: showFeedback);
-    return mounted;
-  }
-
-  Future<void> _applyServerUrlChange(
-    String normalized, {
-    required bool showFeedback,
-  }) async {
-    ApiConfig.setBaseUrl(normalized, markAsCustom: true);
-    final settingsBox = await Hive.openBox(StorageConfig.settingsBox);
-    await settingsBox.put(ApiConfig.settingsServerUrlKey, normalized);
-
-    if (!mounted) return;
-
-    context.read<AuthService>().updateApiBaseUrl(normalized);
-    final sync = context.read<SyncService>();
-    sync.updateApiBaseUrl(normalized);
-    context.read<CatalogRepository>().setBaseUrl(normalized);
-    final connected = await sync.checkConnection();
-
-    if (!mounted) return;
-
-    setState(() {});
-
-    if (!showFeedback) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          connected
-              ? 'Servidor actualizado: $normalized'
-              : 'Servidor guardado, pero sin conexion al backend',
-        ),
-        backgroundColor:
-            connected ? const Color(0xFF22C55E) : const Color(0xFFF59E0B),
-      ),
-    );
+    return message;
   }
 
   @override
@@ -300,43 +147,6 @@ class _LoginScreenState extends State<LoginScreen> {
                               style: TextStyle(
                                 color: Colors.grey[400],
                                 fontSize: 13,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Center(
-                            child: TextButton.icon(
-                              onPressed: _editServerUrl,
-                              icon: const Icon(Icons.dns_outlined, size: 16),
-                              label: Text(
-                                'Servidor: ${ApiConfig.serverLabel}',
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ),
-                          Center(
-                            child: TextButton.icon(
-                              onPressed:
-                                  _isDiscoveringServer ? null : _discoverServer,
-                              icon: _isDiscoveringServer
-                                  ? const SizedBox(
-                                      width: 14,
-                                      height: 14,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                      ),
-                                    )
-                                  : const Icon(Icons.radar, size: 16),
-                              label: Text(
-                                _isDiscoveringServer
-                                    ? 'Buscando servidor...'
-                                    : 'Autodetectar servidor en red',
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: _isDiscoveringServer
-                                      ? Colors.grey
-                                      : Colors.blue,
-                                ),
                               ),
                             ),
                           ),

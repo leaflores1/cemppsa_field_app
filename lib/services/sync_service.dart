@@ -37,7 +37,8 @@ class SyncResult {
   });
 
   bool get success => failed == 0 && sent > 0;
-  bool get hasErrors => failed > 0;
+  bool get hasErrors =>
+      failed > 0 || message == ApiClient.sessionExpiredMessage;
 }
 
 class RejectedPlanillaNotice {
@@ -59,6 +60,7 @@ class SyncService extends ChangeNotifier {
   ConnectionStatus _status = ConnectionStatus.unknown;
   String? _lastError;
   bool _lastWasConnectivityIssue = false;
+  bool _lastRequiresLogin = false;
   DateTime? _lastSync;
   int _pendingCount = 0;
 
@@ -123,6 +125,7 @@ class SyncService extends ChangeNotifier {
     CatalogRepository? catalog,
   }) async {
     _lastWasConnectivityIssue = false;
+    _lastRequiresLogin = false;
     final invalidLecturas = planilla.lecturas
         .where((l) => l.valorInvalido == true || l.value == null)
         .toList();
@@ -218,11 +221,12 @@ class SyncService extends ChangeNotifier {
       responseBody: responseBody,
     );
     _lastError = errorMessage;
+    _lastRequiresLogin = _isSessionExpiredFailure(response);
     _lastWasConnectivityIssue = isConnectivityFailure(
       statusCode: response.statusCode,
       message: errorMessage,
     );
-    if (!_lastWasConnectivityIssue) {
+    if (!_lastWasConnectivityIssue && !_lastRequiresLogin) {
       planilla.errorMessage = errorMessage;
     }
     return false;
@@ -273,6 +277,7 @@ class SyncService extends ChangeNotifier {
     int sent = 0;
     int failed = 0;
     bool connectivityInterrupted = false;
+    bool authInterrupted = false;
 
     for (final planilla in pendientes) {
       debugPrint(
@@ -293,6 +298,9 @@ class SyncService extends ChangeNotifier {
         if (_lastWasConnectivityIssue) {
           planilla.marcarPendiente();
           connectivityInterrupted = true;
+        } else if (_lastRequiresLogin) {
+          planilla.marcarPendiente();
+          authInterrupted = true;
         } else {
           planilla.marcarError(_lastError ?? 'Error desconocido');
           failed++;
@@ -303,7 +311,7 @@ class SyncService extends ChangeNotifier {
       _pendingCount--;
       notifyListeners();
 
-      if (connectivityInterrupted) {
+      if (connectivityInterrupted || authInterrupted) {
         break;
       }
     }
@@ -311,7 +319,7 @@ class SyncService extends ChangeNotifier {
     _status = connectivityInterrupted
         ? ConnectionStatus.disconnected
         : ConnectionStatus.connected;
-    if (connectivityInterrupted) {
+    if (connectivityInterrupted || authInterrupted) {
       _lastError = null;
     }
     _lastSync = DateTime.now();
@@ -325,9 +333,11 @@ class SyncService extends ChangeNotifier {
           ? (sent == 0
               ? 'Sin conexión: las planillas quedaron pendientes'
               : 'Conexión interrumpida: $sent enviadas, resto pendiente')
-          : failed == 0
-              ? 'Sincronización completada ($sent planillas)'
-              : '$sent enviadas, $failed con error',
+          : authInterrupted
+              ? ApiClient.sessionExpiredMessage
+              : failed == 0
+                  ? 'Sincronización completada ($sent planillas)'
+                  : '$sent enviadas, $failed con error',
     );
   }
 
@@ -399,6 +409,11 @@ class SyncService extends ChangeNotifier {
     required String responseBody,
     String? extra,
   }) {
+    final friendly = _buildFriendlyPlanillaError(response);
+    if (friendly != null) {
+      return friendly;
+    }
+
     final statusCode = response.statusCode?.toString() ?? 'null';
     final error = response.error;
     final extraPart = (extra != null && extra.isNotEmpty) ? ' $extra' : '';
@@ -408,6 +423,54 @@ class SyncService extends ChangeNotifier {
     }
     return 'batch_uuid=${planilla.batchUuid} statusCode=$statusCode'
         '$extraPart body=$responseBody';
+  }
+
+  String? _buildFriendlyPlanillaError(ApiResponse response) {
+    final statusCode = response.statusCode;
+    if (statusCode != 401 && statusCode != 403) {
+      return null;
+    }
+
+    final detail = response.data is Map
+        ? (response.data as Map)['detail']?.toString().trim()
+        : null;
+    final text = [
+      response.error,
+      detail,
+      response.data?.toString(),
+    ].whereType<String>().join(' ').toLowerCase();
+
+    if (text.contains('sesion vencida') ||
+        text.contains('could not validate credentials') ||
+        text.contains('not authenticated') ||
+        text.contains('invalid token') ||
+        text.contains('token expired') ||
+        text.contains('token has expired') ||
+        text.contains('signature has expired') ||
+        text.contains('signature verification failed')) {
+      return ApiClient.sessionExpiredMessage;
+    }
+
+    if (text.contains('mobile platform')) {
+      return 'El usuario no esta habilitado para usar la app movil.';
+    }
+
+    if (text.contains('privileges') ||
+        text.contains('permission') ||
+        text.contains('permiso')) {
+      return 'El usuario no tiene permiso para sincronizar planillas desde la app movil.';
+    }
+
+    if (text.contains('device') || text.contains('dispositivo')) {
+      return 'Dispositivo no autorizado para sincronizar.';
+    }
+
+    return null;
+  }
+
+  bool _isSessionExpiredFailure(ApiResponse response) {
+    return _buildFriendlyPlanillaError(response) ==
+        ApiClient.sessionExpiredMessage;
   }
 
   static const Map<String, String> _aforadorAliases = {
@@ -558,6 +621,7 @@ class SyncService extends ChangeNotifier {
   /// }
   Future<bool> _sendManualPlanilla(Planilla planilla) async {
     _lastWasConnectivityIssue = false;
+    _lastRequiresLogin = false;
     final rows = _buildManualRows(planilla);
     if (rows.isEmpty) {
       _lastError = 'Planilla manual sin lecturas válidas';
@@ -612,11 +676,12 @@ class SyncService extends ChangeNotifier {
         extra: 'Manual Flow Error',
       );
       _lastError = errorMsg;
+      _lastRequiresLogin = _isSessionExpiredFailure(response);
       _lastWasConnectivityIssue = isConnectivityFailure(
         statusCode: response.statusCode,
         message: errorMsg,
       );
-      if (!_lastWasConnectivityIssue) {
+      if (!_lastWasConnectivityIssue && !_lastRequiresLogin) {
         planilla.errorMessage = errorMsg;
       }
       return false;
@@ -779,6 +844,17 @@ class SyncService extends ChangeNotifier {
         return {
           'success': false,
           'queued_offline': true,
+          'planilla': planilla,
+        };
+      }
+
+      if (_lastRequiresLogin) {
+        planilla.marcarPendiente();
+        await repository.save(planilla);
+        return {
+          'success': false,
+          'requires_login': true,
+          'error': _lastError ?? ApiClient.sessionExpiredMessage,
           'planilla': planilla,
         };
       }

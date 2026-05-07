@@ -9,6 +9,7 @@
 
   <!-- (Opcional) Dominios/IPs explícitos de tu LAN -->
   <domain-config cleartextTrafficPermitted="true">
+    <domain includeSubdomains="true">192.168.111.112</domain>
     <domain includeSubdomains="true">192.168.113.135</domain>
   </domain-config>
 </network-security-config>

@@ -64,7 +64,7 @@ class _OfflineUnlockScreenState extends State<OfflineUnlockScreen> {
           style: TextStyle(color: Colors.white),
         ),
         content: const Text(
-          'Esto cerrará la sesión local guardada en este dispositivo y vas a necesitar red para volver a ingresar.',
+          'Esto cerrara la sesion activa, pero conservara la autorizacion offline de este dispositivo. Si esta cuenta ya fue validada aca, vas a poder ingresar sin red con email y password.',
           style: TextStyle(color: Colors.white70),
         ),
         actions: [
@@ -217,7 +217,9 @@ class _OfflineUnlockScreenState extends State<OfflineUnlockScreen> {
                                     )
                                   : const Icon(Icons.lock_open_rounded),
                               label: Text(
-                                _isSubmitting ? 'Verificando...' : 'Entrar offline',
+                                _isSubmitting
+                                    ? 'Verificando...'
+                                    : 'Entrar offline',
                               ),
                             ),
                           ),

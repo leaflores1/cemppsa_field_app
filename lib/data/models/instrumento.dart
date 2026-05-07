@@ -126,12 +126,13 @@ class CodigoHelper {
   /// Elimina variantes para formato uniforme:
   /// - PC-05 -> PC05
   /// - AE1-41 -> AE141
-  /// - PP7* -> PP7
+  /// - PP7* -> PP7* (no se mezcla con PP7)
   static String canonicalize(String codigo) {
     var canonical = codigo.toUpperCase();
 
-    // Remover guiones y asteriscos
-    canonical = canonical.replaceAll('-', '').replaceAll('*', '');
+    // Remover guiones para aliases historicos, preservando caracteres
+    // significativos como el asterisco de PP7*.
+    canonical = canonical.replaceAll('-', '');
 
     return canonical;
   }
@@ -515,21 +516,20 @@ class Instrumento {
   }
 
   String get _preferredAforadorInputParameter {
-    final hasTiempoRange = rangeForVariable('TIEMPO_S')?.hasRange == true;
     final hasAlturaRange = rangeForVariable('ALTURA_MM')?.hasRange == true;
 
-    if (hasTiempoRange && !hasAlturaRange) {
+    if (_usaTiempoSegundosEnIngreso) {
       return 'TIEMPO_S';
     }
-    if (hasAlturaRange && !hasTiempoRange) {
+    if (hasAlturaRange) {
       return 'ALTURA_MM';
     }
-    return _usaTiempoSegundosEnIngreso ? 'TIEMPO_S' : 'ALTURA_MM';
+    return 'ALTURA_MM';
   }
 
   bool get _usaTiempoSegundosEnIngreso {
     final normalized = CodigoHelper.canonicalize(codigo);
-    return normalized == 'ALIV' || normalized.startsWith('DC');
+    return normalized == 'ALIV';
   }
 
   @override

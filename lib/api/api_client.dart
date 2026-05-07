@@ -15,6 +15,9 @@ import '../core/config.dart';
 /// - No contiene lógica de negocio
 /// - Usado por servicios (SyncService, AuthService, etc.)
 class ApiClient {
+  static const String sessionExpiredMessage =
+      'Sesion vencida. Inicia sesion nuevamente.';
+
   String _baseUrl;
   final Duration _timeout;
   final Map<String, String> _defaultHeaders;
@@ -163,9 +166,12 @@ class ApiClient {
       debugPrint('API Response ${response.statusCode}');
       debugPrint('API Body: ${response.body}');
 
+      final apiResponse = ApiResponse.fromHttp(response);
+
       if (_shouldAttemptRefresh(
         path: path,
         statusCode: response.statusCode,
+        responseBody: response.body,
         allowRefresh: allowRefresh,
       )) {
         final refreshed = await _refreshAccessToken();
@@ -180,9 +186,14 @@ class ApiClient {
           );
         }
         await _handleSessionExpired();
+        return ApiResponse(
+          statusCode: response.statusCode,
+          data: apiResponse.data,
+          error: sessionExpiredMessage,
+        );
       }
 
-      return ApiResponse.fromHttp(response);
+      return apiResponse;
     } catch (e) {
       debugPrint('API ERROR [$method] $path → $e');
       return ApiResponse.error(e.toString());
@@ -206,15 +217,33 @@ class ApiClient {
   bool _shouldAttemptRefresh({
     required String path,
     required int statusCode,
+    required String responseBody,
     required bool allowRefresh,
   }) {
-    if (!allowRefresh || statusCode != 401) {
+    if (!allowRefresh) {
       return false;
     }
     if (_isAuthLoginPath(path) || _isAuthRefreshPath(path)) {
       return false;
     }
-    return true;
+    if (statusCode == 401) {
+      return true;
+    }
+    if (statusCode == 403 && _isCredentialRejection(responseBody)) {
+      return true;
+    }
+    return false;
+  }
+
+  bool _isCredentialRejection(String responseBody) {
+    final body = responseBody.toLowerCase();
+    return body.contains('could not validate credentials') ||
+        body.contains('not authenticated') ||
+        body.contains('invalid token') ||
+        body.contains('token expired') ||
+        body.contains('token has expired') ||
+        body.contains('signature has expired') ||
+        body.contains('signature verification failed');
   }
 
   bool _isAuthLoginPath(String path) {

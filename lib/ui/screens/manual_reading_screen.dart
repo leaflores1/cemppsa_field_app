@@ -18,6 +18,7 @@ import '../../services/sync_service.dart';
 import '../../utils/decimal_input.dart';
 import '../../utils/network_errors.dart';
 import '../../utils/planilla_family.dart';
+import '../../utils/time_input.dart';
 import '../widgets/catalog_freshness_banner.dart';
 import '../widgets/out_of_range_review_sheet.dart';
 
@@ -41,6 +42,8 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
   final Map<String, String> _confirmedWarningRawByKey = {};
   final Set<String> _reviewHighlightedKeys = {};
 
+  static const String _timeMinuteSuffix = '|TIME_MIN';
+  static const String _timeSecondSuffix = '|TIME_SEC';
   static const String _confirmedOutOfRangeNote =
       'Valor fuera de rango confirmado por tecnico en campo';
 
@@ -70,14 +73,8 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
         _batchDateTime = planilla.lecturas.first.measuredAt;
       }
 
-      // Load controllers
       for (final lectura in planilla.lecturas) {
-        if (!_controllers.containsKey(lectura.instrumentCode)) {
-          _controllers[lectura.instrumentCode] = TextEditingController();
-        }
-        _controllers[lectura.instrumentCode]!.text = _controllerTextForLectura(
-          lectura,
-        );
+        _restoreLecturaIntoController(lectura);
         if (lectura.advertenciaConfirmada == true && lectura.valorRaw != null) {
           _confirmedWarningRawByKey[
                   _readingKey(lectura.instrumentCode, lectura.parameter)] =
@@ -191,6 +188,19 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
       itemCount: instrumentos.length,
       itemBuilder: (ctx, index) {
         final inst = instrumentos[index];
+        if (_usesMinuteSecondInput(inst)) {
+          return _TimeInputRow(
+            instrumento: inst,
+            minutesController: _getController(_timeMinuteKey(inst.codigo)),
+            secondsController: _getController(_timeSecondKey(inst.codigo)),
+            minutesFocusNode: _getFocusNode(_timeMinuteKey(inst.codigo)),
+            secondsFocusNode: _getFocusNode(_timeSecondKey(inst.codigo)),
+            onSubmitted: () => _focusNext(instrumentos, index),
+            onSave: () => _saveSingleTimeReading(inst),
+            validation: _timeValidationForCode(inst.codigo),
+          );
+        }
+
         final schemaVariable = _defaultSchemaVariable();
         final String? label = schemaVariable?.name;
         final String? unit = schemaVariable?.unit;
@@ -220,8 +230,7 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
 
   // [MODIFIED] Footer with "Guardar Borrador"
   Widget _buildBatchFooter() {
-    final filledCount =
-        _controllers.entries.where((e) => e.value.text.isNotEmpty).length;
+    final filledCount = _filledInputCount;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -320,13 +329,15 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
     required String parameter,
     required String rawValue,
     String? unit,
+    String? notes,
   }) {
     if (_currentPlanilla == null) return;
     final normalizedValue = rawValue.trim();
     if (normalizedValue.isEmpty) return;
 
+    final targetKey = _readingKey(instrumentCode, parameter);
     final existingIndex = _currentPlanilla!.lecturas.indexWhere(
-      (l) => l.instrumentCode == instrumentCode,
+      (l) => _readingKey(l.instrumentCode, l.parameter) == targetKey,
     );
     final rowId = existingIndex >= 0
         ? _currentPlanilla!.lecturas[existingIndex].clientRowId
@@ -362,7 +373,7 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
       advertenciaConfirmada: advertenciaConfirmada,
       notes: _buildReadingNotes(
         warningConfirmed: advertenciaConfirmada == true,
-        existingNotes: existingReading?.notes,
+        existingNotes: notes ?? existingReading?.notes,
       ),
     );
 
@@ -374,6 +385,11 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
     _currentPlanilla!.lecturas.clear();
 
     for (final inst in instrumentos) {
+      if (_usesMinuteSecondInput(inst)) {
+        _upsertTimeReadings(inst);
+        continue;
+      }
+
       _upsertReading(
         instrumentCode: inst.codigo,
         parameter: _resolveVariableCode(inst),
@@ -381,6 +397,39 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
         rawValue: _controllers[inst.codigo]?.text ?? '',
       );
     }
+  }
+
+  bool _upsertTimeReadings(Instrumento inst) {
+    final validation = _timeValidationForCode(inst.codigo);
+    final value = validation.value;
+    if (!validation.isValid || value == null) {
+      return false;
+    }
+
+    if (_isDren(inst)) {
+      _upsertReading(
+        instrumentCode: inst.codigo,
+        parameter: 'DRENES_MIN',
+        unit: 'min',
+        rawValue: value.minutes.toString(),
+      );
+      _upsertReading(
+        instrumentCode: inst.codigo,
+        parameter: 'DRENES_SEG',
+        unit: 's',
+        rawValue: value.seconds.toString(),
+      );
+      return true;
+    }
+
+    _upsertReading(
+      instrumentCode: inst.codigo,
+      parameter: 'TIEMPO_S',
+      unit: 's',
+      rawValue: value.totalSeconds.toString(),
+      notes: 'Tiempo ingresado: ${value.minutes} min ${value.seconds} s',
+    );
+    return true;
   }
 
   // [NEW] Single Reading Save
@@ -723,10 +772,38 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
 
   void _focusNext(List<Instrumento> instrumentos, int index) {
     if (index < instrumentos.length - 1) {
-      final nextCode = instrumentos[index + 1].codigo;
-      FocusScope.of(context).requestFocus(_getFocusNode(nextCode));
+      final nextInstrument = instrumentos[index + 1];
+      final nextKey = _usesMinuteSecondInput(nextInstrument)
+          ? _timeMinuteKey(nextInstrument.codigo)
+          : nextInstrument.codigo;
+      FocusScope.of(context).requestFocus(_getFocusNode(nextKey));
     } else {
       FocusScope.of(context).unfocus();
+    }
+  }
+
+  Future<void> _saveSingleTimeReading(Instrumento inst) async {
+    if (_currentPlanilla == null) return;
+    final validation = _timeValidationForCode(inst.codigo);
+    if (!validation.isValid) {
+      _showInvalidValuesMessage();
+      return;
+    }
+    if (validation.value == null) return;
+
+    _upsertTimeReadings(inst);
+    _currentPlanilla!.estado = PlanillaEstado.borrador;
+
+    await context.read<PlanillaRepository>().save(_currentPlanilla!);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${inst.codigo} guardado en borrador'),
+          duration: const Duration(milliseconds: 800),
+          backgroundColor: const Color(0xFF3B82F6),
+        ),
+      );
     }
   }
 
@@ -745,6 +822,80 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
     }
     final value = lectura.value;
     return value?.toString() ?? '';
+  }
+
+  void _restoreLecturaIntoController(Lectura lectura) {
+    final parameter = (lectura.parameter ?? '').trim().toUpperCase();
+    if (parameter == 'DRENES_MIN') {
+      _getController(_timeMinuteKey(lectura.instrumentCode)).text =
+          _controllerTextForLectura(lectura);
+      return;
+    }
+    if (parameter == 'DRENES_SEG') {
+      _getController(_timeSecondKey(lectura.instrumentCode)).text =
+          _controllerTextForLectura(lectura);
+      return;
+    }
+    if (parameter == 'TIEMPO_S' && _isAliviaderoCode(lectura.instrumentCode)) {
+      final totalSeconds = lectura.value?.round() ??
+          int.tryParse(_controllerTextForLectura(lectura));
+      if (totalSeconds != null && totalSeconds >= 0) {
+        _getController(_timeMinuteKey(lectura.instrumentCode)).text =
+            (totalSeconds ~/ 60).toString();
+        _getController(_timeSecondKey(lectura.instrumentCode)).text =
+            (totalSeconds % 60).toString();
+        return;
+      }
+    }
+
+    _getController(lectura.instrumentCode).text = _controllerTextForLectura(
+      lectura,
+    );
+  }
+
+  String _timeMinuteKey(String code) =>
+      '${CodigoHelper.canonicalize(code.trim())}$_timeMinuteSuffix';
+
+  String _timeSecondKey(String code) =>
+      '${CodigoHelper.canonicalize(code.trim())}$_timeSecondSuffix';
+
+  bool _isTimeInputKey(String key) =>
+      key.endsWith(_timeMinuteSuffix) || key.endsWith(_timeSecondSuffix);
+
+  String _timeInstrumentCodeFromKey(String key) {
+    if (key.endsWith(_timeMinuteSuffix)) {
+      return key.substring(0, key.length - _timeMinuteSuffix.length);
+    }
+    if (key.endsWith(_timeSecondSuffix)) {
+      return key.substring(0, key.length - _timeSecondSuffix.length);
+    }
+    return key;
+  }
+
+  Set<String> _timeInstrumentCodesFromControllers() {
+    return _controllers.keys
+        .where(_isTimeInputKey)
+        .map(_timeInstrumentCodeFromKey)
+        .toSet();
+  }
+
+  ManualTimeValidation _timeValidationForCode(String code) {
+    return validateManualTimeInput(
+      _controllers[_timeMinuteKey(code)]?.text ?? '',
+      _controllers[_timeSecondKey(code)]?.text ?? '',
+    );
+  }
+
+  bool _usesMinuteSecondInput(Instrumento inst) {
+    if (_selectedTipo == TipoPlanilla.drenes || _isDren(inst)) {
+      return true;
+    }
+    return inst.familia == FamiliaInstrumento.aforador &&
+        _isAliviaderoCode(inst.codigo);
+  }
+
+  bool _isAliviaderoCode(String code) {
+    return CodigoHelper.canonicalize(code.trim()) == 'ALIV';
   }
 
   String _readingKey(String instrumentCode, String? parameter) {
@@ -899,8 +1050,27 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
     return Lectura.isInvalidRawValue(controller.text);
   }
 
-  bool get _hasInvalidInputs =>
-      _controllers.values.any(_controllerHasInvalidValue);
+  int get _filledInputCount {
+    final singleCount = _controllers.entries
+        .where((entry) =>
+            !_isTimeInputKey(entry.key) && entry.value.text.trim().isNotEmpty)
+        .length;
+    final timeCount = _timeInstrumentCodesFromControllers()
+        .where((code) => _timeValidationForCode(code).hasValue)
+        .length;
+    return singleCount + timeCount;
+  }
+
+  bool get _hasInvalidInputs {
+    final hasInvalidSingle = _controllers.entries
+        .where((entry) => !_isTimeInputKey(entry.key))
+        .any((entry) => _controllerHasInvalidValue(entry.value));
+    if (hasInvalidSingle) {
+      return true;
+    }
+    return _timeInstrumentCodesFromControllers()
+        .any((code) => !_timeValidationForCode(code).isValid);
+  }
 
   void _showInvalidValuesMessage() {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -981,8 +1151,14 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
   }
 
   bool _isDren(Instrumento instrumento) {
+    if (instrumento.familia != FamiliaInstrumento.aforador) {
+      return false;
+    }
     final code = CodigoHelper.canonicalize(instrumento.codigo);
-    return code.startsWith('DC');
+    final name = instrumento.nombre?.toLowerCase() ?? '';
+    return code.startsWith('DC') ||
+        code.startsWith('DREN') ||
+        name.contains('dren');
   }
 
   bool _isAforadorWithoutDren(Instrumento instrumento) {
@@ -1294,6 +1470,192 @@ String _formatExpectedRange(InstrumentRange range, {String? unitLabel}) {
       ? ''
       : ' $normalizedUnit';
   return '${range.min!.toStringAsFixed(2)} — ${range.max!.toStringAsFixed(2)}$suffix';
+}
+
+class _TimeInputRow extends StatelessWidget {
+  final Instrumento instrumento;
+  final TextEditingController minutesController;
+  final TextEditingController secondsController;
+  final FocusNode minutesFocusNode;
+  final FocusNode secondsFocusNode;
+  final VoidCallback onSubmitted;
+  final VoidCallback onSave;
+  final ManualTimeValidation validation;
+
+  const _TimeInputRow({
+    required this.instrumento,
+    required this.minutesController,
+    required this.secondsController,
+    required this.minutesFocusNode,
+    required this.secondsFocusNode,
+    required this.onSubmitted,
+    required this.onSave,
+    required this.validation,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasValue = validation.hasValue;
+    final isInvalid = !validation.isValid;
+    final borderColor = isInvalid
+        ? const Color(0xFFEF4444)
+        : hasValue
+            ? const Color(0xFF22C55E)
+            : const Color(0xFF334155);
+    final backgroundColor = isInvalid
+        ? const Color(0xFF3F1D1D)
+        : hasValue
+            ? const Color(0xFF13261B)
+            : const Color(0xFF1E293B);
+    final helperColor = isInvalid ? const Color(0xFFFCA5A5) : Colors.grey[500]!;
+    final helperText = isInvalid
+        ? validation.errorMessage!
+        : hasValue
+            ? 'Tiempo: ${validation.value!.totalSeconds} s'
+            : 'Tiempo de medicion';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: borderColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              SizedBox(
+                width: 70,
+                child: Tooltip(
+                  message: instrumento.nombre?.trim().isNotEmpty == true
+                      ? '${instrumento.codigo} - ${instrumento.nombre!.trim()}'
+                      : instrumento.codigo,
+                  child: Text(
+                    instrumento.codigo,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                      fontSize: 12,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _TimeNumberField(
+                  controller: minutesController,
+                  focusNode: minutesFocusNode,
+                  nextFocusNode: secondsFocusNode,
+                  label: 'Minutos',
+                  unit: 'min',
+                  isInvalid: isInvalid,
+                  borderColor: borderColor,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _TimeNumberField(
+                  controller: secondsController,
+                  focusNode: secondsFocusNode,
+                  label: 'Segundos',
+                  unit: 's',
+                  isInvalid: isInvalid,
+                  borderColor: borderColor,
+                  onSubmitted: onSubmitted,
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.save_as_outlined,
+                    color: Color(0xFF3B82F6), size: 20),
+                onPressed: onSave,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                padding: EdgeInsets.zero,
+                tooltip: 'Guardar tiempo',
+              ),
+            ],
+          ),
+          Padding(
+            padding: const EdgeInsets.only(top: 4, left: 78),
+            child: Text(
+              helperText,
+              style: TextStyle(fontSize: 10, color: helperColor),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TimeNumberField extends StatelessWidget {
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final FocusNode? nextFocusNode;
+  final String label;
+  final String unit;
+  final bool isInvalid;
+  final Color borderColor;
+  final VoidCallback? onSubmitted;
+
+  const _TimeNumberField({
+    required this.controller,
+    required this.focusNode,
+    this.nextFocusNode,
+    required this.label,
+    required this.unit,
+    required this.isInvalid,
+    required this.borderColor,
+    this.onSubmitted,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      focusNode: focusNode,
+      keyboardType: TextInputType.number,
+      textInputAction: TextInputAction.next,
+      onSubmitted: (_) {
+        if (nextFocusNode != null) {
+          FocusScope.of(context).requestFocus(nextFocusNode);
+        } else {
+          onSubmitted?.call();
+        }
+      },
+      style: const TextStyle(
+        color: Colors.white,
+        fontSize: 15,
+        fontWeight: FontWeight.w500,
+      ),
+      decoration: InputDecoration(
+        labelText: label,
+        suffixText: unit,
+        labelStyle: TextStyle(color: Colors.grey[500], fontSize: 11),
+        suffixStyle: TextStyle(color: Colors.grey[500], fontSize: 11),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        filled: true,
+        fillColor:
+            isInvalid ? const Color(0xFF451A1A) : const Color(0xFF0F172A),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(color: borderColor),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(color: borderColor),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(color: borderColor, width: 1.2),
+        ),
+      ),
+    );
+  }
 }
 
 // [MODIFIED] _InstrumentInputRow with Save Button
