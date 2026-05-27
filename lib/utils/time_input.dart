@@ -53,11 +53,6 @@ ManualTimeValidation validateManualTimeInput(
       errorMessage: 'Segundos debe estar entre 0 y 59.',
     );
   }
-  if (minutes == 0 && seconds == 0) {
-    return const ManualTimeValidation(
-      errorMessage: 'El tiempo no puede ser 0:00.',
-    );
-  }
 
   return ManualTimeValidation(
     value: ManualTimeValue(minutes: minutes, seconds: seconds),

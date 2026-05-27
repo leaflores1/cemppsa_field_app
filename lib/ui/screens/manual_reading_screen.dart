@@ -188,43 +188,82 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
       itemCount: instrumentos.length,
       itemBuilder: (ctx, index) {
         final inst = instrumentos[index];
-        if (_usesMinuteSecondInput(inst)) {
-          return _TimeInputRow(
-            instrumento: inst,
-            minutesController: _getController(_timeMinuteKey(inst.codigo)),
-            secondsController: _getController(_timeSecondKey(inst.codigo)),
-            minutesFocusNode: _getFocusNode(_timeMinuteKey(inst.codigo)),
-            secondsFocusNode: _getFocusNode(_timeSecondKey(inst.codigo)),
-            onSubmitted: () => _focusNext(instrumentos, index),
-            onSave: () => _saveSingleTimeReading(inst),
-            validation: _timeValidationForCode(inst.codigo),
-          );
+
+        if (_selectedTipo == TipoPlanilla.drenes) {
+          final index13 = _indexOfInstrumentCode(instrumentos, 'DC_13');
+          final index14 = _indexOfInstrumentCode(instrumentos, 'DC_14');
+          final code = inst.codigo.toUpperCase();
+
+          if (index13 != null && index14 != null && code == 'DC_14') {
+            return const SizedBox.shrink();
+          }
+          if (index13 != null && index14 != null && code == 'DC_13') {
+            return _DrenesJoinedGroup(
+              title: 'Drenes Timpano AA 13 y 14',
+              children: [
+                _buildInstrumentInput(
+                    instrumentos[index13], instrumentos, index13),
+                _buildInstrumentInput(
+                    instrumentos[index14], instrumentos, index14),
+              ],
+            );
+          }
         }
 
-        final schemaVariable = _defaultSchemaVariable();
-        final String? label = schemaVariable?.name;
-        final String? unit = schemaVariable?.unit;
-
-        return _InstrumentInputRow(
-          instrumento: inst,
-          controller: _getController(inst.codigo),
-          focusNode: _getFocusNode(inst.codigo),
-          onSubmitted: () => _focusNext(instrumentos, index),
-          customLabel: label,
-          customUnit: unit,
-          onSave: (val) => _saveSingleReading(inst, val),
-          range:
-              _getRangeForInstrument(inst.codigo, _resolveVariableCode(inst)),
-          isWarningConfirmed: _isWarningConfirmed(
-            inst.codigo,
-            _resolveVariableCode(inst),
-            _getController(inst.codigo).text,
-          ),
-          needsReviewHighlight: _reviewHighlightedKeys
-              .contains(_readingKey(inst.codigo, _resolveVariableCode(inst))),
-          helperLabel: label ?? _labelForParameter(_resolveVariableCode(inst)),
-        );
+        return _buildInstrumentInput(inst, instrumentos, index);
       },
+    );
+  }
+
+  int? _indexOfInstrumentCode(List<Instrumento> instrumentos, String code) {
+    final normalized = code.toUpperCase();
+    for (var index = 0; index < instrumentos.length; index++) {
+      if (instrumentos[index].codigo.toUpperCase() == normalized) {
+        return index;
+      }
+    }
+    return null;
+  }
+
+  Widget _buildInstrumentInput(
+    Instrumento inst,
+    List<Instrumento> instrumentos,
+    int index,
+  ) {
+    if (_usesMinuteSecondInput(inst)) {
+      return _TimeInputRow(
+        instrumento: inst,
+        minutesController: _getController(_timeMinuteKey(inst.codigo)),
+        secondsController: _getController(_timeSecondKey(inst.codigo)),
+        minutesFocusNode: _getFocusNode(_timeMinuteKey(inst.codigo)),
+        secondsFocusNode: _getFocusNode(_timeSecondKey(inst.codigo)),
+        onSubmitted: () => _focusNext(instrumentos, index),
+        onSave: () => _saveSingleTimeReading(inst),
+        validation: _timeValidationForCode(inst.codigo),
+      );
+    }
+
+    final schemaVariable = _defaultSchemaVariable();
+    final String? label = schemaVariable?.name;
+    final String? unit = schemaVariable?.unit;
+
+    return _InstrumentInputRow(
+      instrumento: inst,
+      controller: _getController(inst.codigo),
+      focusNode: _getFocusNode(inst.codigo),
+      onSubmitted: () => _focusNext(instrumentos, index),
+      customLabel: label,
+      customUnit: unit,
+      onSave: (val) => _saveSingleReading(inst, val),
+      range: _getRangeForInstrument(inst.codigo, _resolveVariableCode(inst)),
+      isWarningConfirmed: _isWarningConfirmed(
+        inst.codigo,
+        _resolveVariableCode(inst),
+        _getController(inst.codigo).text,
+      ),
+      needsReviewHighlight: _reviewHighlightedKeys
+          .contains(_readingKey(inst.codigo, _resolveVariableCode(inst))),
+      helperLabel: label ?? _labelForParameter(_resolveVariableCode(inst)),
     );
   }
 
@@ -1470,6 +1509,69 @@ String _formatExpectedRange(InstrumentRange range, {String? unitLabel}) {
       ? ''
       : ' $normalizedUnit';
   return '${range.min!.toStringAsFixed(2)} — ${range.max!.toStringAsFixed(2)}$suffix';
+}
+
+class _DrenesJoinedGroup extends StatelessWidget {
+  final String title;
+  final List<Widget> children;
+
+  const _DrenesJoinedGroup({
+    required this.title,
+    required this.children,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.merge_type,
+                  color: Color(0xFF38BDF8),
+                  size: 16,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: const Color(0x2638BDF8),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Text(
+                    '2 codigos',
+                    style: TextStyle(
+                      color: Color(0xFF7DD3FC),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          ...children,
+        ],
+      ),
+    );
+  }
 }
 
 class _TimeInputRow extends StatelessWidget {

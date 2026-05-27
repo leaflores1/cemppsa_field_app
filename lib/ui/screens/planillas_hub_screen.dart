@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 
 import '../../data/models/planilla.dart';
 import '../../repositories/planilla_repository.dart';
+import '../../utils/planilla_family.dart';
 import '../widgets/planilla_card.dart';
 
 class PlanillasHubScreen extends StatefulWidget {
@@ -130,6 +131,7 @@ class _PlanillasHubScreenState extends State<PlanillasHubScreen>
                 emptySubtitle: 'Las planillas sincronizadas aparecerán aquí',
                 onTap: (p) => _openDetail(p, editable: false),
                 onDelete: (p) => _confirmDelete(p),
+                groupByFamily: true,
               ),
             ],
           );
@@ -255,6 +257,7 @@ class _PlanillasList extends StatelessWidget {
   final void Function(Planilla) onTap;
   final void Function(Planilla)? onDelete;
   final void Function(Planilla)? onRetry;
+  final bool groupByFamily;
 
   const _PlanillasList({
     required this.planillas,
@@ -264,12 +267,17 @@ class _PlanillasList extends StatelessWidget {
     required this.onTap,
     this.onDelete,
     this.onRetry,
+    this.groupByFamily = false,
   });
 
   @override
   Widget build(BuildContext context) {
     if (planillas.isEmpty) {
       return _buildEmptyState();
+    }
+
+    if (groupByFamily) {
+      return _buildGroupedList();
     }
 
     return ListView.builder(
@@ -291,6 +299,94 @@ class _PlanillasList extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildGroupedList() {
+    final buckets = _buildFamilyBuckets();
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        for (var i = 0; i < buckets.length; i++) ...[
+          _buildFamilyHeader(buckets[i], isFirst: i == 0),
+          for (final planilla in buckets[i].planillas)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: PlanillaCard(
+                planilla: planilla,
+                onTap: () => onTap(planilla),
+                onDelete: onDelete != null ? () => onDelete!(planilla) : null,
+                onRetry: onRetry != null &&
+                        (planilla.estado == PlanillaEstado.error ||
+                            planilla.estado == PlanillaEstado.rechazada)
+                    ? () => onRetry!(planilla)
+                    : null,
+              ),
+            ),
+        ],
+      ],
+    );
+  }
+
+  List<_PlanillaFamilyBucket> _buildFamilyBuckets() {
+    final bucketsById = <String, _PlanillaFamilyBucket>{};
+    for (final planilla in planillas) {
+      final group = planillaFamilyGroupFromTipo(planilla.tipo);
+      bucketsById
+          .putIfAbsent(group.id, () => _PlanillaFamilyBucket(group))
+          .planillas
+          .add(planilla);
+    }
+
+    final buckets = bucketsById.values.toList();
+    buckets.sort((a, b) {
+      final byOrder = a.group.order.compareTo(b.group.order);
+      if (byOrder != 0) return byOrder;
+      return a.group.label.compareTo(b.group.label);
+    });
+    return buckets;
+  }
+
+  Widget _buildFamilyHeader(
+    _PlanillaFamilyBucket bucket, {
+    required bool isFirst,
+  }) {
+    return Padding(
+      padding: EdgeInsets.only(
+        top: isFirst ? 0 : 8,
+        bottom: 10,
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              bucket.group.label,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(
+              color: const Color(0xFF334155),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              bucket.planillas.length.toString(),
+              style: const TextStyle(
+                color: Color(0xFFCBD5E1),
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -325,4 +421,11 @@ class _PlanillasList extends StatelessWidget {
       ),
     );
   }
+}
+
+class _PlanillaFamilyBucket {
+  final PlanillaFamilyGroup group;
+  final List<Planilla> planillas = [];
+
+  _PlanillaFamilyBucket(this.group);
 }

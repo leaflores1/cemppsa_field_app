@@ -47,13 +47,16 @@ void main() {
     expect(afpp.ingestaUnit, 'mm');
   });
 
-  test('validacion de tiempo manual bloquea segundos invalidos y 0:00', () {
+  test('validacion de tiempo manual permite cero y bloquea rangos invalidos',
+      () {
     expect(validateManualTimeInput('1', '05').value?.totalSeconds, 65);
     expect(validateManualTimeInput('', '30').value?.minutes, 0);
     expect(validateManualTimeInput('2', '').value?.seconds, 0);
+    expect(validateManualTimeInput('0', '0').value?.totalSeconds, 0);
+    expect(validateManualTimeInput('', '0').value?.totalSeconds, 0);
+    expect(validateManualTimeInput('0', '').value?.totalSeconds, 0);
 
     expect(validateManualTimeInput('0', '60').isValid, isFalse);
-    expect(validateManualTimeInput('0', '0').isValid, isFalse);
     expect(validateManualTimeInput('-1', '10').isValid, isFalse);
   });
 

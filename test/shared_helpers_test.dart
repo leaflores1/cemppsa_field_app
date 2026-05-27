@@ -20,6 +20,26 @@ void main() {
       );
     });
 
+    test('planillaFamilyGroupFromTipo agrupa enviadas por familia estable', () {
+      expect(
+        planillaFamilyGroupFromTipo(TipoPlanilla.drenes).label,
+        'Drenes',
+      );
+      expect(
+        planillaFamilyGroupFromTipo(TipoPlanilla.cr10xPiezometros).id,
+        'piezometros',
+      );
+      expect(
+        planillaFamilyGroupFromTipo(TipoPlanilla.general).label,
+        'Sin familia',
+      );
+      expect(
+        planillaFamilyGroupFromTipo(TipoPlanilla.cr10xPiezometros).order <
+            planillaFamilyGroupFromTipo(TipoPlanilla.cr10xClinometros).order,
+        isTrue,
+      );
+    });
+
     test('isConnectivityFailure detecta errores de red conocidos', () {
       expect(
         isConnectivityFailure(

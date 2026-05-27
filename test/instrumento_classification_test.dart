@@ -45,5 +45,17 @@ void main() {
       expect(instrumento.esManual, isFalse);
       expect(instrumento.esCR10X, isTrue);
     });
+
+    test('EMBALSE queda disponible para lecturas de nivel desde CR10X', () {
+      final limni = Instrumento.fromJson({
+        'codigo': 'LIMNI',
+        'nombre': 'Limnimetro',
+        'familia': 'EMBALSE',
+      });
+
+      expect(limni.familia, FamiliaInstrumento.embalse);
+      expect(limni.ingestaParameter, 'NIVEL_MSNM');
+      expect(limni.ingestaUnit, 'msnm');
+    });
   });
 }

@@ -758,7 +758,10 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
         break;
 
       case TipoPlanilla.cr10xLimnimetros:
-        instrumentos = catalog.byFamilia(FamiliaInstrumento.limnimetro);
+        instrumentos = [
+          ...catalog.byFamilia(FamiliaInstrumento.limnimetro),
+          ...catalog.byFamilia(FamiliaInstrumento.embalse),
+        ];
         break;
 
       case TipoPlanilla.cr10xBarometro:
@@ -1175,7 +1178,7 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
 
   String _resolvePrimaryParameter(Instrumento instrumento) {
     if (_selectedTipo == TipoPlanilla.cr10xPiezometros) {
-      return 'LECTURA_CR10X';
+      return 'PERIODO';
     }
     if (_selectedTipo == TipoPlanilla.cr10xAsentimetros) {
       return 'LECTURA_LU';
@@ -1185,7 +1188,7 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
 
   String? _resolvePrimaryUnit(Instrumento instrumento) {
     if (_selectedTipo == TipoPlanilla.cr10xPiezometros) {
-      return 'Hz';
+      return 'us';
     }
     if (_selectedTipo == TipoPlanilla.cr10xAsentimetros) {
       return 'LU';
@@ -1557,6 +1560,8 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
     switch (normalized) {
       case 'LECTURA_CR10X':
         return 'Lectura';
+      case 'PERIODO':
+        return 'Periodo';
       case 'LECTURA_LU':
         return 'Lectura LU';
       case 'TEMPERATURA':
