@@ -102,9 +102,8 @@ void main() async {
   );
   await catalogRepo.init();
   if (ApiConfig.hasConfiguredBaseUrl) {
-    // Refresca el catálogo en cada arranque para no quedar pegados a un cache
-    // viejo cuando cambian rangos o familias en backend.
-    unawaited(catalogRepo.syncFromBackend());
+    // Verifica freshness remoto antes de bajar el catalogo completo.
+    unawaited(catalogRepo.syncIfRemoteChanged());
   }
 
   final planillaRepo = PlanillaRepository();

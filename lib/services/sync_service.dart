@@ -266,7 +266,7 @@ class SyncService extends ChangeNotifier {
     }
 
     if (catalog != null) {
-      await catalog.syncFromBackend();
+      await catalog.syncIfRemoteChanged();
     }
 
     _status = ConnectionStatus.syncing;

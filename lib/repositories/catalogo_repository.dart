@@ -29,9 +29,37 @@ class MobileSchemaLoadResult {
   bool get hasSchema => schema != null;
 }
 
+class CatalogFreshness {
+  final String catalogRevision;
+  final String? rangosUpdatedAt;
+  final int? rangosVersionMax;
+
+  const CatalogFreshness({
+    required this.catalogRevision,
+    this.rangosUpdatedAt,
+    this.rangosVersionMax,
+  });
+
+  factory CatalogFreshness.fromJson(Map<String, dynamic> json) {
+    return CatalogFreshness(
+      catalogRevision: json['catalog_revision']?.toString() ?? '',
+      rangosUpdatedAt: json['rangos_updated_at']?.toString(),
+      rangosVersionMax: _toNullableInt(json['rangos_version_max']),
+    );
+  }
+}
+
+int? _toNullableInt(dynamic value) {
+  if (value == null) return null;
+  if (value is int) return value;
+  if (value is double) return value.round();
+  return int.tryParse(value.toString());
+}
+
 class CatalogRepository extends ChangeNotifier {
   static const String _boxName = 'catalog_v3';
   static const String _lastSyncKey = '__last_sync__';
+  static const String _freshnessKey = '__catalog_revision__';
   static const Duration _syncInterval = Duration(hours: 24);
 
   late Box _box;
@@ -64,6 +92,11 @@ class CatalogRepository extends ChangeNotifier {
     final raw = _box.get(_lastSyncKey) as String?;
     if (raw == null) return null;
     return DateTime.tryParse(raw);
+  }
+
+  String? get catalogRevision {
+    if (!_initialized) return null;
+    return _box.get(_freshnessKey) as String?;
   }
 
   int? get catalogVersion {
@@ -104,7 +137,7 @@ class CatalogRepository extends ChangeNotifier {
     _clearIndexes();
 
     for (final key in _box.keys) {
-      if (key == _lastSyncKey) continue;
+      if (key == _lastSyncKey || key == _freshnessKey) continue;
 
       final raw = _box.get(key);
       if (raw is Map) {
@@ -164,7 +197,59 @@ class CatalogRepository extends ChangeNotifier {
     return DateTime.now().difference(last) > _syncInterval;
   }
 
-  Future<bool> syncFromBackend() async {
+  Future<CatalogFreshness?> fetchRemoteFreshness() async {
+    if (_baseUrl == null) return null;
+
+    try {
+      final uri = Uri.parse('$_baseUrl/api/v1/catalog-app/freshness');
+      debugPrint('CatalogRepository GET $uri');
+
+      final response = await http.get(uri).timeout(const Duration(seconds: 8));
+      if (response.statusCode != 200) {
+        debugPrint(
+          'CatalogRepository freshness unavailable: HTTP ${response.statusCode}',
+        );
+        return null;
+      }
+
+      final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+      if (decoded is! Map) return null;
+
+      final freshness = CatalogFreshness.fromJson(
+        Map<String, dynamic>.from(decoded),
+      );
+      if (freshness.catalogRevision.isEmpty) return null;
+      return freshness;
+    } catch (e) {
+      debugPrint('CatalogRepository freshness error: $e');
+      return null;
+    }
+  }
+
+  Future<bool> syncIfRemoteChanged() async {
+    if (_baseUrl == null) {
+      _lastError = 'Backend URL no configurada';
+      return false;
+    }
+
+    final remoteFreshness = await fetchRemoteFreshness();
+    if (remoteFreshness == null) {
+      return syncFromBackend();
+    }
+
+    final localRevision = catalogRevision;
+    if (_byCode.isNotEmpty && localRevision == remoteFreshness.catalogRevision) {
+      _lastError = null;
+      await _box.put(_lastSyncKey, DateTime.now().toIso8601String());
+      notifyListeners();
+      debugPrint('CatalogRepository cache vigente: $localRevision');
+      return false;
+    }
+
+    return syncFromBackend(remoteFreshness: remoteFreshness);
+  }
+
+  Future<bool> syncFromBackend({CatalogFreshness? remoteFreshness}) async {
     if (_baseUrl == null) {
       _lastError = 'Backend URL no configurada';
       return false;
@@ -208,6 +293,12 @@ class CatalogRepository extends ChangeNotifier {
         _lastSyncKey,
         DateTime.now().toIso8601String(),
       );
+      final freshness = remoteFreshness ?? await fetchRemoteFreshness();
+      if (freshness != null) {
+        await _box.put(_freshnessKey, freshness.catalogRevision);
+      } else {
+        await _box.delete(_freshnessKey);
+      }
 
       debugPrint('Catálogo sincronizado: ${_byCode.length}');
       return true;
