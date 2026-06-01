@@ -17,5 +17,20 @@ void main() {
       expect(Lectura.parseRawValue('12..5'), isNull);
       expect(Lectura.isInvalidRawValue('12,5.1'), isTrue);
     });
+
+    test('preserva guion en codigo de instrumento', () {
+      final lectura = Lectura.fromForm(
+        clientRowId: 1,
+        instrumentCode: 'pc-05',
+        parameter: 'PERIODO',
+        unit: 'us',
+        rawValue: '4010',
+        measuredAt: DateTime(2026, 6),
+      );
+
+      expect(lectura.instrumentCode, 'PC-05');
+      expect(lectura.toJson()['instrument_code'], 'PC-05');
+      expect(lectura.toSyncJson()['instrument_code'], 'PC-05');
+    });
   });
 }
