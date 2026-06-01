@@ -892,6 +892,8 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
     );
   }
 
+  // DEUDA: misma fragilidad que _readingKey(). Si codigos con guion
+  // llegan a este flujo, las keys de minutos/segundos colisionarian.
   String _timeMinuteKey(String code) =>
       '${CodigoHelper.canonicalize(code.trim())}$_timeMinuteSuffix';
 
@@ -938,6 +940,9 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
   }
 
   String _readingKey(String instrumentCode, String? parameter) {
+    // DEUDA: si en el futuro se agregan instrumentos con guion a flujos manuales
+    // (ej. PC-05 Eje C), reemplazar canonicalize() por toUpperCase().trim()
+    // igual que se hizo en cr10x_batch_screen.dart (Grupo 2, fix colision PC-).
     final canonicalCode =
         CodigoHelper.canonicalize(instrumentCode.toUpperCase().trim());
     final normalizedParameter = (parameter ?? '').trim().toUpperCase();

@@ -27,6 +27,16 @@ class CR10XBatchScreen extends StatefulWidget {
   State<CR10XBatchScreen> createState() => _CR10XBatchScreenState();
 }
 
+@visibleForTesting
+String cr10xReadingKeyForTesting(String instrumentCode, String? parameter) =>
+    _cr10xReadingKey(instrumentCode, parameter);
+
+String _cr10xReadingKey(String instrumentCode, String? parameter) {
+  final normalizedCode = instrumentCode.toUpperCase().trim();
+  final normalizedParameter = (parameter ?? '').trim().toUpperCase();
+  return '$normalizedCode|$normalizedParameter';
+}
+
 class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
   static const List<String> _triaxAxes = ['X', 'Y', 'Z'];
   static final List<String> _triaxBaseCodes =
@@ -96,6 +106,8 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
       }
     }
 
+    // NOTA: borradores previos al fix PC-05 pueden tener instrumentCode = 'PC05'
+    // en lugar de 'PC-05'. Esos valores ya colisionados no se recuperan aca.
     for (final lectura in planilla.lecturas) {
       final key = _controllerKeyForDraft(lectura);
       if (!_controllers.containsKey(key)) {
@@ -114,7 +126,7 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
 
   String _controllerKeyForDraft(Lectura lectura) {
     if (_selectedTipo == TipoPlanilla.cr10xTriaxiales) {
-      final normalizedCode = CodigoHelper.canonicalize(lectura.instrumentCode);
+      final normalizedCode = lectura.instrumentCode.toUpperCase().trim();
       if (RegExp(r'^[A-Z0-9]+[XYZ]$').hasMatch(normalizedCode)) {
         return normalizedCode;
       }
@@ -1536,10 +1548,7 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
   }
 
   String _readingKey(String instrumentCode, String? parameter) {
-    final canonicalCode =
-        CodigoHelper.canonicalize(instrumentCode.toUpperCase().trim());
-    final normalizedParameter = (parameter ?? '').trim().toUpperCase();
-    return '$canonicalCode|$normalizedParameter';
+    return _cr10xReadingKey(instrumentCode, parameter);
   }
 
   bool _isWarningConfirmed(

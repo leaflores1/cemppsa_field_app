@@ -137,6 +137,10 @@ class CodigoHelper {
     return canonical;
   }
 
+  // DEUDA: codigoMatch() canonicaliza ambos lados antes de comparar,
+  // por lo que 'PC-05' == 'PC05' devuelve true. Hoy no hay uso productivo
+  // de esta funcion fuera de tests. Si se usa para lookup en catalogo,
+  // verificar que el lado izquierdo sea siempre el codigo original del catalogo.
   /// Compara dos códigos ignorando variantes
   static bool codigoMatch(String codigo1, String codigo2) {
     return canonicalize(codigo1) == canonicalize(codigo2);

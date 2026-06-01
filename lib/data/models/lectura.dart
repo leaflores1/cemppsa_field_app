@@ -4,7 +4,6 @@
 // ==============================================================================
 
 import '../../utils/decimal_input.dart';
-import 'instrumento.dart';
 
 /// Lectura individual cruda para Bronze.
 ///
@@ -106,13 +105,12 @@ class Lectura {
     final parsedValue = parseRawValue(normalizedValue);
     final invalidValue = normalizedValue.isNotEmpty && parsedValue == null;
 
-    // Canonicalizar código del instrumento (PC-05 → PC05)
-    final canonicalCode =
-        CodigoHelper.canonicalize(instrumentCode.toUpperCase().trim());
+    // Preservar guiones: PC-05 y PC05 son instrumentos distintos.
+    final normalizedInstrumentCode = instrumentCode.toUpperCase().trim();
 
     return Lectura(
       clientRowId: clientRowId,
-      instrumentCode: canonicalCode,
+      instrumentCode: normalizedInstrumentCode,
       parameter: parameter?.toLowerCase().trim(),
       unit: unit?.trim(),
       value: parsedValue,

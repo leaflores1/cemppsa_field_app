@@ -20,6 +20,14 @@ void main() {
       expect(Subfamilia.inferFromCode('PC31'), Subfamilia.ejeC);
     });
 
+    test('PC-05 se clasifica como piezometro del Eje C', () {
+      expect(
+        FamiliaInstrumento.inferFromCode('PC-05'),
+        FamiliaInstrumento.piezometro,
+      );
+      expect(Subfamilia.inferFromCode('PC-05'), Subfamilia.ejeC);
+    });
+
     test('Instrumento.fromJson corrige familia generica para PC05', () {
       final instrumento = Instrumento.fromJson({
         'codigo': 'PC05',
