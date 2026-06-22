@@ -219,17 +219,90 @@ class _PlanillaDetailScreenState extends State<PlanillaDetailScreen> {
   }
 
   Widget _buildLecturasList() {
+    final presentationItems = _buildLecturaPresentationItems();
+
     return ListView.builder(
       padding: const EdgeInsets.all(16),
-      itemCount: _planilla.lecturas.length,
+      itemCount: presentationItems.length,
       itemBuilder: (ctx, index) {
-        final lectura = _planilla.lecturas[index];
+        final item = presentationItems[index];
         return _LecturaRow(
-          lectura: lectura,
-          onEdit: _editable ? () => _editLectura(index) : null,
+          lectura: item.lectura,
+          displayValue: item.displayValue,
+          displayUnit: item.displayUnit,
+          displayParameter: item.displayParameter,
+          onEdit: _editable
+              ? item.isCombinedDren
+                  ? _editPlanilla
+                  : () => _editLectura(item.sourceIndex)
+              : null,
         );
       },
     );
+  }
+
+  List<_LecturaPresentationItem> _buildLecturaPresentationItems() {
+    final items = <_LecturaPresentationItem>[];
+    final consumedIndexes = <int>{};
+
+    for (var index = 0; index < _planilla.lecturas.length; index++) {
+      if (consumedIndexes.contains(index)) continue;
+
+      final lectura = _planilla.lecturas[index];
+      final parameter = lectura.parameter?.trim().toLowerCase();
+
+      if (parameter == 'drenes_min') {
+        final secondsIndex = _planilla.lecturas.indexWhere(
+          (candidate) =>
+              candidate.instrumentCode == lectura.instrumentCode &&
+              candidate.parameter?.trim().toLowerCase() == 'drenes_seg',
+        );
+
+        if (secondsIndex >= 0) {
+          final seconds = _planilla.lecturas[secondsIndex];
+          consumedIndexes.add(secondsIndex);
+          items.add(
+            _LecturaPresentationItem(
+              lectura: lectura,
+              sourceIndex: index,
+              displayValue:
+                  '${_wholeValue(lectura).toString().padLeft(2, '0')}:'
+                  '${_wholeValue(seconds).toString().padLeft(2, '0')}',
+              displayUnit: '',
+              displayParameter: 'DRENES',
+              isCombinedDren: true,
+            ),
+          );
+          continue;
+        }
+      }
+
+      if (parameter == 'drenes_seg' &&
+          _planilla.lecturas.any(
+            (candidate) =>
+                candidate.instrumentCode == lectura.instrumentCode &&
+                candidate.parameter?.trim().toLowerCase() == 'drenes_min',
+          )) {
+        continue;
+      }
+
+      items.add(
+        _LecturaPresentationItem(
+          lectura: lectura,
+          sourceIndex: index,
+        ),
+      );
+    }
+
+    return items;
+  }
+
+  int _wholeValue(Lectura lectura) {
+    final rawValue = lectura.valorRaw?.trim();
+    return int.tryParse(rawValue ?? '') ??
+        double.tryParse(rawValue ?? '')?.round() ??
+        lectura.value?.round() ??
+        0;
   }
 
   Widget _buildBottomBar() {
@@ -509,10 +582,16 @@ class _PlanillaDetailScreenState extends State<PlanillaDetailScreen> {
 class _LecturaRow extends StatelessWidget {
   final Lectura lectura;
   final VoidCallback? onEdit;
+  final String? displayValue;
+  final String? displayUnit;
+  final String? displayParameter;
 
   const _LecturaRow({
     required this.lectura,
     this.onEdit,
+    this.displayValue,
+    this.displayUnit,
+    this.displayParameter,
   });
 
   @override
@@ -553,7 +632,8 @@ class _LecturaRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '${lectura.valorRaw ?? lectura.value?.toString() ?? ''} ${lectura.unit ?? ''}',
+                  '${displayValue ?? lectura.valorRaw ?? lectura.value?.toString() ?? ''} '
+                  '${displayUnit ?? lectura.unit ?? ''}',
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
@@ -562,7 +642,8 @@ class _LecturaRow extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  '${lectura.parameter} - ${_formatTime(lectura.measuredAt)}',
+                  '${displayParameter ?? lectura.parameter} - '
+                  '${_formatTime(lectura.measuredAt)}',
                   style: TextStyle(
                     fontSize: 11,
                     color: Colors.grey[500],
@@ -599,4 +680,22 @@ class _LecturaRow extends StatelessWidget {
     return '${dt.hour.toString().padLeft(2, '0')}:'
         '${dt.minute.toString().padLeft(2, '0')}';
   }
+}
+
+class _LecturaPresentationItem {
+  final Lectura lectura;
+  final int sourceIndex;
+  final String? displayValue;
+  final String? displayUnit;
+  final String? displayParameter;
+  final bool isCombinedDren;
+
+  const _LecturaPresentationItem({
+    required this.lectura,
+    required this.sourceIndex,
+    this.displayValue,
+    this.displayUnit,
+    this.displayParameter,
+    this.isCombinedDren = false,
+  });
 }

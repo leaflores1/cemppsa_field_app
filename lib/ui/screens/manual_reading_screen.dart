@@ -39,6 +39,8 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
 
   final Map<String, TextEditingController> _controllers = {};
   final Map<String, FocusNode> _focusNodes = {};
+  final TextEditingController _observacionesController =
+      TextEditingController();
   final Map<String, String> _confirmedWarningRawByKey = {};
   final Set<String> _reviewHighlightedKeys = {};
 
@@ -69,6 +71,7 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
       _loadedSchema = null;
       _schemaSource = MobileSchemaSource.unavailable;
       _isLoadingSchema = true;
+      _observacionesController.text = planilla.observaciones ?? '';
       if (planilla.lecturas.isNotEmpty) {
         _batchDateTime = planilla.lecturas.first.measuredAt;
       }
@@ -88,6 +91,7 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
   @override
   void dispose() {
     _disposeInputs();
+    _observacionesController.dispose();
     super.dispose();
   }
 
@@ -278,47 +282,82 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
         border: Border(top: BorderSide(color: Color(0xFF334155))),
       ),
       child: SafeArea(
-        child: Row(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              '$filledCount valores',
-              style: TextStyle(color: Colors.grey[500], fontSize: 12),
-            ),
-            const Spacer(),
-            OutlinedButton(
-              onPressed: _clearAll,
-              style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: Color(0xFF334155)),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                minimumSize: const Size(70, 36),
-              ),
-              child: const Text('Limpiar',
-                  style: TextStyle(color: Colors.grey, fontSize: 12)),
-            ),
-            const SizedBox(width: 8),
-            ElevatedButton(
-              onPressed:
-                  filledCount > 0 && !_hasInvalidInputs ? _saveDraft : null,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF3B82F6), // Blue for draft
-                disabledBackgroundColor: const Color(0xFF334155),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                minimumSize: const Size(80, 36),
-              ),
-              child: const Text(
-                'Guardar Borrador',
-                style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 12),
-              ),
+            _buildObservacionesField(),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Text(
+                  '$filledCount valores',
+                  style: TextStyle(color: Colors.grey[500], fontSize: 12),
+                ),
+                const Spacer(),
+                OutlinedButton(
+                  onPressed: _clearAll,
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Color(0xFF334155)),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
+                    minimumSize: const Size(70, 36),
+                  ),
+                  child: const Text('Limpiar',
+                      style: TextStyle(color: Colors.grey, fontSize: 12)),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  onPressed:
+                      filledCount > 0 && !_hasInvalidInputs ? _saveDraft : null,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF3B82F6),
+                    disabledBackgroundColor: const Color(0xFF334155),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 10),
+                    minimumSize: const Size(80, 36),
+                  ),
+                  child: const Text(
+                    'Guardar Borrador',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
       ),
     );
+  }
+
+  Widget _buildObservacionesField() {
+    return TextField(
+      controller: _observacionesController,
+      minLines: 2,
+      maxLines: 3,
+      maxLength: 1000,
+      onChanged: (_) => _syncObservaciones(),
+      style: const TextStyle(color: Colors.white, fontSize: 13),
+      decoration: const InputDecoration(
+        labelText: 'Observaciones',
+        labelStyle: TextStyle(color: Colors.grey),
+        hintText: 'Observaciones generales de la planilla',
+        hintStyle: TextStyle(color: Color(0xFF64748B)),
+        filled: true,
+        fillColor: Color(0xFF0F172A),
+        border: OutlineInputBorder(),
+        enabledBorder: OutlineInputBorder(
+          borderSide: BorderSide(color: Color(0xFF334155)),
+        ),
+      ),
+    );
+  }
+
+  void _syncObservaciones() {
+    final value = _observacionesController.text.trim();
+    _currentPlanilla?.observaciones = value.isEmpty ? null : value;
   }
 
   // ... helper methods ...
@@ -499,6 +538,7 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
   // [MODIFIED] Send Logic (Top Button)
   Future<void> _sendPlanilla() async {
     if (_currentPlanilla == null) return;
+    _syncObservaciones();
     if (_hasInvalidInputs) {
       _showInvalidValuesMessage();
       return;
@@ -725,6 +765,7 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
   // [MODIFIED] Save Draft Logic (Bottom Button)
   Future<void> _saveDraft() async {
     if (_currentPlanilla == null) return;
+    _syncObservaciones();
     if (_hasInvalidInputs) {
       _showInvalidValuesMessage();
       return;
@@ -852,6 +893,8 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
     }
     _confirmedWarningRawByKey.clear();
     _reviewHighlightedKeys.clear();
+    _observacionesController.clear();
+    _syncObservaciones();
     setState(() {});
   }
 
@@ -1213,6 +1256,7 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
   Future<void> _selectFamily(TipoPlanilla tipo) async {
     setState(() {
       _disposeInputs();
+      _observacionesController.clear();
       _selectedTipo = tipo;
       _batchDateTime = DateTime.now();
       _currentPlanilla = Planilla(
@@ -1427,7 +1471,8 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
   }
 
   Future<void> _confirmCancel() async {
-    final hasData = _controllers.values.any((c) => c.text.isNotEmpty);
+    final hasData = _controllers.values.any((c) => c.text.isNotEmpty) ||
+        _observacionesController.text.trim().isNotEmpty;
     bool shouldPop = true;
 
     if (hasData) {

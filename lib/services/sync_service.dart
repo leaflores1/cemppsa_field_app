@@ -638,6 +638,7 @@ class SyncService extends ChangeNotifier {
     final archivoOrigen =
         'app_${planilla.batchUuid}_${DateTime.now().millisecondsSinceEpoch}.json';
     final metadata = _resolveSenderMetadata(planilla);
+    final observacion = planilla.observaciones?.trim();
 
     final payload = {
       'lote_uuid': planilla.batchUuid,
@@ -648,6 +649,8 @@ class SyncService extends ChangeNotifier {
       'device_id': metadata.deviceId,
       if (metadata.technicianName != null)
         'technician_name': metadata.technicianName,
+      if (observacion != null && observacion.isNotEmpty)
+        'observacion': observacion,
       'rows': rows,
     };
 

@@ -161,6 +161,7 @@ class Planilla {
   /// Serializa para envío al backend (POST /api/v1/sync)
   Map<String, dynamic> toSyncRequest() {
     final normalizedTechnicianName = technicianName?.trim();
+    final normalizedObservaciones = observaciones?.trim();
     return {
       'batch_uuid': batchUuid,
       'device_id': deviceId,
@@ -172,6 +173,8 @@ class Planilla {
       'created_at': createdAt.toIso8601String(),
       'planilla_nombre': tipo.codigo,
       'readings': lecturas.map((l) => l.toSyncJson()).toList(),
+      if (normalizedObservaciones != null && normalizedObservaciones.isNotEmpty)
+        'observacion': normalizedObservaciones,
     };
   }
 
