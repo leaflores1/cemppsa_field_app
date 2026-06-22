@@ -577,8 +577,12 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
 
     final list = ListView.builder(
       padding: const EdgeInsets.all(16),
-      itemCount: instrumentos.length,
+      itemCount: instrumentos.length + 1,
       itemBuilder: (ctx, index) {
+        if (index == instrumentos.length) {
+          return _buildObservacionesField();
+        }
+
         final inst = instrumentos[index];
         if (_selectedTipo == TipoPlanilla.cr10xTriaxiales) {
           final baseCode = _triaxBaseCode(inst.codigo);
@@ -887,49 +891,42 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
         border: Border(top: BorderSide(color: Color(0xFF334155))),
       ),
       child: SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+        child: Row(
           children: [
-            _buildObservacionesField(),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Text(
-                  '$filledCount valores',
-                  style: TextStyle(color: Colors.grey[500], fontSize: 12),
-                ),
-                const Spacer(),
-                OutlinedButton(
-                  onPressed: _clearAll,
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: Color(0xFF334155)),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 10),
-                    minimumSize: const Size(70, 36),
-                  ),
-                  child: const Text('Limpiar',
-                      style: TextStyle(color: Colors.grey, fontSize: 12)),
-                ),
-                const SizedBox(width: 8),
-                ElevatedButton(
-                  onPressed:
-                      filledCount > 0 && !_hasInvalidInputs ? _saveDraft : null,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF3B82F6),
-                    disabledBackgroundColor: const Color(0xFF334155),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 10),
-                    minimumSize: const Size(80, 36),
-                  ),
-                  child: const Text(
-                    'Guardar Borrador',
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 12),
-                  ),
-                ),
-              ],
+            Text(
+              '$filledCount valores',
+              style: TextStyle(color: Colors.grey[500], fontSize: 12),
+            ),
+            const Spacer(),
+            OutlinedButton(
+              onPressed: _clearAll,
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: Color(0xFF334155)),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                minimumSize: const Size(70, 36),
+              ),
+              child: const Text('Limpiar',
+                  style: TextStyle(color: Colors.grey, fontSize: 12)),
+            ),
+            const SizedBox(width: 8),
+            ElevatedButton(
+              onPressed:
+                  filledCount > 0 && !_hasInvalidInputs ? _saveDraft : null,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF3B82F6),
+                disabledBackgroundColor: const Color(0xFF334155),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                minimumSize: const Size(80, 36),
+              ),
+              child: const Text(
+                'Guardar Borrador',
+                style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12),
+              ),
             ),
           ],
         ),
@@ -938,23 +935,34 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
   }
 
   Widget _buildObservacionesField() {
-    return TextField(
-      controller: _observacionesController,
-      minLines: 2,
-      maxLines: 3,
-      maxLength: 1000,
-      onChanged: (_) => _syncObservaciones(),
-      style: const TextStyle(color: Colors.white, fontSize: 13),
-      decoration: const InputDecoration(
-        labelText: 'Observaciones',
-        labelStyle: TextStyle(color: Colors.grey),
-        hintText: 'Observaciones generales de la planilla',
-        hintStyle: TextStyle(color: Color(0xFF64748B)),
-        filled: true,
-        fillColor: Color(0xFF0F172A),
-        border: OutlineInputBorder(),
-        enabledBorder: OutlineInputBorder(
-          borderSide: BorderSide(color: Color(0xFF334155)),
+    return Padding(
+      padding: const EdgeInsets.only(top: 8, bottom: 24),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1E293B),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: const Color(0xFF334155)),
+        ),
+        child: TextField(
+          controller: _observacionesController,
+          minLines: 2,
+          maxLines: 3,
+          maxLength: 1000,
+          onChanged: (_) => _syncObservaciones(),
+          style: const TextStyle(color: Colors.white, fontSize: 13),
+          decoration: const InputDecoration(
+            labelText: 'Observaciones',
+            labelStyle: TextStyle(color: Colors.grey),
+            hintText: 'Observaciones generales de la planilla',
+            hintStyle: TextStyle(color: Color(0xFF64748B)),
+            filled: true,
+            fillColor: Color(0xFF0F172A),
+            border: OutlineInputBorder(),
+            enabledBorder: OutlineInputBorder(
+              borderSide: BorderSide(color: Color(0xFF334155)),
+            ),
+          ),
         ),
       ),
     );
