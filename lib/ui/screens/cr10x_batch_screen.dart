@@ -41,6 +41,37 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
   static const List<String> _triaxAxes = ['X', 'Y', 'Z'];
   static final List<String> _triaxBaseCodes =
       List<String>.generate(15, (index) => 'J${index + 1}');
+  static const List<String> _clinometroOrder = [
+    'CPB1',
+    'CPBC1',
+    'CPC1',
+    'CPC2',
+    'CPD1',
+    'CPD2',
+    'CPD3',
+    'CPD4',
+    'CPD5',
+    'CPD6',
+    'CPE1',
+    'CPE2',
+    'CPE3',
+    'CPE4',
+    'CPE5',
+    'CPE6',
+    'CPE7',
+    'CPE8',
+    'CPE11',
+    'CPE12',
+    'CPE13',
+  ];
+  static final List<String> _uniaxialOrder =
+      List<String>.generate(15, (index) => 'JP${index + 1}');
+  static final Map<String, int> _clinometroOrderIndex =
+      _buildOrderIndex(_clinometroOrder);
+  static final Map<String, int> _triaxialOrderIndex =
+      _buildOrderIndex(_triaxBaseCodes);
+  static final Map<String, int> _uniaxialOrderIndex =
+      _buildOrderIndex(_uniaxialOrder);
   static const String _tempSuffix = '__temp';
 
   TipoPlanilla? _selectedTipo;
@@ -798,8 +829,40 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
     }
 
     final sorted = List<Instrumento>.from(instrumentos)
-      ..sort((a, b) => a.codigo.compareTo(b.codigo));
+      ..sort(_compareInstrumentosForSelectedTipo);
     return sorted;
+  }
+
+  static Map<String, int> _buildOrderIndex(List<String> codes) => {
+        for (var index = 0; index < codes.length; index++) codes[index]: index,
+      };
+
+  int _compareInstrumentosForSelectedTipo(Instrumento a, Instrumento b) {
+    Map<String, int>? orderIndex;
+    switch (_selectedTipo) {
+      case TipoPlanilla.cr10xClinometros:
+        orderIndex = _clinometroOrderIndex;
+        break;
+      case TipoPlanilla.cr10xTriaxiales:
+        orderIndex = _triaxialOrderIndex;
+        break;
+      case TipoPlanilla.cr10xUniaxiales:
+        orderIndex = _uniaxialOrderIndex;
+        break;
+      default:
+        break;
+    }
+
+    if (orderIndex == null) {
+      return a.codigo.compareTo(b.codigo);
+    }
+
+    final aIndex = orderIndex[a.codigo.toUpperCase().trim()];
+    final bIndex = orderIndex[b.codigo.toUpperCase().trim()];
+    if (aIndex != null && bIndex != null) return aIndex.compareTo(bIndex);
+    if (aIndex != null) return -1;
+    if (bIndex != null) return 1;
+    return a.codigo.compareTo(b.codigo);
   }
 
   List<Instrumento> _getTriaxialBaseInstrumentos(CatalogRepository catalog) {
