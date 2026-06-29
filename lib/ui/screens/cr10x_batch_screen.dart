@@ -417,6 +417,36 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
         .rangeForInstrument(codigo, variableCodigo);
   }
 
+  InstrumentRange? _findHistoricalRange(
+    Instrumento instrumento, {
+    String? instrumentCode,
+  }) {
+    final code = instrumentCode ?? instrumento.codigo;
+    final expectedVariable = _resolveHistoricalRangeParameter(instrumento);
+    final exact = _getRangeForInstrument(code, expectedVariable);
+    if (exact?.hasRange == true) {
+      return exact;
+    }
+
+    final validRanges = context
+        .read<CatalogRepository>()
+        .rangesForInstrument(code)
+        .where((range) => range.hasRange)
+        .toList();
+    if (validRanges.length == 1) {
+      final fallback = validRanges.first;
+      if (kDebugMode) {
+        debugPrint(
+          '[RANGE_FALLBACK] $code: expected=$expectedVariable, '
+          'using=${fallback.variableCodigo}',
+        );
+      }
+      return fallback;
+    }
+
+    return exact;
+  }
+
   // ===========================================================================
   // Grid de entrada masiva
   // ===========================================================================
@@ -617,12 +647,18 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
         final inst = instrumentos[index];
         if (_selectedTipo == TipoPlanilla.cr10xTriaxiales) {
           final baseCode = _triaxBaseCode(inst.codigo);
-          final rangeX =
-              _getRangeForInstrument(_triaxAxisKey(baseCode, 'X'), 'EJE_X');
-          final rangeY =
-              _getRangeForInstrument(_triaxAxisKey(baseCode, 'Y'), 'EJE_Y');
-          final rangeZ =
-              _getRangeForInstrument(_triaxAxisKey(baseCode, 'Z'), 'EJE_Z');
+          final rangeX = _findHistoricalRange(
+            inst,
+            instrumentCode: _triaxAxisKey(baseCode, 'X'),
+          );
+          final rangeY = _findHistoricalRange(
+            inst,
+            instrumentCode: _triaxAxisKey(baseCode, 'Y'),
+          );
+          final rangeZ = _findHistoricalRange(
+            inst,
+            instrumentCode: _triaxAxisKey(baseCode, 'Z'),
+          );
           return _TriaxialInputRow(
             instrumentCode: baseCode,
             instrumentName: inst.nombre,
@@ -709,8 +745,7 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
           onSubmitted: () => _focusNext(instrumentos, index),
           onSave: (val) => _saveSingleReading(inst, val),
           unitLabel: _resolveInputUnitLabel(inst),
-          range: _getRangeForInstrument(
-              inst.codigo, _resolvePrimaryParameter(inst)),
+          range: _findHistoricalRange(inst),
           isWarningConfirmed: _isWarningConfirmed(
             inst.codigo,
             _resolvePrimaryParameter(inst),
@@ -1048,6 +1083,7 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
       rawValue: rawValue,
       parameter: _resolvePrimaryParameter(inst),
       unit: _resolvePrimaryUnit(inst),
+      rangeVariableCode: _resolveHistoricalRangeParameter(inst),
     );
 
     _currentPlanilla!.estado = PlanillaEstado.borrador;
@@ -1122,7 +1158,7 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
         parameter: 'PERIODO_$axis',
         unit: _resolveTriaxialUnit(inst),
         rangeInstrumentCode: axisCode,
-        rangeVariableCode: 'EJE_$axis',
+        rangeVariableCode: _resolveHistoricalRangeParameter(inst),
       );
     }
 
@@ -1269,7 +1305,7 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
             parameter: 'PERIODO_$axis',
             unit: _resolveTriaxialUnit(inst),
             rangeInstrumentCode: axisCode,
-            rangeVariableCode: 'EJE_$axis',
+            rangeVariableCode: _resolveHistoricalRangeParameter(inst),
           );
         }
         continue;
@@ -1296,7 +1332,25 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
         rawValue: _controllers[inst.codigo]?.text ?? '',
         parameter: _resolvePrimaryParameter(inst),
         unit: _resolvePrimaryUnit(inst),
+        rangeVariableCode: _resolveHistoricalRangeParameter(inst),
       );
+    }
+  }
+
+  String _resolveHistoricalRangeParameter(Instrumento instrumento) {
+    switch (instrumento.familia) {
+      case FamiliaInstrumento.termometro:
+      case FamiliaInstrumento.celdaPresion:
+      case FamiliaInstrumento.triaxial:
+      case FamiliaInstrumento.uniaxial:
+      case FamiliaInstrumento.piezometro:
+        return 'PERIODO';
+      case FamiliaInstrumento.clinometro:
+        return 'LECTURA_MV';
+      case FamiliaInstrumento.asentimetro:
+        return 'LECTURA_LU';
+      default:
+        return _resolvePrimaryParameter(instrumento);
     }
   }
 
