@@ -17,6 +17,7 @@ import 'dart:convert';
 import '../../core/config.dart';
 import '../../utils/decimal_input.dart';
 import '../../utils/network_errors.dart';
+import '../../utils/planilla_axis.dart';
 import '../widgets/catalog_freshness_banner.dart';
 import '../widgets/out_of_range_review_sheet.dart';
 
@@ -26,6 +27,8 @@ class CR10XBatchScreen extends StatefulWidget {
   @override
   State<CR10XBatchScreen> createState() => _CR10XBatchScreenState();
 }
+
+enum _EjeChangeAction { saveAndChange, discardAndChange }
 
 @visibleForTesting
 String cr10xReadingKeyForTesting(String instrumentCode, String? parameter) =>
@@ -124,20 +127,11 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
   }
 
   void _loadControllersFromDraft(Planilla planilla) {
-    // Attempt to infer EJE if piezometers
-    if ((planilla.tipo == TipoPlanilla.cr10xPiezometros ||
-            planilla.tipo == TipoPlanilla.cr10xAsentimetros) &&
-        planilla.lecturas.isNotEmpty) {
-      // Find first instrument
-      final code = planilla.lecturas.first.instrumentCode;
-      final catalog = context.read<CatalogRepository>();
-      final inst = catalog.byCode(code);
-      if (inst != null && (inst.subfamilia?.startsWith('EJE_') ?? false)) {
-        _selectedEje = inst.subfamilia?.split('_').last;
-      } else if (planilla.tipo == TipoPlanilla.cr10xPiezometros &&
-          code.toUpperCase().startsWith('PC')) {
-        _selectedEje = 'C';
-      }
+    if (planillaUsesSelectableEje(planilla.tipo)) {
+      _selectedEje = effectiveEjeForPlanilla(
+        planilla,
+        context.read<CatalogRepository>(),
+      );
     }
 
     // NOTA: borradores previos al fix PC-05 pueden tener instrumentCode = 'PC05'
@@ -400,13 +394,19 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
       _selectedTipo = tipo;
       _selectedEje = null;
       _batchDateTime = DateTime.now();
-      _currentPlanilla = Planilla(
-        tipo: tipo,
-        deviceId: AppConfig.deviceId ?? 'unknown',
-        technicianId: AppConfig.technicianId ?? 'tecnico',
-        technicianName: AppConfig.technicianName,
-      );
+      _currentPlanilla =
+          planillaUsesSelectableEje(tipo) ? null : _createPlanilla(tipo);
     });
+  }
+
+  Planilla _createPlanilla(TipoPlanilla tipo, {String? eje}) {
+    return Planilla(
+      tipo: tipo,
+      deviceId: AppConfig.deviceId ?? 'unknown',
+      technicianId: AppConfig.technicianId ?? 'tecnico',
+      technicianName: AppConfig.technicianName,
+      eje: eje,
+    );
   }
 
   /// Obtiene el rango desde el catálogo local (sin requests en pantalla)
@@ -578,7 +578,7 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
             child: FilterChip(
               label: Text('Eje $eje'),
               selected: isSelected,
-              onSelected: (v) => setState(() => _selectedEje = v ? eje : null),
+              onSelected: (v) => _handleEjeSelection(v ? eje : null),
               backgroundColor: const Color(0xFF1E293B),
               selectedColor: const Color(0x4D8B5CF6),
               labelStyle: TextStyle(
@@ -595,6 +595,148 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
         },
       ),
     );
+  }
+
+  Future<void> _handleEjeSelection(String? nextEje) async {
+    if (nextEje == _selectedEje) return;
+
+    if (!_hasUnsavedDataForCurrentEje()) {
+      _changeSelectedEje(nextEje);
+      return;
+    }
+
+    final action = await showDialog<_EjeChangeAction>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E293B),
+        title: const Text(
+          '¿Cambiar de eje?',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          'Tenés datos sin guardar en el eje actual.',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () =>
+                Navigator.pop(ctx, _EjeChangeAction.discardAndChange),
+            child: const Text('Descartar y cambiar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, _EjeChangeAction.saveAndChange),
+            child: const Text('Guardar y cambiar'),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted || action == null) return;
+
+    if (action == _EjeChangeAction.saveAndChange) {
+      final saved = await _saveDraft();
+      if (!saved || !mounted) return;
+      _changeSelectedEje(nextEje);
+      return;
+    }
+
+    _changeSelectedEje(nextEje);
+  }
+
+  void _changeSelectedEje(String? eje) {
+    if (!mounted) return;
+    setState(() {
+      _disposeInputs();
+      _observacionesController.clear();
+      _selectedEje = eje;
+
+      if (eje == null || _selectedTipo == null) {
+        _currentPlanilla = null;
+        _batchDateTime = DateTime.now();
+        return;
+      }
+
+      final repo = context.read<PlanillaRepository>();
+      final planilla = repo.borradorPorTipoEje(_selectedTipo!, eje) ??
+          _createPlanilla(_selectedTipo!, eje: eje);
+
+      _currentPlanilla = planilla;
+      _observacionesController.text = planilla.observaciones ?? '';
+      _batchDateTime = planilla.lecturas.isNotEmpty
+          ? planilla.lecturas.first.measuredAt
+          : DateTime.now();
+      _loadControllersFromDraft(planilla);
+    });
+  }
+
+  bool _hasUnsavedDataForCurrentEje() {
+    if (_currentPlanilla == null ||
+        _selectedEje == null ||
+        !planillaUsesSelectableEje(_selectedTipo)) {
+      return false;
+    }
+
+    final instrumentos = _getInstrumentosForGrid();
+    for (final inst in instrumentos) {
+      if (_selectedTipo == TipoPlanilla.cr10xAsentimetros) {
+        if (_controllerDiffersFromPersisted(
+          instrumentCode: inst.codigo,
+          parameter: 'LECTURA_LU',
+          controllerText: _getController(inst.codigo).text,
+        )) {
+          return true;
+        }
+        if (_controllerDiffersFromPersisted(
+          instrumentCode: inst.codigo,
+          parameter: 'TEMPERATURA',
+          controllerText: _getController(_tempControllerKey(inst.codigo)).text,
+        )) {
+          return true;
+        }
+        continue;
+      }
+
+      if (_controllerDiffersFromPersisted(
+        instrumentCode: inst.codigo,
+        parameter: _resolvePrimaryParameter(inst),
+        controllerText: _getController(inst.codigo).text,
+      )) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  bool _controllerDiffersFromPersisted({
+    required String instrumentCode,
+    required String parameter,
+    required String controllerText,
+  }) {
+    final normalizedController = controllerText.trim();
+    final lectura = _findPersistedReading(instrumentCode, parameter);
+    if (lectura == null) {
+      return normalizedController.isNotEmpty;
+    }
+
+    final persisted =
+        (lectura.valorRaw ?? lectura.value?.toString() ?? '').trim();
+    return normalizedController != persisted;
+  }
+
+  Lectura? _findPersistedReading(String instrumentCode, String parameter) {
+    if (_currentPlanilla == null) return null;
+    final normalizedParameter = parameter.toLowerCase();
+    final index = _currentPlanilla!.lecturas.indexWhere(
+      (l) =>
+          l.instrumentCode == instrumentCode &&
+          (l.parameter ?? '').toLowerCase() == normalizedParameter,
+    );
+    return index >= 0 ? _currentPlanilla!.lecturas[index] : null;
   }
 
   Widget _buildInstrumentGrid() {
@@ -964,6 +1106,39 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
     return _focusNodes[codigo]!;
   }
 
+  List<String> _inputControllerKeysForInstrumentos(
+    List<Instrumento> instrumentos,
+  ) {
+    final keys = <String>[];
+
+    for (final inst in instrumentos) {
+      if (_selectedTipo == TipoPlanilla.cr10xTriaxiales) {
+        final baseCode = _triaxBaseCode(inst.codigo);
+        for (final axis in _triaxAxes) {
+          keys.add(_triaxAxisKey(baseCode, axis));
+        }
+        continue;
+      }
+
+      keys.add(inst.codigo);
+      if (_selectedTipo == TipoPlanilla.cr10xAsentimetros) {
+        keys.add(_tempControllerKey(inst.codigo));
+      }
+    }
+
+    return keys;
+  }
+
+  int _filledInputCountForInstrumentos(List<Instrumento> instrumentos) {
+    return _inputControllerKeysForInstrumentos(instrumentos)
+        .where((key) => _controllers[key]?.text.trim().isNotEmpty == true)
+        .length;
+  }
+
+  bool _hasInputForInstrumentos(List<Instrumento> instrumentos) {
+    return _filledInputCountForInstrumentos(instrumentos) > 0;
+  }
+
   void _focusNext(List<Instrumento> instrumentos, int currentIndex) {
     if (currentIndex < instrumentos.length - 1) {
       final nextCode = instrumentos[currentIndex + 1].codigo;
@@ -979,8 +1154,8 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
   }
 
   Widget _buildBatchFooter() {
-    final filledCount =
-        _controllers.entries.where((e) => e.value.text.isNotEmpty).length;
+    final instrumentos = _getInstrumentosForGrid();
+    final filledCount = _filledInputCountForInstrumentos(instrumentos);
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1071,6 +1246,12 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
     _currentPlanilla?.observaciones = value.isEmpty ? null : value;
   }
 
+  void _syncEjeToCurrentPlanilla() {
+    if (_currentPlanilla == null) return;
+    _currentPlanilla!.eje =
+        planillaUsesSelectableEje(_selectedTipo) ? _selectedEje : null;
+  }
+
   // ===========================================================================
   // Acciones
   // ===========================================================================
@@ -1086,6 +1267,7 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
       rangeVariableCode: _resolveHistoricalRangeParameter(inst),
     );
 
+    _syncEjeToCurrentPlanilla();
     _currentPlanilla!.estado = PlanillaEstado.borrador;
     await context.read<PlanillaRepository>().save(_currentPlanilla!);
 
@@ -1123,6 +1305,7 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
       unit: '°C',
     );
 
+    _syncEjeToCurrentPlanilla();
     _currentPlanilla!.estado = PlanillaEstado.borrador;
     await context.read<PlanillaRepository>().save(_currentPlanilla!);
 
@@ -1162,6 +1345,7 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
       );
     }
 
+    _syncEjeToCurrentPlanilla();
     _currentPlanilla!.estado = PlanillaEstado.borrador;
     await context.read<PlanillaRepository>().save(_currentPlanilla!);
 
@@ -1291,6 +1475,7 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
 
   void _syncPlanillaFromInputs(List<Instrumento> instrumentos) {
     if (_currentPlanilla == null) return;
+    _syncEjeToCurrentPlanilla();
     _currentPlanilla!.lecturas.clear();
 
     for (final inst in instrumentos) {
@@ -1399,17 +1584,23 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
       _showInvalidValuesMessage();
       return;
     }
-    final hasValues = _controllers.values.any((c) => c.text.isNotEmpty);
-
-    if (!hasValues && _currentPlanilla?.lecturas.isEmpty == true) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No hay datos para enviar')),
-      );
-      return;
-    }
-
     // Save local pending (always rebuild from current form state)
     final instrumentos = _getInstrumentosForGrid();
+    final canSafelyRebuild = await _confirmInstrumentosAvailableForSave(
+      instrumentos,
+      blockedTitle: 'No se envió la planilla',
+    );
+    if (!canSafelyRebuild) {
+      return;
+    }
+    final currentGridHasInput = await _confirmCurrentGridHasInputsForOperation(
+      instrumentos,
+      blockedTitle: 'No se envió la planilla',
+      emptyMessage: 'No hay datos para enviar',
+    );
+    if (!currentGridHasInput) {
+      return;
+    }
     final readyToContinue = await _ensureOutOfRangeConfirmation(instrumentos);
     if (!readyToContinue) {
       return;
@@ -1515,21 +1706,36 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
     _showSimpleErrorDialog(errorMsg);
   }
 
-  Future<void> _saveDraft() async {
-    if (_currentPlanilla == null) return;
+  Future<bool> _saveDraft() async {
+    if (_currentPlanilla == null) return false;
     _syncObservaciones();
     if (_hasInvalidInputs) {
       _showInvalidValuesMessage();
-      return;
+      return false;
     }
     final instrumentos = _getInstrumentosForGrid();
+    final canSafelyRebuild = await _confirmInstrumentosAvailableForSave(
+      instrumentos,
+      blockedTitle: 'No se guardó el borrador',
+    );
+    if (!canSafelyRebuild) {
+      return false;
+    }
+    final currentGridHasInput = await _confirmCurrentGridHasInputsForOperation(
+      instrumentos,
+      blockedTitle: 'No se guardó el borrador',
+      emptyMessage: 'No hay datos para guardar',
+    );
+    if (!currentGridHasInput) {
+      return false;
+    }
     final readyToContinue = await _ensureOutOfRangeConfirmation(instrumentos);
     if (!readyToContinue) {
-      return;
+      return false;
     }
 
     _currentPlanilla!.estado = PlanillaEstado.borrador;
-    if (!mounted) return;
+    if (!mounted) return false;
     await context.read<PlanillaRepository>().save(_currentPlanilla!);
 
     if (mounted) {
@@ -1540,6 +1746,120 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
         ),
       );
     }
+    return true;
+  }
+
+  Future<bool> _confirmInstrumentosAvailableForSave(
+    List<Instrumento> instrumentos, {
+    required String blockedTitle,
+  }) async {
+    if (instrumentos.isNotEmpty || _currentPlanilla == null) {
+      return true;
+    }
+
+    final hasPreviousReadings = _currentPlanilla!.lecturas.isNotEmpty;
+    final typedControllers =
+        _controllers.values.where((c) => c.text.trim().isNotEmpty).length;
+
+    if (!hasPreviousReadings && typedControllers == 0) {
+      return true;
+    }
+
+    final catalog = context.read<CatalogRepository>();
+    final subfamilia = _selectedEje == null ? null : 'EJE_${_selectedEje!}';
+    final subfamiliaInstrumentCount = subfamilia == null
+        ? 0
+        : catalog.codigosPorSubfamilia(subfamilia).length;
+
+    debugPrint(
+      '[CR10X_SAVE_BLOCKED_EMPTY_INSTRUMENTS] '
+      'blockedTitle="$blockedTitle" '
+      'selectedTipo=$_selectedTipo '
+      'selectedEje=$_selectedEje '
+      'subfamilia=$subfamilia '
+      'subfamiliaInstrumentCount=$subfamiliaInstrumentCount '
+      'previousReadings=${_currentPlanilla!.lecturas.length} '
+      'typedControllers=$typedControllers '
+      'catalogTotal=${catalog.totalInstrumentos} '
+      'catalogIsSyncing=${catalog.isSyncing}',
+    );
+
+    if (!mounted) return false;
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E293B),
+        title: Text(
+          blockedTitle,
+          style: const TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          'No se pudo determinar la lista de instrumentos para este eje/familia. '
+          'La operación NO se completó para evitar pérdida de datos. '
+          'Verificá la selección de eje o la conexión con el catálogo e intentá de nuevo.',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Entendido'),
+          ),
+        ],
+      ),
+    );
+
+    return false;
+  }
+
+  Future<bool> _confirmCurrentGridHasInputsForOperation(
+    List<Instrumento> instrumentos, {
+    required String blockedTitle,
+    required String emptyMessage,
+  }) async {
+    if (_hasInputForInstrumentos(instrumentos)) {
+      return true;
+    }
+
+    final hasPreviousReadings = _currentPlanilla?.lecturas.isNotEmpty == true;
+    final hasTypedValuesElsewhere =
+        _controllers.values.any((c) => c.text.trim().isNotEmpty);
+
+    if (!hasPreviousReadings && !hasTypedValuesElsewhere) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(emptyMessage)),
+        );
+      }
+      return false;
+    }
+
+    if (!mounted) return false;
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E293B),
+        title: Text(
+          blockedTitle,
+          style: const TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          'El eje actual no tiene lecturas cargadas. '
+          'La operación NO se completó para evitar dejar la planilla vacía. '
+          'Los datos ya guardados se mantienen.',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Entendido'),
+          ),
+        ],
+      ),
+    );
+
+    return false;
   }
 
   Future<void> _confirmCancel() async {
@@ -1574,7 +1894,8 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
           ),
           TextButton(
             onPressed: () async {
-              await _saveDraft();
+              final saved = await _saveDraft();
+              if (!saved) return;
               if (!mounted || !ctx.mounted) return;
               Navigator.pop(ctx);
               setState(() {

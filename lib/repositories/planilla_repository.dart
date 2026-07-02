@@ -136,6 +136,24 @@ class PlanillaRepository extends ChangeNotifier {
       _planillas.values.where((p) => p.tipo == tipo).toList()
         ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
+  /// Borrador por tipo y eje seleccionado.
+  Planilla? borradorPorTipoEje(TipoPlanilla tipo, String eje) {
+    final normalizedEje = eje.trim().toUpperCase();
+    if (normalizedEje.isEmpty) return null;
+
+    final matches = _planillas.values
+        .where(
+          (p) =>
+              p.estado == PlanillaEstado.borrador &&
+              p.tipo == tipo &&
+              (p.eje?.trim().toUpperCase() ?? '') == normalizedEje,
+        )
+        .toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+    return matches.isEmpty ? null : matches.first;
+  }
+
   // =========================================================================
   // Estadísticas
   // =========================================================================

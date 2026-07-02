@@ -8,8 +8,10 @@ import 'package:provider/provider.dart';
 
 import '../../data/models/planilla.dart';
 import '../../data/models/lectura.dart';
+import '../../repositories/catalogo_repository.dart';
 import '../../repositories/planilla_repository.dart';
 import '../../utils/decimal_input.dart';
+import '../../utils/planilla_axis.dart';
 import '../widgets/estado_chip.dart';
 
 class PlanillaDetailScreen extends StatefulWidget {
@@ -36,12 +38,15 @@ class _PlanillaDetailScreenState extends State<PlanillaDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final catalog = context.watch<CatalogRepository>();
+    final title = planillaTitleWithEje(_planilla, catalog);
+
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A),
       appBar: AppBar(
         backgroundColor: const Color(0xFF1E293B),
         foregroundColor: Colors.white,
-        title: Text(_planilla.tipo.displayName),
+        title: Text(title),
         elevation: 0,
         actions: [
           if (_editable)
@@ -100,6 +105,8 @@ class _PlanillaDetailScreenState extends State<PlanillaDetailScreen> {
   }
 
   Widget _buildHeader() {
+    final observaciones = _planilla.observaciones?.trim();
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: const BoxDecoration(
@@ -167,6 +174,27 @@ class _PlanillaDetailScreenState extends State<PlanillaDetailScreen> {
               ),
             ],
           ),
+
+          if (observaciones != null && observaciones.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.notes_outlined, size: 16, color: Colors.grey[600]),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    observaciones,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.grey[300],
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
 
           // Error message si existe
           if (_planilla.errorMessage != null) ...[

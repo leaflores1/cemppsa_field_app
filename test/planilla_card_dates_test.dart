@@ -1,8 +1,10 @@
 import 'package:cemppsa_field_app/data/models/lectura.dart';
 import 'package:cemppsa_field_app/data/models/planilla.dart';
+import 'package:cemppsa_field_app/repositories/catalogo_repository.dart';
 import 'package:cemppsa_field_app/ui/widgets/planilla_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
 
 void main() {
   group('PlanillaCard fechas visibles', () {
@@ -57,13 +59,16 @@ void main() {
 }
 
 Widget _wrap(Planilla planilla) {
-  return MaterialApp(
-    home: Scaffold(
-      backgroundColor: const Color(0xFF0F172A),
-      body: Center(
-        child: SizedBox(
-          width: 420,
-          child: PlanillaCard(planilla: planilla),
+  return ChangeNotifierProvider<CatalogRepository>.value(
+    value: CatalogRepository(),
+    child: MaterialApp(
+      home: Scaffold(
+        backgroundColor: const Color(0xFF0F172A),
+        body: Center(
+          child: SizedBox(
+            width: 420,
+            child: PlanillaCard(planilla: planilla),
+          ),
         ),
       ),
     ),

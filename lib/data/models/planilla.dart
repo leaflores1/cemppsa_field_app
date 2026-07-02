@@ -129,6 +129,9 @@ class Planilla {
   /// Lista de lecturas del lote
   final List<Lectura> lecturas;
 
+  /// Eje seleccionado para planillas CR10X con eje (Piezómetros/Asentímetros)
+  String? eje;
+
   /// Observaciones generales de la planilla
   String? observaciones;
 
@@ -150,6 +153,7 @@ class Planilla {
     DateTime? createdAt,
     this.estado = PlanillaEstado.borrador,
     List<Lectura>? lecturas,
+    this.eje,
     this.observaciones,
     this.errorMessage,
     this.lastSyncAttempt,
@@ -189,6 +193,7 @@ class Planilla {
       'created_at': createdAt.toIso8601String(),
       'estado': estado.name,
       'lecturas': lecturas.map((l) => l.toJson()).toList(),
+      'eje': eje,
       'observaciones': observaciones,
       'error_message': errorMessage,
       'last_sync_attempt': lastSyncAttempt?.toIso8601String(),
@@ -213,6 +218,7 @@ class Planilla {
               ?.map((l) => Lectura.fromJson(l as Map<String, dynamic>))
               .toList() ??
           [],
+      eje: json['eje'] as String?,
       observaciones: json['observaciones'] as String?,
       errorMessage: json['error_message'] as String?,
       lastSyncAttempt: json['last_sync_attempt'] != null

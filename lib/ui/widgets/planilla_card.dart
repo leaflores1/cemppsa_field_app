@@ -4,7 +4,10 @@
 // ==============================================================================
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../data/models/planilla.dart';
+import '../../repositories/catalogo_repository.dart';
+import '../../utils/planilla_axis.dart';
 import 'estado_chip.dart';
 
 class PlanillaCard extends StatelessWidget {
@@ -24,6 +27,9 @@ class PlanillaCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final dateSummary = _PlanillaDateSummary.fromPlanilla(planilla);
+    final catalog = context.watch<CatalogRepository>();
+    final title = planillaTitleWithEje(planilla, catalog);
+    final observaciones = planilla.observaciones?.trim();
 
     return Material(
       color: const Color(0xFF1E293B),
@@ -53,7 +59,7 @@ class PlanillaCard extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          planilla.tipo.displayName,
+                          title,
                           style: const TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w600,
@@ -103,6 +109,30 @@ class PlanillaCard extends StatelessWidget {
                   _BatchBadge(batchUuid: planilla.batchUuid),
                 ],
               ),
+
+              if (observaciones != null && observaciones.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.notes_outlined,
+                        size: 16, color: Colors.grey[500]),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        observaciones,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[400],
+                          height: 1.35,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
 
               // Error message si existe
               if (planilla.errorMessage != null) ...[

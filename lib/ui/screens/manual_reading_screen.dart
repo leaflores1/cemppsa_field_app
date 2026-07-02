@@ -554,6 +554,13 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
 
     final catalog = context.read<CatalogRepository>();
     final instrumentos = _getInstrumentosForTipo(catalog);
+    final canSafelyRebuild = await _confirmInstrumentosAvailableForSave(
+      instrumentos,
+      blockedTitle: 'No se envió la planilla',
+    );
+    if (!canSafelyRebuild) {
+      return;
+    }
     final readyToContinue = await _ensureOutOfRangeConfirmation(instrumentos);
     if (!readyToContinue) {
       return;
@@ -771,22 +778,29 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
   }
 
   // [MODIFIED] Save Draft Logic (Bottom Button)
-  Future<void> _saveDraft() async {
-    if (_currentPlanilla == null) return;
+  Future<bool> _saveDraft() async {
+    if (_currentPlanilla == null) return false;
     _syncObservaciones();
     if (_hasInvalidInputs) {
       _showInvalidValuesMessage();
-      return;
+      return false;
     }
     final instrumentos =
         _getInstrumentosForTipo(context.read<CatalogRepository>());
+    final canSafelyRebuild = await _confirmInstrumentosAvailableForSave(
+      instrumentos,
+      blockedTitle: 'No se guardó el borrador',
+    );
+    if (!canSafelyRebuild) {
+      return false;
+    }
     final readyToContinue = await _ensureOutOfRangeConfirmation(instrumentos);
     if (!readyToContinue) {
-      return;
+      return false;
     }
 
     _currentPlanilla!.estado = PlanillaEstado.borrador;
-    if (!mounted) return;
+    if (!mounted) return false;
     await context.read<PlanillaRepository>().save(_currentPlanilla!);
 
     if (mounted) {
@@ -797,6 +811,64 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
         ),
       );
     }
+    return true;
+  }
+
+  Future<bool> _confirmInstrumentosAvailableForSave(
+    List<Instrumento> instrumentos, {
+    required String blockedTitle,
+  }) async {
+    if (instrumentos.isNotEmpty || _currentPlanilla == null) {
+      return true;
+    }
+
+    final hasPreviousReadings = _currentPlanilla!.lecturas.isNotEmpty;
+    final typedControllers = _filledInputCount;
+
+    if (!hasPreviousReadings && typedControllers == 0) {
+      return true;
+    }
+
+    final catalog = context.read<CatalogRepository>();
+    final matchingInstrumentCount = _getInstrumentosForTipo(catalog).length;
+
+    debugPrint(
+      '[MANUAL_SAVE_BLOCKED_EMPTY_INSTRUMENTS] '
+      'blockedTitle="$blockedTitle" '
+      'selectedTipo=$_selectedTipo '
+      'matchingInstrumentCount=$matchingInstrumentCount '
+      'previousReadings=${_currentPlanilla!.lecturas.length} '
+      'typedControllers=$typedControllers '
+      'catalogTotal=${catalog.totalInstrumentos} '
+      'catalogIsSyncing=${catalog.isSyncing}',
+    );
+
+    if (!mounted) return false;
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E293B),
+        title: Text(
+          blockedTitle,
+          style: const TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          'No se pudo determinar la lista de instrumentos para esta familia. '
+          'La operación NO se completó para evitar pérdida de datos. '
+          'Verificá la conexión con el catálogo e intentá de nuevo.',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Entendido'),
+          ),
+        ],
+      ),
+    );
+
+    return false;
   }
 
   // ===========================================================================
