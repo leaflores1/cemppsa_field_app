@@ -60,6 +60,8 @@ class CatalogRepository extends ChangeNotifier {
   static const String _boxName = 'catalog_v3';
   static const String _lastSyncKey = '__last_sync__';
   static const String _freshnessKey = '__catalog_revision__';
+  static const String _schemaCacheKeyPrefix = '__mobile_schema__';
+  static const String _legacySchemaCacheKeyPrefix = 'schema_';
   static const Duration _syncInterval = Duration(hours: 24);
 
   late Box _box;
@@ -137,7 +139,7 @@ class CatalogRepository extends ChangeNotifier {
     _clearIndexes();
 
     for (final key in _box.keys) {
-      if (key == _lastSyncKey || key == _freshnessKey) continue;
+      if (_isReservedCacheKey(key)) continue;
 
       final raw = _box.get(key);
       if (raw is Map) {
@@ -153,6 +155,29 @@ class CatalogRepository extends ChangeNotifier {
     }
 
     debugPrint('Catálogo cargado desde cache: ${_byCode.length}');
+  }
+
+  bool _isReservedCacheKey(dynamic key) {
+    return key == _lastSyncKey ||
+        key == _freshnessKey ||
+        (key is String &&
+            (key.startsWith(_schemaCacheKeyPrefix) ||
+                key.startsWith(_legacySchemaCacheKeyPrefix)));
+  }
+
+  String _mobileSchemaCacheKey(String familyId) {
+    return '$_schemaCacheKeyPrefix$familyId';
+  }
+
+  String _legacyMobileSchemaCacheKey(String familyId) {
+    return '$_legacySchemaCacheKeyPrefix$familyId';
+  }
+
+  Future<void> _clearInstrumentCacheEntries() async {
+    final keysToDelete = _box.keys
+        .where((key) => !_isReservedCacheKey(key))
+        .toList(growable: false);
+    await _box.deleteAll(keysToDelete);
   }
 
   void _index(Instrumento inst) {
@@ -275,7 +300,7 @@ class CatalogRepository extends ChangeNotifier {
       final List<dynamic> items = jsonDecode(response.body);
 
       _clearIndexes();
-      await _box.clear();
+      await _clearInstrumentCacheEntries();
 
       for (final item in items) {
         try {
@@ -410,7 +435,8 @@ class CatalogRepository extends ChangeNotifier {
   // ===========================================================================
 
   Future<MobileSchemaLoadResult> loadMobileSchema(String familyId) async {
-    final cacheKey = 'schema_$familyId';
+    final cacheKey = _mobileSchemaCacheKey(familyId);
+    final legacyCacheKey = _legacyMobileSchemaCacheKey(familyId);
 
     // 1. Try Online
     if (_baseUrl != null) {
@@ -429,6 +455,7 @@ class CatalogRepository extends ChangeNotifier {
           // Cache it
           // Store complete JSON object to avoid serialization issues
           await _box.put(cacheKey, json);
+          await _box.delete(legacyCacheKey);
           return MobileSchemaLoadResult(
             schema: schema,
             source: MobileSchemaSource.backend,
@@ -443,9 +470,10 @@ class CatalogRepository extends ChangeNotifier {
     }
 
     // 2. Fallback to Cache
-    if (_box.containsKey(cacheKey)) {
+    for (final candidateKey in [cacheKey, legacyCacheKey]) {
+      if (!_box.containsKey(candidateKey)) continue;
       try {
-        final cached = _box.get(cacheKey);
+        final cached = _box.get(candidateKey);
         // Ensure it's a Map<String, dynamic>
         // Hive stores Map<dynamic, dynamic> sometimes
         final Map<String, dynamic> jsonMap = cached is Map

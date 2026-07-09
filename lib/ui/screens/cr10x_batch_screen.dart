@@ -7,9 +7,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 
+import 'dart:async';
+
 import '../../data/models/instrumento.dart';
 import '../../data/models/lectura.dart';
 import '../../data/models/planilla.dart';
+import '../../data/models/schema_model.dart';
 import '../../repositories/catalogo_repository.dart';
 import '../../repositories/planilla_repository.dart';
 import '../../services/sync_service.dart';
@@ -18,6 +21,7 @@ import '../../core/config.dart';
 import '../../utils/decimal_input.dart';
 import '../../utils/network_errors.dart';
 import '../../utils/planilla_axis.dart';
+import '../../utils/planilla_family.dart';
 import '../widgets/catalog_freshness_banner.dart';
 import '../widgets/out_of_range_review_sheet.dart';
 
@@ -38,6 +42,91 @@ String _cr10xReadingKey(String instrumentCode, String? parameter) {
   final normalizedCode = instrumentCode.toUpperCase().trim();
   final normalizedParameter = (parameter ?? '').trim().toUpperCase();
   return '$normalizedCode|$normalizedParameter';
+}
+
+
+@visibleForTesting
+String? cr10xPrimaryParameterFallbackForTesting(TipoPlanilla tipo) {
+  return _fallbackPrimaryParameterForTipo(tipo);
+}
+
+@visibleForTesting
+String? cr10xPrimaryUnitFallbackForTesting(TipoPlanilla tipo) {
+  return _fallbackPrimaryUnitForTipo(tipo);
+}
+
+class _Cr10xPrimaryFallback {
+  final String parameter;
+  final String? unit;
+
+  const _Cr10xPrimaryFallback(this.parameter, this.unit);
+}
+
+_Cr10xPrimaryFallback? _fallbackForTipo(TipoPlanilla? tipo) {
+  switch (tipo) {
+    case TipoPlanilla.cr10xPiezometros:
+    case TipoPlanilla.cr10xTriaxiales:
+    case TipoPlanilla.cr10xUniaxiales:
+    case TipoPlanilla.cr10xTermometros:
+    case TipoPlanilla.cr10xCeldasPresion:
+      return const _Cr10xPrimaryFallback('PERIODO', 'us');
+    case TipoPlanilla.cr10xAsentimetros:
+      return const _Cr10xPrimaryFallback('LECTURA_LU', 'LU');
+    case TipoPlanilla.cr10xClinometros:
+      return const _Cr10xPrimaryFallback('LECTURA_MV', 'mV');
+    case TipoPlanilla.cr10xLimnimetros:
+      return const _Cr10xPrimaryFallback('NIVEL_EMBALSE', 'msnm');
+    case TipoPlanilla.cr10xBarometro:
+      return const _Cr10xPrimaryFallback('PRESION_MBAR', 'mbar');
+    default:
+      return null;
+  }
+}
+
+_Cr10xPrimaryFallback? _fallbackForFamilia(FamiliaInstrumento familia) {
+  switch (familia) {
+    case FamiliaInstrumento.piezometro:
+    case FamiliaInstrumento.triaxial:
+    case FamiliaInstrumento.uniaxial:
+    case FamiliaInstrumento.termometro:
+    case FamiliaInstrumento.celdaPresion:
+      return const _Cr10xPrimaryFallback('PERIODO', 'us');
+    case FamiliaInstrumento.asentimetro:
+      return const _Cr10xPrimaryFallback('LECTURA_LU', 'LU');
+    case FamiliaInstrumento.clinometro:
+      return const _Cr10xPrimaryFallback('LECTURA_MV', 'mV');
+    case FamiliaInstrumento.limnimetro:
+    case FamiliaInstrumento.embalse:
+      return const _Cr10xPrimaryFallback('NIVEL_EMBALSE', 'msnm');
+    case FamiliaInstrumento.barometro:
+      return const _Cr10xPrimaryFallback('PRESION_MBAR', 'mbar');
+    default:
+      return null;
+  }
+}
+
+String? _fallbackPrimaryParameterForTipo(TipoPlanilla? tipo) {
+  return _fallbackForTipo(tipo)?.parameter;
+}
+
+String? _fallbackPrimaryUnitForTipo(TipoPlanilla? tipo) {
+  return _fallbackForTipo(tipo)?.unit;
+}
+
+String? _fallbackPrimaryParameterForInstrument(
+  TipoPlanilla? tipo,
+  Instrumento instrumento,
+) {
+  return _fallbackForTipo(tipo)?.parameter ??
+      _fallbackForFamilia(instrumento.familia)?.parameter;
+}
+
+String? _fallbackPrimaryUnitForInstrument(
+  TipoPlanilla? tipo,
+  Instrumento instrumento,
+) {
+  return _fallbackForTipo(tipo)?.unit ??
+      _fallbackForFamilia(instrumento.familia)?.unit;
 }
 
 class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
@@ -90,6 +179,12 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
   final Map<String, String> _confirmedWarningRawByKey = {};
   final Set<String> _reviewHighlightedKeys = {};
   final Set<String> _loggedMissingCatalogCodes = {};
+  final Set<String> _loggedSchemaFallbacks = {};
+
+  MobileSchema? _mobileSchema;
+  MobileSchemaSource _mobileSchemaSource = MobileSchemaSource.unavailable;
+  String? _mobileSchemaFamilyId;
+  bool _loadingMobileSchema = false;
 
   bool _initialized = false;
   static const String _confirmedOutOfRangeNote =
@@ -110,6 +205,10 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
   void _initializeFromDraft(Planilla planilla) {
     setState(() {
       _disposeInputs();
+      _resetMobileSchemaState(
+        familyId: planillaFamilyGroupFromTipo(planilla.tipo).id,
+        loading: true,
+      );
       _currentPlanilla = planilla;
       _selectedTipo = planilla.tipo;
       _observacionesController.text = planilla.observaciones ?? '';
@@ -124,6 +223,7 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
 
       _loadControllersFromDraft(planilla);
     });
+    unawaited(_loadMobileSchemaForTipo(planilla.tipo));
   }
 
   void _loadControllersFromDraft(Planilla planilla) {
@@ -387,9 +487,11 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
     );
   }
 
-  void _selectFamily(TipoPlanilla tipo) {
+  Future<void> _selectFamily(TipoPlanilla tipo) async {
+    final familyId = planillaFamilyGroupFromTipo(tipo).id;
     setState(() {
       _disposeInputs();
+      _resetMobileSchemaState(familyId: familyId, loading: true);
       _observacionesController.clear();
       _selectedTipo = tipo;
       _selectedEje = null;
@@ -397,6 +499,7 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
       _currentPlanilla =
           planillaUsesSelectableEje(tipo) ? null : _createPlanilla(tipo);
     });
+    await _loadMobileSchemaForTipo(tipo, familyId: familyId);
   }
 
   Planilla _createPlanilla(TipoPlanilla tipo, {String? eje}) {
@@ -407,6 +510,42 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
       technicianName: AppConfig.technicianName,
       eje: eje,
     );
+  }
+
+
+  void _resetMobileSchemaState({String? familyId, bool loading = false}) {
+    _mobileSchema = null;
+    _mobileSchemaSource = MobileSchemaSource.unavailable;
+    _mobileSchemaFamilyId = familyId;
+    _loadingMobileSchema = loading;
+    _loggedSchemaFallbacks.clear();
+  }
+
+  Future<void> _loadMobileSchemaForTipo(
+    TipoPlanilla tipo, {
+    String? familyId,
+  }) async {
+    final resolvedFamilyId = familyId ?? planillaFamilyGroupFromTipo(tipo).id;
+    if (mounted) {
+      setState(() {
+        _mobileSchemaFamilyId = resolvedFamilyId;
+        _loadingMobileSchema = true;
+      });
+    }
+
+    final result = await context
+        .read<CatalogRepository>()
+        .loadMobileSchema(resolvedFamilyId);
+
+    if (!mounted || _selectedTipo != tipo) return;
+
+    setState(() {
+      _mobileSchema = result.schema;
+      _mobileSchemaSource = result.source;
+      _mobileSchemaFamilyId = resolvedFamilyId;
+      _loadingMobileSchema = false;
+      _loggedSchemaFallbacks.clear();
+    });
   }
 
   /// Obtiene el rango desde el catálogo local (sin requests en pantalla)
@@ -685,14 +824,14 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
       if (_selectedTipo == TipoPlanilla.cr10xAsentimetros) {
         if (_controllerDiffersFromPersisted(
           instrumentCode: inst.codigo,
-          parameter: 'LECTURA_LU',
+          parameter: _asentimetroLuParameter(),
           controllerText: _getController(inst.codigo).text,
         )) {
           return true;
         }
         if (_controllerDiffersFromPersisted(
           instrumentCode: inst.codigo,
-          parameter: 'TEMPERATURA',
+          parameter: _asentimetroTempParameter(),
           controllerText: _getController(_tempControllerKey(inst.codigo)).text,
         )) {
           return true;
@@ -789,6 +928,7 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
         final inst = instrumentos[index];
         if (_selectedTipo == TipoPlanilla.cr10xTriaxiales) {
           final baseCode = _triaxBaseCode(inst.codigo);
+          final parameter = _resolveTriaxialParameter(inst);
           final rangeX = _findHistoricalRange(
             inst,
             instrumentCode: _triaxAxisKey(baseCode, 'X'),
@@ -824,27 +964,27 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
             rangeZ: rangeZ,
             isWarningConfirmedX: _isWarningConfirmed(
               _triaxAxisKey(baseCode, 'X'),
-              'PERIODO_X',
+              parameter,
               _getController(_triaxAxisKey(baseCode, 'X')).text,
             ),
             isWarningConfirmedY: _isWarningConfirmed(
               _triaxAxisKey(baseCode, 'Y'),
-              'PERIODO_Y',
+              parameter,
               _getController(_triaxAxisKey(baseCode, 'Y')).text,
             ),
             isWarningConfirmedZ: _isWarningConfirmed(
               _triaxAxisKey(baseCode, 'Z'),
-              'PERIODO_Z',
+              parameter,
               _getController(_triaxAxisKey(baseCode, 'Z')).text,
             ),
             needsReviewX: _reviewHighlightedKeys.contains(
-              _readingKey(_triaxAxisKey(baseCode, 'X'), 'PERIODO_X'),
+              _readingKey(_triaxAxisKey(baseCode, 'X'), parameter),
             ),
             needsReviewY: _reviewHighlightedKeys.contains(
-              _readingKey(_triaxAxisKey(baseCode, 'Y'), 'PERIODO_Y'),
+              _readingKey(_triaxAxisKey(baseCode, 'Y'), parameter),
             ),
             needsReviewZ: _reviewHighlightedKeys.contains(
-              _readingKey(_triaxAxisKey(baseCode, 'Z'), 'PERIODO_Z'),
+              _readingKey(_triaxAxisKey(baseCode, 'Z'), parameter),
             ),
           );
         }
@@ -861,22 +1001,28 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
             onTempSubmitted: () => _focusNext(instrumentos, index),
             onSave: (luValue, tempValue) =>
                 _saveAsentimetroReadings(inst, luValue, tempValue),
-            rangeLu: _getRangeForInstrument(inst.codigo, 'LECTURA_LU'),
-            rangeTemp: _getRangeForInstrument(inst.codigo, 'TEMPERATURA'),
+            rangeLu: _getRangeForInstrument(
+              inst.codigo,
+              _asentimetroLuParameter(),
+            ),
+            rangeTemp: _getRangeForInstrument(
+              inst.codigo,
+              _asentimetroTempParameter(),
+            ),
             isLuWarningConfirmed: _isWarningConfirmed(
               inst.codigo,
-              'LECTURA_LU',
+              _asentimetroLuParameter(),
               _getController(inst.codigo).text,
             ),
             isTempWarningConfirmed: _isWarningConfirmed(
               inst.codigo,
-              'TEMPERATURA',
+              _asentimetroTempParameter(),
               _getController(_tempControllerKey(inst.codigo)).text,
             ),
             needsReviewLu: _reviewHighlightedKeys
-                .contains(_readingKey(inst.codigo, 'LECTURA_LU')),
+                .contains(_readingKey(inst.codigo, _asentimetroLuParameter())),
             needsReviewTemp: _reviewHighlightedKeys
-                .contains(_readingKey(inst.codigo, 'TEMPERATURA')),
+                .contains(_readingKey(inst.codigo, _asentimetroTempParameter())),
           );
         }
 
@@ -1295,14 +1441,14 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
     _upsertReading(
       instrumento: inst,
       rawValue: rawLuValue,
-      parameter: 'LECTURA_LU',
-      unit: 'LU',
+      parameter: _asentimetroLuParameter(),
+      unit: _asentimetroLuUnit(),
     );
     _upsertReading(
       instrumento: inst,
       rawValue: rawTempValue,
-      parameter: 'TEMPERATURA',
-      unit: '°C',
+      parameter: _asentimetroTempParameter(),
+      unit: _asentimetroTempUnit(),
     );
 
     _syncEjeToCurrentPlanilla();
@@ -1332,13 +1478,14 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
     if (values.values.every((v) => v.trim().isEmpty)) return;
 
     final baseCode = _triaxBaseCode(inst.codigo);
+    final parameter = _resolveTriaxialParameter(inst);
     for (final axis in _triaxAxes) {
       final axisCode = _triaxAxisKey(baseCode, axis);
       _upsertReading(
         instrumento: inst,
         instrumentCode: axisCode,
         rawValue: values[axis] ?? '',
-        parameter: 'PERIODO_$axis',
+        parameter: parameter,
         unit: _resolveTriaxialUnit(inst),
         rangeInstrumentCode: axisCode,
         rangeVariableCode: _resolveHistoricalRangeParameter(inst),
@@ -1481,13 +1628,14 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
     for (final inst in instrumentos) {
       if (_selectedTipo == TipoPlanilla.cr10xTriaxiales) {
         final baseCode = _triaxBaseCode(inst.codigo);
+        final parameter = _resolveTriaxialParameter(inst);
         for (final axis in _triaxAxes) {
           final axisCode = _triaxAxisKey(baseCode, axis);
           _upsertReading(
             instrumento: inst,
             instrumentCode: axisCode,
             rawValue: _controllers[axisCode]?.text ?? '',
-            parameter: 'PERIODO_$axis',
+            parameter: parameter,
             unit: _resolveTriaxialUnit(inst),
             rangeInstrumentCode: axisCode,
             rangeVariableCode: _resolveHistoricalRangeParameter(inst),
@@ -1500,14 +1648,14 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
         _upsertReading(
           instrumento: inst,
           rawValue: _controllers[inst.codigo]?.text ?? '',
-          parameter: 'LECTURA_LU',
-          unit: 'LU',
+          parameter: _asentimetroLuParameter(),
+          unit: _asentimetroLuUnit(),
         );
         _upsertReading(
           instrumento: inst,
           rawValue: _controllers[_tempControllerKey(inst.codigo)]?.text ?? '',
-          parameter: 'TEMPERATURA',
-          unit: '°C',
+          parameter: _asentimetroTempParameter(),
+          unit: _asentimetroTempUnit(),
         );
         continue;
       }
@@ -1523,50 +1671,201 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
   }
 
   String _resolveHistoricalRangeParameter(Instrumento instrumento) {
-    switch (instrumento.familia) {
-      case FamiliaInstrumento.termometro:
-      case FamiliaInstrumento.celdaPresion:
-      case FamiliaInstrumento.triaxial:
-      case FamiliaInstrumento.uniaxial:
-      case FamiliaInstrumento.piezometro:
-        return 'PERIODO';
-      case FamiliaInstrumento.clinometro:
-        return 'LECTURA_MV';
-      case FamiliaInstrumento.asentimetro:
-        return 'LECTURA_LU';
-      default:
-        return _resolvePrimaryParameter(instrumento);
+    if (_selectedTipo == TipoPlanilla.cr10xAsentimetros) {
+      return _asentimetroLuParameter();
     }
+
+    final schemaParameter = _schemaDefaultParameter();
+    if (schemaParameter != null) {
+      return schemaParameter;
+    }
+
+    final fallbackParameter = _fallbackPrimaryParameterForInstrument(
+      _selectedTipo,
+      instrumento,
+    );
+    if (fallbackParameter != null) {
+      return fallbackParameter;
+    }
+
+    return _resolvePrimaryParameter(instrumento);
   }
 
   String _resolvePrimaryParameter(Instrumento instrumento) {
-    if (_selectedTipo == TipoPlanilla.cr10xPiezometros) {
-      return 'PERIODO';
+    final schemaParameter = _schemaDefaultParameter();
+    if (schemaParameter != null) {
+      return schemaParameter;
     }
-    if (_selectedTipo == TipoPlanilla.cr10xAsentimetros) {
-      return 'LECTURA_LU';
+
+    final fallbackParameter = _fallbackPrimaryParameterForInstrument(
+      _selectedTipo,
+      instrumento,
+    );
+    if (fallbackParameter != null) {
+      return fallbackParameter;
     }
+
+    _logSchemaFallback(instrumento, 'primary_parameter');
     return instrumento.ingestaParameter ?? instrumento.defaultParameter;
   }
 
   String? _resolvePrimaryUnit(Instrumento instrumento) {
-    if (_selectedTipo == TipoPlanilla.cr10xPiezometros) {
-      return 'us';
+    final schemaUnit = _schemaDefaultUnit();
+    if (schemaUnit != null) {
+      return schemaUnit;
     }
-    if (_selectedTipo == TipoPlanilla.cr10xAsentimetros) {
-      return 'LU';
+
+    final fallbackUnit = _fallbackPrimaryUnitForInstrument(
+      _selectedTipo,
+      instrumento,
+    );
+    if (fallbackUnit != null) {
+      return fallbackUnit;
     }
+
+    _logSchemaFallback(instrumento, 'primary_unit');
     return instrumento.ingestaParameter != null
         ? instrumento.ingestaUnit
         : instrumento.defaultUnit;
   }
 
+  String _resolveTriaxialParameter(Instrumento instrumento) {
+    final schemaParameter = _schemaDefaultParameter();
+    if (schemaParameter != null) {
+      return schemaParameter;
+    }
+
+    return _fallbackPrimaryParameterForInstrument(
+          TipoPlanilla.cr10xTriaxiales,
+          instrumento,
+        ) ??
+        'PERIODO';
+  }
+
   String? _resolveTriaxialUnit(Instrumento instrumento) {
+    final schemaUnit = _schemaDefaultUnit();
+    if (schemaUnit != null) {
+      return schemaUnit;
+    }
+
+    final fallbackUnit = _fallbackPrimaryUnitForInstrument(
+      TipoPlanilla.cr10xTriaxiales,
+      instrumento,
+    );
+    if (fallbackUnit != null) {
+      return fallbackUnit;
+    }
+
+    _logSchemaFallback(instrumento, 'triaxial_unit');
     final unit = instrumento.ingestaUnit;
     if (unit == null || unit.trim().isEmpty) {
       return null;
     }
     return unit.trim();
+  }
+
+  String _asentimetroLuParameter() {
+    return _schemaVariableCode('LECTURA_LU') ??
+        _schemaDefaultParameter() ??
+        _fallbackPrimaryParameterForTipo(TipoPlanilla.cr10xAsentimetros) ??
+        'LECTURA_LU';
+  }
+
+  String _asentimetroTempParameter() {
+    return _schemaVariableCode('TEMPERATURA') ?? 'TEMPERATURA';
+  }
+
+  String? _asentimetroLuUnit() {
+    return _schemaUnitFor(
+          _asentimetroLuParameter(),
+          fallbackToDefault: false,
+        ) ??
+        _schemaDefaultUnit() ??
+        _fallbackPrimaryUnitForTipo(TipoPlanilla.cr10xAsentimetros) ??
+        'LU';
+  }
+
+  String? _asentimetroTempUnit() {
+    return _schemaUnitFor(
+          _asentimetroTempParameter(),
+          fallbackToDefault: false,
+        ) ??
+        '°C';
+  }
+
+  String? _schemaDefaultParameter() {
+    final variable = _schemaVariable();
+    final code = variable?.code.trim();
+    return code == null || code.isEmpty ? null : code;
+  }
+
+  String? _schemaDefaultUnit() {
+    final variable = _schemaVariable();
+    final unit = variable?.unit.trim();
+    return unit == null || unit.isEmpty ? null : unit;
+  }
+
+  String? _schemaVariableCode(String code) {
+    final variable = _schemaVariable(code: code, fallbackToDefault: false);
+    final resolved = variable?.code.trim();
+    return resolved == null || resolved.isEmpty ? null : resolved;
+  }
+
+  String? _schemaUnitFor(
+    String code, {
+    bool fallbackToDefault = true,
+  }) {
+    final variable = _schemaVariable(
+      code: code,
+      fallbackToDefault: fallbackToDefault,
+    );
+    final unit = variable?.unit.trim();
+    return unit == null || unit.isEmpty ? null : unit;
+  }
+
+  SchemaVariable? _schemaVariable({
+    String? code,
+    bool fallbackToDefault = true,
+  }) {
+    final schema = _mobileSchema;
+    if (schema == null) return null;
+
+    final normalizedCode = code?.trim().toUpperCase();
+    if (normalizedCode != null && normalizedCode.isNotEmpty) {
+      for (final variable in schema.variables) {
+        if (variable.code.trim().toUpperCase() == normalizedCode) {
+          return variable;
+        }
+      }
+    }
+
+    if (!fallbackToDefault) return null;
+
+    for (final variable in schema.variables) {
+      if (variable.isDefault) {
+        return variable;
+      }
+    }
+
+    return schema.variables.length == 1 ? schema.variables.first : null;
+  }
+
+  void _logSchemaFallback(Instrumento instrumento, String reason) {
+    if (!kDebugMode) return;
+    final key = '${_mobileSchemaFamilyId ?? 'sin_familia'}|'
+        '${instrumento.codigo}|$reason';
+    if (!_loggedSchemaFallbacks.add(key)) return;
+
+    debugPrint(
+      '[CR10X_SCHEMA_FALLBACK] reason=$reason '
+      'tipo=$_selectedTipo '
+      'schemaFamily=$_mobileSchemaFamilyId '
+      'schemaSource=$_mobileSchemaSource '
+      'schemaLoading=$_loadingMobileSchema '
+      'schemaVariables=${_mobileSchema?.variables.map((v) => v.code).join(',') ?? 'none'} '
+      'instrument=${instrumento.codigo} '
+      'instrumentFamily=${instrumento.familia.backendValue}',
+    );
   }
 
   String _resolveInputUnitLabel(Instrumento instrumento) {
@@ -2020,6 +2319,10 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
   Future<void> _refreshCatalogFromMeasurement(CatalogRepository catalog) async {
     final ok = await catalog.syncFromBackend();
     if (!mounted) return;
+
+    if (ok && _selectedTipo != null) {
+      unawaited(_loadMobileSchemaForTipo(_selectedTipo!));
+    }
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(

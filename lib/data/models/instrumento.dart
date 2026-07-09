@@ -464,12 +464,12 @@ class Instrumento {
       case FamiliaInstrumento.clinometro:
         return 'LECTURA_MV';
       case FamiliaInstrumento.barometro:
-        return 'PRESION';
+        return 'PRESION_MBAR';
       case FamiliaInstrumento.juntaPerimetral:
         return 'LECTURA_MM';
       case FamiliaInstrumento.limnimetro:
       case FamiliaInstrumento.embalse:
-        return 'NIVEL_MSNM';
+        return 'NIVEL_EMBALSE';
       case FamiliaInstrumento.convergencia:
         return 'CONVERGENCIA_MM';
       case FamiliaInstrumento.sismos:
@@ -498,7 +498,7 @@ class Instrumento {
       case FamiliaInstrumento.uniaxial:
         return 'us';
       case FamiliaInstrumento.barometro:
-        return 'hPa';
+        return 'mbar';
       case FamiliaInstrumento.embalse:
       case FamiliaInstrumento.limnimetro:
         return 'msnm';

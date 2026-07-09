@@ -62,8 +62,20 @@ void main() {
       });
 
       expect(limni.familia, FamiliaInstrumento.embalse);
-      expect(limni.ingestaParameter, 'NIVEL_MSNM');
+      expect(limni.ingestaParameter, 'NIVEL_EMBALSE');
       expect(limni.ingestaUnit, 'msnm');
+    });
+
+    test('BAROMETRO usa contrato backend de presion en mbar', () {
+      final barometro = Instrumento.fromJson({
+        'codigo': 'BARO',
+        'nombre': 'Barometro',
+        'familia': 'BAROMETRO',
+      });
+
+      expect(barometro.familia, FamiliaInstrumento.barometro);
+      expect(barometro.ingestaParameter, 'PRESION_MBAR');
+      expect(barometro.ingestaUnit, 'mbar');
     });
   });
 }
