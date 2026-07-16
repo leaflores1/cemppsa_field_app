@@ -1136,11 +1136,14 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
         instrumentos = [
           ...catalog.byFamilia(FamiliaInstrumento.limnimetro),
           ...catalog.byFamilia(FamiliaInstrumento.embalse),
-        ];
+        ].where((instrumento) => instrumento.codigo == 'LIMNI').toList();
         break;
 
       case TipoPlanilla.cr10xBarometro:
-        instrumentos = catalog.byFamilia(FamiliaInstrumento.barometro);
+        instrumentos = catalog
+            .byFamilia(FamiliaInstrumento.barometro)
+            .where((instrumento) => instrumento.codigo == 'BARO')
+            .toList();
         break;
 
       case TipoPlanilla.cr10xCeldasPresion:
