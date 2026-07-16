@@ -50,6 +50,9 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!mounted) return;
 
     if (ok) {
+      debugPrint(
+        'LoginScreen: login exitoso; navegando a la ruta principal.',
+      );
       if (auth.lastLoginWasOffline) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -60,6 +63,10 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         );
       }
+      Navigator.pushNamedAndRemoveUntil(context, '/', (_) => false);
+      debugPrint(
+        'LoginScreen: navegacion post-login enviada a /.',
+      );
       return;
     }
 
