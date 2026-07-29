@@ -28,6 +28,14 @@ void main() {
       expect(Subfamilia.inferFromCode('PC-05'), Subfamilia.ejeC);
     });
 
+    test('PE11 y PE11-C son el mismo piezometro fisico del Eje E', () {
+      expect(CodigoHelper.canonicalize('PE11'), 'PE11');
+      expect(CodigoHelper.canonicalize('PE11-C'), 'PE11');
+      expect(Subfamilia.inferFromCode('PE11'), Subfamilia.ejeE);
+      expect(Subfamilia.inferFromCode('PE11-C'), Subfamilia.ejeE);
+      expect(Subfamilia.inferFromCode('PE112'), Subfamilia.ejeE1);
+    });
+
     test('Instrumento.fromJson corrige familia generica para PC05', () {
       final instrumento = Instrumento.fromJson({
         'codigo': 'PC05',

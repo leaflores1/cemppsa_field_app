@@ -14,11 +14,13 @@ class MobileSchema {
   factory MobileSchema.fromJson(Map<String, dynamic> json) {
     return MobileSchema(
       familia: json['familia'] ?? '',
-      instruments: (json['instruments'] as List<dynamic>?)
+      instruments:
+          (json['instruments'] as List<dynamic>?)
               ?.map((e) => SchemaInstrument.fromJson(e))
               .toList() ??
           [],
-      variables: (json['variables'] as List<dynamic>?)
+      variables:
+          (json['variables'] as List<dynamic>?)
               ?.map((e) => SchemaVariable.fromJson(e))
               .toList() ??
           [],
@@ -41,12 +43,14 @@ class SchemaInstrument {
   final String codigo;
   final String nombre;
   final String? ubicacion;
+  final List<String>? activeVariableCodes;
 
   SchemaInstrument({
     required this.id,
     required this.codigo,
     required this.nombre,
     this.ubicacion,
+    this.activeVariableCodes,
   });
 
   factory SchemaInstrument.fromJson(Map<String, dynamic> json) {
@@ -55,7 +59,17 @@ class SchemaInstrument {
       codigo: json['codigo'] ?? '',
       nombre: json['nombre'] ?? '',
       ubicacion: json['ubicacion'],
+      activeVariableCodes: (json['active_variable_codes'] as List<dynamic>?)
+          ?.map((code) => code.toString().trim().toUpperCase())
+          .where((code) => code.isNotEmpty)
+          .toList(),
     );
+  }
+
+  bool allowsVariable(String variableCode) {
+    final configured = activeVariableCodes;
+    if (configured == null) return true;
+    return configured.contains(variableCode.trim().toUpperCase());
   }
 
   Map<String, dynamic> toJson() {
@@ -64,6 +78,7 @@ class SchemaInstrument {
       'codigo': codigo,
       'nombre': nombre,
       'ubicacion': ubicacion,
+      'active_variable_codes': activeVariableCodes,
     };
   }
 }

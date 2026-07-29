@@ -130,6 +130,9 @@ class CodigoHelper {
   static String canonicalize(String codigo) {
     var canonical = codigo.toUpperCase();
 
+    // PE11-C es un alias historico del mismo instrumento fisico PE11.
+    if (canonical == 'PE11-C') return 'PE11';
+
     // Remover guiones para aliases historicos, preservando caracteres
     // significativos como el asterisco de PP7*.
     canonical = canonical.replaceAll('-', '');
@@ -191,11 +194,11 @@ class Subfamilia {
     if (upper.startsWith('PC')) return ejeC; // PC31, PC41, etc. -> EJE_C
     if (upper.startsWith('PD')) return ejeD;
 
-    // Logic for E vs E1:
-    // Usually PE is E, but user asked for E1 specifically for some instruments?
-    // Let's assume PE1... -> EJE_E1, PE... -> EJE_E
-    if (upper.startsWith('PE1')) return ejeE1;
-    if (upper.startsWith('PE')) return ejeE;
+    // PE11 (y su alias PE11-C) pertenece al Eje E. Los codigos PE1xx,
+    // como PE112, corresponden al Eje E1.
+    final peCode = CodigoHelper.canonicalize(upper);
+    if (peCode.startsWith('PE1') && peCode.length >= 5) return ejeE1;
+    if (peCode.startsWith('PE')) return ejeE;
 
     if (upper.startsWith('PF')) return ejeF;
     if (upper.startsWith('PG')) return ejeG;
@@ -338,9 +341,10 @@ class Instrumento {
     final defaultUnit = json['default_unit'] as String?;
     final rangosRaw = (json['rangos'] ?? json['ranges']) as List<dynamic>?;
     final rangos = rangosRaw
-            ?.map((e) => InstrumentRange.fromJson(
-                  Map<String, dynamic>.from(e as Map),
-                ))
+            ?.map(
+              (e) =>
+                  InstrumentRange.fromJson(Map<String, dynamic>.from(e as Map)),
+            )
             .toList() ??
         const <InstrumentRange>[];
 
@@ -510,8 +514,10 @@ class Instrumento {
   }
 
   String? _inferAxisFromCode() {
-    final normalized =
-        codigo.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
+    final normalized = codigo.toUpperCase().replaceAll(
+          RegExp(r'[^A-Z0-9]'),
+          '',
+        );
 
     // Check for Temperature (T) or Axis (X, Y, Z) at end only if preceded by number?
     // Usually J01X, J01Y, J01Z, J01T
