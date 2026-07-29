@@ -38,12 +38,28 @@ enum _EjeChangeAction { saveAndChange, discardAndChange }
 String cr10xReadingKeyForTesting(String instrumentCode, String? parameter) =>
     _cr10xReadingKey(instrumentCode, parameter);
 
+@visibleForTesting
+bool cr10xVariableIsActiveForTesting(
+  MobileSchema? schema,
+  String instrumentCode,
+  String variableCode,
+) {
+  if (schema == null) return true;
+  final normalizedInstrument = CodigoHelper.canonicalize(instrumentCode.trim());
+  for (final instrument in schema.instruments) {
+    if (CodigoHelper.canonicalize(instrument.codigo.trim()) ==
+        normalizedInstrument) {
+      return instrument.allowsVariable(variableCode);
+    }
+  }
+  return true;
+}
+
 String _cr10xReadingKey(String instrumentCode, String? parameter) {
   final normalizedCode = instrumentCode.toUpperCase().trim();
   final normalizedParameter = (parameter ?? '').trim().toUpperCase();
   return '$normalizedCode|$normalizedParameter';
 }
-
 
 @visibleForTesting
 String? cr10xPrimaryParameterFallbackForTesting(TipoPlanilla tipo) {
@@ -131,8 +147,10 @@ String? _fallbackPrimaryUnitForInstrument(
 
 class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
   static const List<String> _triaxAxes = ['X', 'Y', 'Z'];
-  static final List<String> _triaxBaseCodes =
-      List<String>.generate(15, (index) => 'J${index + 1}');
+  static final List<String> _triaxBaseCodes = List<String>.generate(
+    15,
+    (index) => 'J${index + 1}',
+  );
   static const List<String> _clinometroOrder = [
     'CPB1',
     'CPBC1',
@@ -156,14 +174,19 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
     'CPE12',
     'CPE13',
   ];
-  static final List<String> _uniaxialOrder =
-      List<String>.generate(15, (index) => 'JP${index + 1}');
-  static final Map<String, int> _clinometroOrderIndex =
-      _buildOrderIndex(_clinometroOrder);
-  static final Map<String, int> _triaxialOrderIndex =
-      _buildOrderIndex(_triaxBaseCodes);
-  static final Map<String, int> _uniaxialOrderIndex =
-      _buildOrderIndex(_uniaxialOrder);
+  static final List<String> _uniaxialOrder = List<String>.generate(
+    15,
+    (index) => 'JP${index + 1}',
+  );
+  static final Map<String, int> _clinometroOrderIndex = _buildOrderIndex(
+    _clinometroOrder,
+  );
+  static final Map<String, int> _triaxialOrderIndex = _buildOrderIndex(
+    _triaxBaseCodes,
+  );
+  static final Map<String, int> _uniaxialOrderIndex = _buildOrderIndex(
+    _uniaxialOrder,
+  );
   static const String _tempSuffix = '__temp';
 
   TipoPlanilla? _selectedTipo;
@@ -243,8 +266,10 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
       }
       _controllers[key]!.text = _controllerTextForLectura(lectura);
       if (lectura.advertenciaConfirmada == true && lectura.valorRaw != null) {
-        _confirmedWarningRawByKey[
-                _readingKey(lectura.instrumentCode, lectura.parameter)] =
+        _confirmedWarningRawByKey[_readingKey(
+              lectura.instrumentCode,
+              lectura.parameter,
+            )] =
             lectura.valorRaw!;
       }
     }
@@ -266,7 +291,8 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
       return normalizedCode;
     }
 
-    final isAsentimetroTemp = _selectedTipo == TipoPlanilla.cr10xAsentimetros &&
+    final isAsentimetroTemp =
+        _selectedTipo == TipoPlanilla.cr10xAsentimetros &&
         (lectura.parameter ?? '').trim().toUpperCase() == 'TEMPERATURA';
     return isAsentimetroTemp
         ? _tempControllerKey(lectura.instrumentCode)
@@ -308,54 +334,65 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
   @override
   Widget build(BuildContext context) {
     return PopScope(
-        canPop: _selectedTipo == null,
-        onPopInvokedWithResult: (didPop, _) {
-          if (!didPop && _selectedTipo != null) {
-            _confirmCancel();
-          }
-        },
-        child: Scaffold(
-          backgroundColor: const Color(0xFF0F172A),
-          appBar: AppBar(
-            backgroundColor: const Color(0xFF1E293B),
-            foregroundColor: Colors.white,
-            title: const Text('CR10X'),
-            elevation: 0,
-            leading: _selectedTipo != null
-                ? IconButton(
-                    icon: const Icon(Icons.arrow_back),
-                    onPressed: _confirmCancel,
-                  )
-                : null,
-            actions: [
-              if (_currentPlanilla != null)
-                TextButton.icon(
-                  onPressed: _hasInvalidInputs
-                      ? null
-                      : _sendPlanilla, // [MODIFIED] Now triggers Send
-                  icon: const Icon(Icons.send,
-                      color: Color(0xFF22C55E), size: 18),
-                  label: const Text('Enviar',
-                      style: TextStyle(
-                          color: Color(0xFF22C55E),
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13)),
-                  style: TextButton.styleFrom(
-                    backgroundColor:
-                        const Color(0xFF22C55E).withValues(alpha: 0.1),
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20)),
+      canPop: _selectedTipo == null,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && _selectedTipo != null) {
+          _confirmCancel();
+        }
+      },
+      child: Scaffold(
+        backgroundColor: const Color(0xFF0F172A),
+        appBar: AppBar(
+          backgroundColor: const Color(0xFF1E293B),
+          foregroundColor: Colors.white,
+          title: const Text('CR10X'),
+          elevation: 0,
+          leading: _selectedTipo != null
+              ? IconButton(
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: _confirmCancel,
+                )
+              : null,
+          actions: [
+            if (_currentPlanilla != null)
+              TextButton.icon(
+                onPressed: _hasInvalidInputs
+                    ? null
+                    : _sendPlanilla, // [MODIFIED] Now triggers Send
+                icon: const Icon(
+                  Icons.send,
+                  color: Color(0xFF22C55E),
+                  size: 18,
+                ),
+                label: const Text(
+                  'Enviar',
+                  style: TextStyle(
+                    color: Color(0xFF22C55E),
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
                   ),
                 ),
-              const SizedBox(width: 8),
-            ],
-          ),
-          body: _selectedTipo == null
-              ? _buildFamilySelector()
-              : _buildBatchGrid(),
-        ));
+                style: TextButton.styleFrom(
+                  backgroundColor: const Color(
+                    0xFF22C55E,
+                  ).withValues(alpha: 0.1),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                ),
+              ),
+            const SizedBox(width: 8),
+          ],
+        ),
+        body: _selectedTipo == null
+            ? _buildFamilySelector()
+            : _buildBatchGrid(),
+      ),
+    );
   }
 
   // ===========================================================================
@@ -496,8 +533,9 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
       _selectedTipo = tipo;
       _selectedEje = null;
       _batchDateTime = DateTime.now();
-      _currentPlanilla =
-          planillaUsesSelectableEje(tipo) ? null : _createPlanilla(tipo);
+      _currentPlanilla = planillaUsesSelectableEje(tipo)
+          ? null
+          : _createPlanilla(tipo);
     });
     await _loadMobileSchemaForTipo(tipo, familyId: familyId);
   }
@@ -511,7 +549,6 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
       eje: eje,
     );
   }
-
 
   void _resetMobileSchemaState({String? familyId, bool loading = false}) {
     _mobileSchema = null;
@@ -533,9 +570,9 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
       });
     }
 
-    final result = await context
-        .read<CatalogRepository>()
-        .loadMobileSchema(resolvedFamilyId);
+    final result = await context.read<CatalogRepository>().loadMobileSchema(
+      resolvedFamilyId,
+    );
 
     if (!mounted || _selectedTipo != tipo) return;
 
@@ -550,10 +587,13 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
 
   /// Obtiene el rango desde el catálogo local (sin requests en pantalla)
   InstrumentRange? _getRangeForInstrument(
-      String codigo, String variableCodigo) {
-    return context
-        .read<CatalogRepository>()
-        .rangeForInstrument(codigo, variableCodigo);
+    String codigo,
+    String variableCodigo,
+  ) {
+    return context.read<CatalogRepository>().rangeForInstrument(
+      codigo,
+      variableCodigo,
+    );
   }
 
   InstrumentRange? _findHistoricalRange(
@@ -602,9 +642,7 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
           _buildEjeSelector(),
 
         // Grid de instrumentos
-        Expanded(
-          child: _buildInstrumentGrid(),
-        ),
+        Expanded(child: _buildInstrumentGrid()),
 
         // Footer con acciones
         _buildBatchFooter(),
@@ -630,8 +668,10 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
             children: [
               Flexible(
                 child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
                     color: const Color(0x33F59E0B),
                     borderRadius: BorderRadius.circular(20),
@@ -800,7 +840,8 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
       }
 
       final repo = context.read<PlanillaRepository>();
-      final planilla = repo.borradorPorTipoEje(_selectedTipo!, eje) ??
+      final planilla =
+          repo.borradorPorTipoEje(_selectedTipo!, eje) ??
           _createPlanilla(_selectedTipo!, eje: eje);
 
       _currentPlanilla = planilla;
@@ -822,19 +863,25 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
     final instrumentos = _getInstrumentosForGrid();
     for (final inst in instrumentos) {
       if (_selectedTipo == TipoPlanilla.cr10xAsentimetros) {
-        if (_controllerDiffersFromPersisted(
-          instrumentCode: inst.codigo,
-          parameter: _asentimetroLuParameter(),
-          controllerText: _getController(inst.codigo).text,
-        )) {
-          return true;
+        if (_asentimetroVariableIsActive(inst, _asentimetroLuParameter())) {
+          if (_controllerDiffersFromPersisted(
+            instrumentCode: inst.codigo,
+            parameter: _asentimetroLuParameter(),
+            controllerText: _getController(inst.codigo).text,
+          )) {
+            return true;
+          }
         }
-        if (_controllerDiffersFromPersisted(
-          instrumentCode: inst.codigo,
-          parameter: _asentimetroTempParameter(),
-          controllerText: _getController(_tempControllerKey(inst.codigo)).text,
-        )) {
-          return true;
+        if (_asentimetroVariableIsActive(inst, _asentimetroTempParameter())) {
+          if (_controllerDiffersFromPersisted(
+            instrumentCode: inst.codigo,
+            parameter: _asentimetroTempParameter(),
+            controllerText: _getController(
+              _tempControllerKey(inst.codigo),
+            ).text,
+          )) {
+            return true;
+          }
         }
         continue;
       }
@@ -862,8 +909,8 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
       return normalizedController.isNotEmpty;
     }
 
-    final persisted =
-        (lectura.valorRaw ?? lectura.value?.toString() ?? '').trim();
+    final persisted = (lectura.valorRaw ?? lectura.value?.toString() ?? '')
+        .trim();
     return normalizedController != persisted;
   }
 
@@ -882,7 +929,8 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
     final instrumentos = _getInstrumentosForGrid();
 
     // Require axis selection for Piezo & Asentimetro
-    final needsAxis = _selectedTipo == TipoPlanilla.cr10xPiezometros ||
+    final needsAxis =
+        _selectedTipo == TipoPlanilla.cr10xPiezometros ||
         _selectedTipo == TipoPlanilla.cr10xAsentimetros;
 
     if (needsAxis && _selectedEje == null) {
@@ -945,8 +993,11 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
             instrumentCode: baseCode,
             instrumentName: inst.nombre,
             unitLabel: _resolveTriaxialUnit(inst) ?? inst.defaultUnit,
-            hasCatalogReference: [rangeX, rangeY, rangeZ]
-                .any((range) => range?.hasRange == true),
+            hasCatalogReference: [
+              rangeX,
+              rangeY,
+              rangeZ,
+            ].any((range) => range?.hasRange == true),
             controllerX: _getController(_triaxAxisKey(baseCode, 'X')),
             controllerY: _getController(_triaxAxisKey(baseCode, 'Y')),
             controllerZ: _getController(_triaxAxisKey(baseCode, 'Z')),
@@ -990,15 +1041,26 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
         }
 
         if (_selectedTipo == TipoPlanilla.cr10xAsentimetros) {
+          final luActive = _asentimetroVariableIsActive(
+            inst,
+            _asentimetroLuParameter(),
+          );
+          final tempActive = _asentimetroVariableIsActive(
+            inst,
+            _asentimetroTempParameter(),
+          );
           return _AsentimetroInputRow(
             instrumento: inst,
+            showLu: luActive,
+            showTemp: tempActive,
             luController: _getController(inst.codigo),
             tempController: _getController(_tempControllerKey(inst.codigo)),
             luFocusNode: _getFocusNode(inst.codigo),
             tempFocusNode: _getFocusNode(_tempControllerKey(inst.codigo)),
-            onPrimarySubmitted: () =>
-                _getFocusNode(_tempControllerKey(inst.codigo)).requestFocus(),
-            onTempSubmitted: () => _focusNext(instrumentos, index),
+            onPrimarySubmitted: () => tempActive
+                ? _getFocusNode(_tempControllerKey(inst.codigo)).requestFocus()
+                : _focusNextAsentimetro(instrumentos, index),
+            onTempSubmitted: () => _focusNextAsentimetro(instrumentos, index),
             onSave: (luValue, tempValue) =>
                 _saveAsentimetroReadings(inst, luValue, tempValue),
             rangeLu: _getRangeForInstrument(
@@ -1019,10 +1081,12 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
               _asentimetroTempParameter(),
               _getController(_tempControllerKey(inst.codigo)).text,
             ),
-            needsReviewLu: _reviewHighlightedKeys
-                .contains(_readingKey(inst.codigo, _asentimetroLuParameter())),
-            needsReviewTemp: _reviewHighlightedKeys
-                .contains(_readingKey(inst.codigo, _asentimetroTempParameter())),
+            needsReviewLu: _reviewHighlightedKeys.contains(
+              _readingKey(inst.codigo, _asentimetroLuParameter()),
+            ),
+            needsReviewTemp: _reviewHighlightedKeys.contains(
+              _readingKey(inst.codigo, _asentimetroTempParameter()),
+            ),
           );
         }
 
@@ -1060,8 +1124,11 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
             border: Border.all(color: const Color(0x4D14B8A6)),
           ),
           child: const ExpansionTile(
-            leading:
-                Icon(Icons.info_outline, color: Color(0xFF14B8A6), size: 18),
+            leading: Icon(
+              Icons.info_outline,
+              color: Color(0xFF14B8A6),
+              size: 18,
+            ),
             title: Text(
               'Info sobre lecturas triaxiales',
               style: TextStyle(color: Colors.white, fontSize: 13),
@@ -1105,13 +1172,17 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
 
         if (_selectedTipo == TipoPlanilla.cr10xPiezometros) {
           instrumentos = byAxis
-              .where((i) =>
-                  i.familia == FamiliaInstrumento.piezometro && !i.esManual)
+              .where(
+                (i) =>
+                    i.familia == FamiliaInstrumento.piezometro && !i.esManual,
+              )
               .toList();
         } else {
           instrumentos = byAxis
-              .where((i) =>
-                  i.familia == FamiliaInstrumento.asentimetro && !i.esManual)
+              .where(
+                (i) =>
+                    i.familia == FamiliaInstrumento.asentimetro && !i.esManual,
+              )
               .toList();
         }
         break;
@@ -1160,8 +1231,8 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
   }
 
   static Map<String, int> _buildOrderIndex(List<String> codes) => {
-        for (var index = 0; index < codes.length; index++) codes[index]: index,
-      };
+    for (var index = 0; index < codes.length; index++) codes[index]: index,
+  };
 
   int _compareInstrumentosForSelectedTipo(Instrumento a, Instrumento b) {
     Map<String, int>? orderIndex;
@@ -1192,8 +1263,9 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
   }
 
   List<Instrumento> _getTriaxialBaseInstrumentos(CatalogRepository catalog) {
-    final allTriaxiales =
-        List<Instrumento>.from(catalog.byFamilia(FamiliaInstrumento.triaxial));
+    final allTriaxiales = List<Instrumento>.from(
+      catalog.byFamilia(FamiliaInstrumento.triaxial),
+    );
     final byBase = <String, Instrumento>{};
 
     for (final inst in allTriaxiales) {
@@ -1269,19 +1341,25 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
         continue;
       }
 
-      keys.add(inst.codigo);
       if (_selectedTipo == TipoPlanilla.cr10xAsentimetros) {
-        keys.add(_tempControllerKey(inst.codigo));
+        if (_asentimetroVariableIsActive(inst, _asentimetroLuParameter())) {
+          keys.add(inst.codigo);
+        }
+        if (_asentimetroVariableIsActive(inst, _asentimetroTempParameter())) {
+          keys.add(_tempControllerKey(inst.codigo));
+        }
+        continue;
       }
+      keys.add(inst.codigo);
     }
 
     return keys;
   }
 
   int _filledInputCountForInstrumentos(List<Instrumento> instrumentos) {
-    return _inputControllerKeysForInstrumentos(instrumentos)
-        .where((key) => _controllers[key]?.text.trim().isNotEmpty == true)
-        .length;
+    return _inputControllerKeysForInstrumentos(
+      instrumentos,
+    ).where((key) => _controllers[key]?.text.trim().isNotEmpty == true).length;
   }
 
   bool _hasInputForInstrumentos(List<Instrumento> instrumentos) {
@@ -1293,6 +1371,16 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
       final nextCode = instrumentos[currentIndex + 1].codigo;
       _focusNodes[nextCode]?.requestFocus();
     }
+  }
+
+  void _focusNextAsentimetro(List<Instrumento> instrumentos, int currentIndex) {
+    if (currentIndex >= instrumentos.length - 1) return;
+    final next = instrumentos[currentIndex + 1];
+    final nextKey =
+        _asentimetroVariableIsActive(next, _asentimetroLuParameter())
+        ? next.codigo
+        : _tempControllerKey(next.codigo);
+    _focusNodes[nextKey]?.requestFocus();
   }
 
   void _focusNextTriaxial(List<Instrumento> instrumentos, int currentIndex) {
@@ -1324,30 +1412,38 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
               onPressed: _clearAll,
               style: OutlinedButton.styleFrom(
                 side: const BorderSide(color: Color(0xFF334155)),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
                 minimumSize: const Size(70, 36),
               ),
-              child: const Text('Limpiar',
-                  style: TextStyle(color: Colors.grey, fontSize: 12)),
+              child: const Text(
+                'Limpiar',
+                style: TextStyle(color: Colors.grey, fontSize: 12),
+              ),
             ),
             const SizedBox(width: 8),
             ElevatedButton(
-              onPressed:
-                  filledCount > 0 && !_hasInvalidInputs ? _saveDraft : null,
+              onPressed: filledCount > 0 && !_hasInvalidInputs
+                  ? _saveDraft
+                  : null,
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF3B82F6),
                 disabledBackgroundColor: const Color(0xFF334155),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 10,
+                ),
                 minimumSize: const Size(80, 36),
               ),
               child: const Text(
                 'Guardar Borrador',
                 style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 12),
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12,
+                ),
               ),
             ),
           ],
@@ -1397,8 +1493,9 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
 
   void _syncEjeToCurrentPlanilla() {
     if (_currentPlanilla == null) return;
-    _currentPlanilla!.eje =
-        planillaUsesSelectableEje(_selectedTipo) ? _selectedEje : null;
+    _currentPlanilla!.eje = planillaUsesSelectableEje(_selectedTipo)
+        ? _selectedEje
+        : null;
   }
 
   // ===========================================================================
@@ -1439,27 +1536,45 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
     if (_currentPlanilla == null) return;
     final hasLu = rawLuValue.trim().isNotEmpty;
     final hasTemp = rawTempValue.trim().isNotEmpty;
-    if (!hasLu && !hasTemp) return;
+    final luActive = _asentimetroVariableIsActive(
+      inst,
+      _asentimetroLuParameter(),
+    );
+    final tempActive = _asentimetroVariableIsActive(
+      inst,
+      _asentimetroTempParameter(),
+    );
+    if (!luActive && !tempActive) return;
 
-    _upsertReading(
-      instrumento: inst,
-      rawValue: rawLuValue,
-      parameter: _asentimetroLuParameter(),
-      unit: _asentimetroLuUnit(),
-    );
-    _upsertReading(
-      instrumento: inst,
-      rawValue: rawTempValue,
-      parameter: _asentimetroTempParameter(),
-      unit: _asentimetroTempUnit(),
-    );
+    if (luActive && hasLu) {
+      _upsertReading(
+        instrumento: inst,
+        rawValue: rawLuValue,
+        parameter: _asentimetroLuParameter(),
+        unit: _asentimetroLuUnit(),
+      );
+    } else {
+      _removeReading(inst.codigo, _asentimetroLuParameter());
+    }
+    if (tempActive && hasTemp) {
+      _upsertReading(
+        instrumento: inst,
+        rawValue: rawTempValue,
+        parameter: _asentimetroTempParameter(),
+        unit: _asentimetroTempUnit(),
+      );
+    } else {
+      _removeReading(inst.codigo, _asentimetroTempParameter());
+    }
 
     _syncEjeToCurrentPlanilla();
     _currentPlanilla!.estado = PlanillaEstado.borrador;
     await context.read<PlanillaRepository>().save(_currentPlanilla!);
 
     if (mounted) {
-      final suffix = hasLu && hasTemp ? ' (LU + Temp)' : '';
+      final suffix = luActive && tempActive && hasLu && hasTemp
+          ? ' (LU + Temp)'
+          : '';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Lectura de ${inst.codigo}$suffix guardada'),
@@ -1503,7 +1618,8 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-              'Lecturas triaxiales de ${_triaxBaseCode(inst.codigo)} guardadas'),
+            'Lecturas triaxiales de ${_triaxBaseCode(inst.codigo)} guardadas',
+          ),
           backgroundColor: const Color(0xFF3B82F6),
           duration: const Duration(milliseconds: 1500),
         ),
@@ -1572,12 +1688,13 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
           l.instrumentCode == resolvedInstrumentCode &&
           (l.parameter ?? '').toLowerCase() == normalizedParameter,
     );
-    final existingReading =
-        existingIndex >= 0 ? _currentPlanilla!.lecturas[existingIndex] : null;
+    final existingReading = existingIndex >= 0
+        ? _currentPlanilla!.lecturas[existingIndex]
+        : null;
     final effectiveRangeInstrumentCode =
         rangeInstrumentCode ?? resolvedInstrumentCode;
-    final effectiveRangeVariableCode =
-        (rangeVariableCode ?? resolvedParameter).trim();
+    final effectiveRangeVariableCode = (rangeVariableCode ?? resolvedParameter)
+        .trim();
     final range = _getRangeForInstrument(
       effectiveRangeInstrumentCode,
       effectiveRangeVariableCode,
@@ -1587,7 +1704,8 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
     final fueraDeRango = parsedValue != null
         ? (hasRange ? range!.isOutOfRange(parsedValue) : null)
         : null;
-    final advertenciaConfirmada = fueraDeRango == true &&
+    final advertenciaConfirmada =
+        fueraDeRango == true &&
             _isWarningConfirmed(
               resolvedInstrumentCode,
               resolvedParameter,
@@ -1623,6 +1741,16 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
     }
   }
 
+  void _removeReading(String instrumentCode, String parameter) {
+    if (_currentPlanilla == null) return;
+    final normalizedParameter = parameter.trim().toLowerCase();
+    _currentPlanilla!.lecturas.removeWhere(
+      (reading) =>
+          reading.instrumentCode == instrumentCode &&
+          (reading.parameter ?? '').trim().toLowerCase() == normalizedParameter,
+    );
+  }
+
   void _syncPlanillaFromInputs(List<Instrumento> instrumentos) {
     if (_currentPlanilla == null) return;
     _syncEjeToCurrentPlanilla();
@@ -1648,18 +1776,22 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
       }
 
       if (_selectedTipo == TipoPlanilla.cr10xAsentimetros) {
-        _upsertReading(
-          instrumento: inst,
-          rawValue: _controllers[inst.codigo]?.text ?? '',
-          parameter: _asentimetroLuParameter(),
-          unit: _asentimetroLuUnit(),
-        );
-        _upsertReading(
-          instrumento: inst,
-          rawValue: _controllers[_tempControllerKey(inst.codigo)]?.text ?? '',
-          parameter: _asentimetroTempParameter(),
-          unit: _asentimetroTempUnit(),
-        );
+        if (_asentimetroVariableIsActive(inst, _asentimetroLuParameter())) {
+          _upsertReading(
+            instrumento: inst,
+            rawValue: _controllers[inst.codigo]?.text ?? '',
+            parameter: _asentimetroLuParameter(),
+            unit: _asentimetroLuUnit(),
+          );
+        }
+        if (_asentimetroVariableIsActive(inst, _asentimetroTempParameter())) {
+          _upsertReading(
+            instrumento: inst,
+            rawValue: _controllers[_tempControllerKey(inst.codigo)]?.text ?? '',
+            parameter: _asentimetroTempParameter(),
+            unit: _asentimetroTempUnit(),
+          );
+        }
         continue;
       }
 
@@ -1778,6 +1910,17 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
     return _schemaVariableCode('TEMPERATURA') ?? 'TEMPERATURA';
   }
 
+  bool _asentimetroVariableIsActive(
+    Instrumento instrumento,
+    String variableCode,
+  ) {
+    return cr10xVariableIsActiveForTesting(
+      _mobileSchema,
+      instrumento.codigo,
+      variableCode,
+    );
+  }
+
   String? _asentimetroLuUnit() {
     return _schemaUnitFor(
           _asentimetroLuParameter(),
@@ -1814,10 +1957,7 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
     return resolved == null || resolved.isEmpty ? null : resolved;
   }
 
-  String? _schemaUnitFor(
-    String code, {
-    bool fallbackToDefault = true,
-  }) {
+  String? _schemaUnitFor(String code, {bool fallbackToDefault = true}) {
     final variable = _schemaVariable(
       code: code,
       fallbackToDefault: fallbackToDefault,
@@ -1855,7 +1995,8 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
 
   void _logSchemaFallback(Instrumento instrumento, String reason) {
     if (!kDebugMode) return;
-    final key = '${_mobileSchemaFamilyId ?? 'sin_familia'}|'
+    final key =
+        '${_mobileSchemaFamilyId ?? 'sin_familia'}|'
         '${instrumento.codigo}|$reason';
     if (!_loggedSchemaFallbacks.add(key)) return;
 
@@ -1910,9 +2051,9 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
     if (!mounted) return;
 
     if (_currentPlanilla!.lecturas.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No hay datos para enviar')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('No hay datos para enviar')));
       return;
     }
 
@@ -1922,9 +2063,9 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
     // 3. Trigger Send via SyncService
     if (!mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Enviando planilla...')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Enviando planilla...')));
 
     try {
       final catalog = context.read<CatalogRepository>();
@@ -2060,8 +2201,9 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
     }
 
     final hasPreviousReadings = _currentPlanilla!.lecturas.isNotEmpty;
-    final typedControllers =
-        _controllers.values.where((c) => c.text.trim().isNotEmpty).length;
+    final typedControllers = _controllers.values
+        .where((c) => c.text.trim().isNotEmpty)
+        .length;
 
     if (!hasPreviousReadings && typedControllers == 0) {
       return true;
@@ -2092,10 +2234,7 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1E293B),
-        title: Text(
-          blockedTitle,
-          style: const TextStyle(color: Colors.white),
-        ),
+        title: Text(blockedTitle, style: const TextStyle(color: Colors.white)),
         content: const Text(
           'No se pudo determinar la lista de instrumentos para este eje/familia. '
           'La operación NO se completó para evitar pérdida de datos. '
@@ -2124,14 +2263,15 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
     }
 
     final hasPreviousReadings = _currentPlanilla?.lecturas.isNotEmpty == true;
-    final hasTypedValuesElsewhere =
-        _controllers.values.any((c) => c.text.trim().isNotEmpty);
+    final hasTypedValuesElsewhere = _controllers.values.any(
+      (c) => c.text.trim().isNotEmpty,
+    );
 
     if (!hasPreviousReadings && !hasTypedValuesElsewhere) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(emptyMessage)),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(emptyMessage)));
       }
       return false;
     }
@@ -2142,10 +2282,7 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1E293B),
-        title: Text(
-          blockedTitle,
-          style: const TextStyle(color: Colors.white),
-        ),
+        title: Text(blockedTitle, style: const TextStyle(color: Colors.white)),
         content: const Text(
           'El eje actual no tiene lecturas cargadas. '
           'La operación NO se completó para evitar dejar la planilla vacía. '
@@ -2165,7 +2302,8 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
   }
 
   Future<void> _confirmCancel() async {
-    final hasData = _controllers.values.any((c) => c.text.isNotEmpty) ||
+    final hasData =
+        _controllers.values.any((c) => c.text.isNotEmpty) ||
         _observacionesController.text.trim().isNotEmpty;
 
     if (!hasData) {
@@ -2183,8 +2321,10 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1E293B),
-        title: const Text('Descartar cambios?',
-            style: TextStyle(color: Colors.white)),
+        title: const Text(
+          'Descartar cambios?',
+          style: TextStyle(color: Colors.white),
+        ),
         content: Text(
           'Tenes valores sin guardar.',
           style: TextStyle(color: Colors.grey[400]),
@@ -2221,8 +2361,10 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
                 _currentPlanilla = null;
               });
             },
-            child: const Text('Descartar',
-                style: TextStyle(color: Color(0xFFEF4444))),
+            child: const Text(
+              'Descartar',
+              style: TextStyle(color: Color(0xFFEF4444)),
+            ),
           ),
         ],
       ),
@@ -2242,8 +2384,10 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
           children: [
             Icon(Icons.error_outline, color: Color(0xFFEF4444)),
             SizedBox(width: 10),
-            Text('Errores de Validacion',
-                style: TextStyle(color: Colors.white, fontSize: 18)),
+            Text(
+              'Errores de Validacion',
+              style: TextStyle(color: Colors.white, fontSize: 18),
+            ),
           ],
         ),
         content: SizedBox(
@@ -2259,9 +2403,13 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
               final msg = err['message'] ?? 'Error desconocido';
               return ListTile(
                 contentPadding: EdgeInsets.zero,
-                title: Text(code,
-                    style: const TextStyle(
-                        color: Color(0xFF3B82F6), fontWeight: FontWeight.bold)),
+                title: Text(
+                  code,
+                  style: const TextStyle(
+                    color: Color(0xFF3B82F6),
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
                 subtitle: Text(msg, style: TextStyle(color: Colors.grey[300])),
               );
             },
@@ -2282,8 +2430,10 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1E293B),
-        title: const Text('Detalle del Error',
-            style: TextStyle(color: Colors.white)),
+        title: const Text(
+          'Detalle del Error',
+          style: TextStyle(color: Colors.white),
+        ),
         content: SingleChildScrollView(
           child: Text(msg, style: TextStyle(color: Colors.grey[300])),
         ),
@@ -2329,8 +2479,9 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content:
-            Text(ok ? 'Catalogo actualizado' : 'Error al actualizar catalogo'),
+        content: Text(
+          ok ? 'Catalogo actualizado' : 'Error al actualizar catalogo',
+        ),
         backgroundColor: ok ? const Color(0xFF22C55E) : const Color(0xFFEF4444),
       ),
     );
@@ -2486,8 +2637,16 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
     return Lectura.isInvalidRawValue(controller.text);
   }
 
-  bool get _hasInvalidInputs =>
-      _controllers.values.any(_controllerHasInvalidValue);
+  bool get _hasInvalidInputs {
+    final activeKeys = _inputControllerKeysForInstrumentos(
+      _getInstrumentosForGrid(),
+    );
+    return activeKeys.any(
+      (key) =>
+          _controllers[key] != null &&
+          _controllerHasInvalidValue(_controllers[key]!),
+    );
+  }
 
   void _showInvalidValuesMessage() {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -2717,7 +2876,8 @@ class _InstrumentInputRowState extends State<_InstrumentInputRow> {
     final rawValue = widget.controller.text;
     final invalid = Lectura.isInvalidRawValue(rawValue);
     final parsedValue = Lectura.parseRawValue(rawValue);
-    final outOfRange = parsedValue != null &&
+    final outOfRange =
+        parsedValue != null &&
         widget.range != null &&
         widget.range!.hasRange &&
         widget.range!.isOutOfRange(parsedValue);
@@ -2802,8 +2962,9 @@ class _InstrumentInputRowState extends State<_InstrumentInputRow> {
                 child: TextField(
                   controller: widget.controller,
                   focusNode: widget.focusNode,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                   textInputAction: TextInputAction.next,
                   onSubmitted: (_) => widget.onSubmitted(),
                   style: const TextStyle(
@@ -2814,8 +2975,10 @@ class _InstrumentInputRowState extends State<_InstrumentInputRow> {
                   decoration: InputDecoration(
                     hintText: '0.00',
                     hintStyle: TextStyle(color: Colors.grey[700]),
-                    contentPadding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
                     filled: true,
                     fillColor: _statusFieldFillColor(
                       isInvalid: _isInvalidValue,
@@ -2843,17 +3006,17 @@ class _InstrumentInputRowState extends State<_InstrumentInputRow> {
                 width: 30,
                 child: Text(
                   widget.unitLabel,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.grey[500],
-                  ),
+                  style: TextStyle(fontSize: 11, color: Colors.grey[500]),
                   textAlign: TextAlign.center,
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
               IconButton(
-                icon: const Icon(Icons.save_as_outlined,
-                    color: Color(0xFF3B82F6), size: 20),
+                icon: const Icon(
+                  Icons.save_as_outlined,
+                  color: Color(0xFF3B82F6),
+                  size: 20,
+                ),
                 onPressed: () => widget.onSave(widget.controller.text),
                 constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                 padding: EdgeInsets.zero,
@@ -2911,6 +3074,8 @@ class _InstrumentInputRowState extends State<_InstrumentInputRow> {
 
 class _AsentimetroInputRow extends StatefulWidget {
   final Instrumento instrumento;
+  final bool showLu;
+  final bool showTemp;
   final TextEditingController luController;
   final TextEditingController tempController;
   final FocusNode luFocusNode;
@@ -2927,6 +3092,8 @@ class _AsentimetroInputRow extends StatefulWidget {
 
   const _AsentimetroInputRow({
     required this.instrumento,
+    required this.showLu,
+    required this.showTemp,
     required this.luController,
     required this.tempController,
     required this.luFocusNode,
@@ -2987,7 +3154,8 @@ class _AsentimetroInputRowState extends State<_AsentimetroInputRow> {
     final rawValue = widget.luController.text;
     final invalid = Lectura.isInvalidRawValue(rawValue);
     final parsedValue = Lectura.parseRawValue(rawValue);
-    final outOfRange = parsedValue != null &&
+    final outOfRange =
+        parsedValue != null &&
         widget.rangeLu != null &&
         widget.rangeLu!.hasRange &&
         widget.rangeLu!.isOutOfRange(parsedValue);
@@ -3003,7 +3171,8 @@ class _AsentimetroInputRowState extends State<_AsentimetroInputRow> {
     final rawValue = widget.tempController.text;
     final invalid = Lectura.isInvalidRawValue(rawValue);
     final parsedValue = Lectura.parseRawValue(rawValue);
-    final outOfRange = parsedValue != null &&
+    final outOfRange =
+        parsedValue != null &&
         widget.rangeTemp != null &&
         widget.rangeTemp!.hasRange &&
         widget.rangeTemp!.isOutOfRange(parsedValue);
@@ -3089,10 +3258,17 @@ class _AsentimetroInputRowState extends State<_AsentimetroInputRow> {
         hasLuValue && hasLuRange && !_isLuOutOfRange && !_isLuInvalid;
     final isTempWithinRange =
         hasTempValue && hasTempRange && !_isTempOutOfRange && !_isTempInvalid;
-    final anyOutOfRange = _isLuOutOfRange || _isTempOutOfRange;
-    final anyInvalid = _isLuInvalid || _isTempInvalid;
-    final anyWithinRange = isLuWithinRange || isTempWithinRange;
-    final needsReviewHighlight = widget.needsReviewLu || widget.needsReviewTemp;
+    final anyOutOfRange =
+        (widget.showLu && _isLuOutOfRange) ||
+        (widget.showTemp && _isTempOutOfRange);
+    final anyInvalid =
+        (widget.showLu && _isLuInvalid) || (widget.showTemp && _isTempInvalid);
+    final anyWithinRange =
+        (widget.showLu && isLuWithinRange) ||
+        (widget.showTemp && isTempWithinRange);
+    final needsReviewHighlight =
+        (widget.showLu && widget.needsReviewLu) ||
+        (widget.showTemp && widget.needsReviewTemp);
     final borderColor = _statusBorderColor(
       isInvalid: anyInvalid,
       isOutOfRange: anyOutOfRange,
@@ -3137,140 +3313,155 @@ class _AsentimetroInputRowState extends State<_AsentimetroInputRow> {
                 ),
               ),
               const SizedBox(width: 8),
-              Expanded(
-                child: TextField(
-                  controller: widget.luController,
-                  focusNode: widget.luFocusNode,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                  textInputAction: TextInputAction.next,
-                  onSubmitted: (_) => widget.onPrimarySubmitted(),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                  ),
-                  decoration: InputDecoration(
-                    hintText: 'LU',
-                    hintStyle: TextStyle(color: Colors.grey[700]),
-                    contentPadding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                    filled: true,
-                    fillColor: _statusFieldFillColor(
-                      isInvalid: _isLuInvalid,
-                      isOutOfRange: _isLuOutOfRange,
-                      isWithinRange: isLuWithinRange,
-                      needsReviewHighlight: widget.needsReviewLu,
+              if (widget.showLu)
+                Expanded(
+                  child: TextField(
+                    controller: widget.luController,
+                    focusNode: widget.luFocusNode,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
                     ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide(
-                        color: _statusBorderColor(
-                          isInvalid: _isLuInvalid,
-                          isOutOfRange: _isLuOutOfRange,
-                          isWithinRange: isLuWithinRange,
-                          needsReviewHighlight: widget.needsReviewLu,
+                    textInputAction: TextInputAction.next,
+                    onSubmitted: (_) => widget.onPrimarySubmitted(),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    decoration: InputDecoration(
+                      hintText: 'LU',
+                      hintStyle: TextStyle(color: Colors.grey[700]),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
+                      filled: true,
+                      fillColor: _statusFieldFillColor(
+                        isInvalid: _isLuInvalid,
+                        isOutOfRange: _isLuOutOfRange,
+                        isWithinRange: isLuWithinRange,
+                        needsReviewHighlight: widget.needsReviewLu,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide(
+                          color: _statusBorderColor(
+                            isInvalid: _isLuInvalid,
+                            isOutOfRange: _isLuOutOfRange,
+                            isWithinRange: isLuWithinRange,
+                            needsReviewHighlight: widget.needsReviewLu,
+                          ),
                         ),
                       ),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide(
-                        color: _statusBorderColor(
-                          isInvalid: _isLuInvalid,
-                          isOutOfRange: _isLuOutOfRange,
-                          isWithinRange: isLuWithinRange,
-                          needsReviewHighlight: widget.needsReviewLu,
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide(
+                          color: _statusBorderColor(
+                            isInvalid: _isLuInvalid,
+                            isOutOfRange: _isLuOutOfRange,
+                            isWithinRange: isLuWithinRange,
+                            needsReviewHighlight: widget.needsReviewLu,
+                          ),
                         ),
                       ),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide(
-                        color: _statusBorderColor(
-                          isInvalid: _isLuInvalid,
-                          isOutOfRange: _isLuOutOfRange,
-                          isWithinRange: isLuWithinRange,
-                          needsReviewHighlight: widget.needsReviewLu,
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide(
+                          color: _statusBorderColor(
+                            isInvalid: _isLuInvalid,
+                            isOutOfRange: _isLuOutOfRange,
+                            isWithinRange: isLuWithinRange,
+                            needsReviewHighlight: widget.needsReviewLu,
+                          ),
+                          width: 1.2,
                         ),
-                        width: 1.2,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: TextField(
-                  controller: widget.tempController,
-                  focusNode: widget.tempFocusNode,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                  textInputAction: TextInputAction.next,
-                  onSubmitted: (_) => widget.onTempSubmitted(),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                  ),
-                  decoration: InputDecoration(
-                    hintText: 'T',
-                    hintStyle: TextStyle(color: Colors.grey[700]),
-                    contentPadding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                    filled: true,
-                    fillColor: _statusFieldFillColor(
-                      isInvalid: _isTempInvalid,
-                      isOutOfRange: _isTempOutOfRange,
-                      isWithinRange: isTempWithinRange,
-                      needsReviewHighlight: widget.needsReviewTemp,
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide(
-                        color: _statusBorderColor(
-                          isInvalid: _isTempInvalid,
-                          isOutOfRange: _isTempOutOfRange,
-                          isWithinRange: isTempWithinRange,
-                          needsReviewHighlight: widget.needsReviewTemp,
-                        ),
-                      ),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide(
-                        color: _statusBorderColor(
-                          isInvalid: _isTempInvalid,
-                          isOutOfRange: _isTempOutOfRange,
-                          isWithinRange: isTempWithinRange,
-                          needsReviewHighlight: widget.needsReviewTemp,
-                        ),
-                      ),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide(
-                        color: _statusBorderColor(
-                          isInvalid: _isTempInvalid,
-                          isOutOfRange: _isTempOutOfRange,
-                          isWithinRange: isTempWithinRange,
-                          needsReviewHighlight: widget.needsReviewTemp,
-                        ),
-                        width: 1.2,
                       ),
                     ),
                   ),
                 ),
-              ),
+              if (widget.showLu && widget.showTemp) const SizedBox(width: 6),
+              if (widget.showTemp)
+                Expanded(
+                  child: TextField(
+                    controller: widget.tempController,
+                    focusNode: widget.tempFocusNode,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    textInputAction: TextInputAction.next,
+                    onSubmitted: (_) => widget.onTempSubmitted(),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    decoration: InputDecoration(
+                      hintText: 'T',
+                      hintStyle: TextStyle(color: Colors.grey[700]),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
+                      filled: true,
+                      fillColor: _statusFieldFillColor(
+                        isInvalid: _isTempInvalid,
+                        isOutOfRange: _isTempOutOfRange,
+                        isWithinRange: isTempWithinRange,
+                        needsReviewHighlight: widget.needsReviewTemp,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide(
+                          color: _statusBorderColor(
+                            isInvalid: _isTempInvalid,
+                            isOutOfRange: _isTempOutOfRange,
+                            isWithinRange: isTempWithinRange,
+                            needsReviewHighlight: widget.needsReviewTemp,
+                          ),
+                        ),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide(
+                          color: _statusBorderColor(
+                            isInvalid: _isTempInvalid,
+                            isOutOfRange: _isTempOutOfRange,
+                            isWithinRange: isTempWithinRange,
+                            needsReviewHighlight: widget.needsReviewTemp,
+                          ),
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide(
+                          color: _statusBorderColor(
+                            isInvalid: _isTempInvalid,
+                            isOutOfRange: _isTempOutOfRange,
+                            isWithinRange: isTempWithinRange,
+                            needsReviewHighlight: widget.needsReviewTemp,
+                          ),
+                          width: 1.2,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               const SizedBox(width: 6),
               IconButton(
-                icon: const Icon(Icons.save_as_outlined,
-                    color: Color(0xFF3B82F6), size: 20),
+                icon: const Icon(
+                  Icons.save_as_outlined,
+                  color: Color(0xFF3B82F6),
+                  size: 20,
+                ),
                 onPressed: () => widget.onSave(
-                    widget.luController.text, widget.tempController.text),
+                  widget.luController.text,
+                  widget.tempController.text,
+                ),
                 constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                 padding: EdgeInsets.zero,
-                tooltip: 'Guardar LU + temperatura',
+                tooltip: widget.showLu && widget.showTemp
+                    ? 'Guardar LU + temperatura'
+                    : 'Guardar lectura activa',
               ),
             ],
           ),
@@ -3279,28 +3470,30 @@ class _AsentimetroInputRowState extends State<_AsentimetroInputRow> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildStatusLine(
-                  label: 'Lectura LU',
-                  isInvalid: _isLuInvalid,
-                  isOutOfRange: _isLuOutOfRange,
-                  isWithinRange: isLuWithinRange,
-                  hasRange: hasLuRange,
-                  range: widget.rangeLu,
-                  unitLabel: 'LU',
-                  isWarningConfirmed: widget.isLuWarningConfirmed,
-                  needsReviewHighlight: widget.needsReviewLu,
-                ),
-                _buildStatusLine(
-                  label: 'Temperatura',
-                  isInvalid: _isTempInvalid,
-                  isOutOfRange: _isTempOutOfRange,
-                  isWithinRange: isTempWithinRange,
-                  hasRange: hasTempRange,
-                  range: widget.rangeTemp,
-                  unitLabel: '°C',
-                  isWarningConfirmed: widget.isTempWarningConfirmed,
-                  needsReviewHighlight: widget.needsReviewTemp,
-                ),
+                if (widget.showLu)
+                  _buildStatusLine(
+                    label: 'Lectura LU',
+                    isInvalid: _isLuInvalid,
+                    isOutOfRange: _isLuOutOfRange,
+                    isWithinRange: isLuWithinRange,
+                    hasRange: hasLuRange,
+                    range: widget.rangeLu,
+                    unitLabel: 'LU',
+                    isWarningConfirmed: widget.isLuWarningConfirmed,
+                    needsReviewHighlight: widget.needsReviewLu,
+                  ),
+                if (widget.showTemp)
+                  _buildStatusLine(
+                    label: 'Temperatura',
+                    isInvalid: _isTempInvalid,
+                    isOutOfRange: _isTempOutOfRange,
+                    isWithinRange: isTempWithinRange,
+                    hasRange: hasTempRange,
+                    range: widget.rangeTemp,
+                    unitLabel: '°C',
+                    isWarningConfirmed: widget.isTempWarningConfirmed,
+                    needsReviewHighlight: widget.needsReviewTemp,
+                  ),
               ],
             ),
           ),
@@ -3402,7 +3595,9 @@ class _TriaxialInputRow extends StatelessWidget {
                       children: [
                         Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 3),
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
                           decoration: BoxDecoration(
                             color: const Color(0x1A14B8A6),
                             borderRadius: BorderRadius.circular(12),
@@ -3420,12 +3615,15 @@ class _TriaxialInputRow extends StatelessWidget {
                         if (!hasCatalogReference)
                           Container(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 3),
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
                             decoration: BoxDecoration(
                               color: const Color(0xFF1F2937),
                               borderRadius: BorderRadius.circular(12),
-                              border:
-                                  Border.all(color: const Color(0xFF475569)),
+                              border: Border.all(
+                                color: const Color(0xFF475569),
+                              ),
                             ),
                             child: const Text(
                               'Sin referencia',
@@ -3443,10 +3641,16 @@ class _TriaxialInputRow extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               IconButton(
-                icon: const Icon(Icons.save_as_outlined,
-                    color: Color(0xFF3B82F6), size: 20),
+                icon: const Icon(
+                  Icons.save_as_outlined,
+                  color: Color(0xFF3B82F6),
+                  size: 20,
+                ),
                 onPressed: () => onSave(
-                    controllerX.text, controllerY.text, controllerZ.text),
+                  controllerX.text,
+                  controllerY.text,
+                  controllerZ.text,
+                ),
                 constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                 padding: EdgeInsets.zero,
                 tooltip: 'Guardar X/Y/Z',
@@ -3595,7 +3799,8 @@ class _TriaxialAxisFieldState extends State<_TriaxialAxisField> {
     final rawValue = widget.controller.text;
     final invalid = Lectura.isInvalidRawValue(rawValue);
     final parsedValue = Lectura.parseRawValue(rawValue);
-    final outOfRange = parsedValue != null &&
+    final outOfRange =
+        parsedValue != null &&
         widget.range != null &&
         widget.range!.hasRange &&
         widget.range!.isOutOfRange(parsedValue);
@@ -3652,8 +3857,10 @@ class _TriaxialAxisFieldState extends State<_TriaxialAxisField> {
             labelStyle: const TextStyle(color: Color(0xFF14B8A6), fontSize: 12),
             hintText: '0.00',
             hintStyle: TextStyle(color: Colors.grey[700]),
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 10,
+              vertical: 8,
+            ),
             filled: true,
             fillColor: _statusFieldFillColor(
               isInvalid: _isInvalidValue,
