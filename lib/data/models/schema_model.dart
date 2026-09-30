@@ -42,20 +42,44 @@ class SchemaInstrument {
   final String nombre;
   final String? ubicacion;
 
+  /// Variables de captura habilitadas específicamente para este instrumento.
+  ///
+  /// - null: el backend no definió restricciones por canal; usar fallback de familia.
+  /// - []: el instrumento tiene canales configurados, pero ninguno habilitado.
+  /// - valores: solo esas variables deben mostrarse/enviarse.
+  final List<String>? activeVariableCodes;
+
   SchemaInstrument({
     required this.id,
     required this.codigo,
     required this.nombre,
     this.ubicacion,
+    this.activeVariableCodes,
   });
 
   factory SchemaInstrument.fromJson(Map<String, dynamic> json) {
+    final activeCodesRaw = json['active_variable_codes'];
     return SchemaInstrument(
       id: json['id'] ?? 0,
       codigo: json['codigo'] ?? '',
       nombre: json['nombre'] ?? '',
       ubicacion: json['ubicacion'],
+      activeVariableCodes: activeCodesRaw is List
+          ? activeCodesRaw
+              .map((value) => value.toString().trim().toUpperCase())
+              .where((value) => value.isNotEmpty)
+              .toList(growable: false)
+          : null,
     );
+  }
+
+  bool allowsVariable(String variableCode) {
+    final configured = activeVariableCodes;
+    if (configured == null) {
+      return true;
+    }
+    final normalized = variableCode.trim().toUpperCase();
+    return configured.contains(normalized);
   }
 
   Map<String, dynamic> toJson() {
@@ -64,6 +88,7 @@ class SchemaInstrument {
       'codigo': codigo,
       'nombre': nombre,
       'ubicacion': ubicacion,
+      'active_variable_codes': activeVariableCodes,
     };
   }
 }
