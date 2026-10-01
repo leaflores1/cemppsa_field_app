@@ -80,7 +80,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   String _loginErrorMessage(String? raw) {
     if (isConnectivityFailure(message: raw)) {
-      return 'No se pudo conectar al servidor de CEMPPSA. Revisa la red e intenta nuevamente.';
+      return 'No se pudo conectar al servidor de EDISON. Revisa la red e intenta nuevamente.';
     }
 
     final message = raw?.trim();
@@ -116,28 +116,19 @@ class _LoginScreenState extends State<LoginScreen> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Center(
-                            child: Container(
-                              width: 72,
+                            child: SizedBox(
+                              width: 260,
                               height: 72,
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(
-                                  color: const Color(0xFF334155),
-                                ),
-                              ),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(16),
-                                child: Image.asset(
-                                  'assets/images/favicon.png',
-                                  fit: BoxFit.cover,
-                                ),
+                              child: Image.asset(
+                                'assets/images/edison_institutional_logo.png',
+                                fit: BoxFit.contain,
                               ),
                             ),
                           ),
                           const SizedBox(height: 16),
                           const Center(
                             child: Text(
-                              'CemppsaApp',
+                              'EDISON',
                               textAlign: TextAlign.center,
                               style: TextStyle(
                                 fontSize: 20,

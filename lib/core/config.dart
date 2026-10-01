@@ -105,7 +105,7 @@ class ApiConfig {
 
 /// Configuración de la aplicación
 class AppConfig {
-  static const String appName = 'CEMPPSA Field';
+  static const String appName = 'EDISON';
   static const String version = '2.0.0';
   static const String settingsDeviceIdKey = 'device_id';
 

@@ -305,19 +305,12 @@ class _HomeScreenState extends State<HomeScreen> {
       padding: const EdgeInsets.all(16),
       child: Row(
         children: [
-          Container(
-            width: 48,
+          SizedBox(
+            width: 132,
             height: 48,
-            decoration: BoxDecoration(
-              color: const Color(0xFF1E3A5F),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Image.asset(
-                'assets/images/favicon.png',
-                fit: BoxFit.cover,
-              ),
+            child: Image.asset(
+              'assets/images/edison_institutional_logo.png',
+              fit: BoxFit.contain,
             ),
           ),
           const SizedBox(width: 12),
@@ -326,7 +319,7 @@ class _HomeScreenState extends State<HomeScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'CEMPPSA',
+                  'EDISON',
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,

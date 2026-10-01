@@ -1,5 +1,5 @@
 name: cemppsa_field_app
-description: App de campo CEMPPSA (offline + sync)
+description: App de campo EDISON (offline + sync)
 publish_to: "none"
 
 version: 1.0.0+1
@@ -44,6 +44,7 @@ flutter:
   assets:
     - assets/images/favicon.png
     - assets/images/cemppsa_logo.png
+    - assets/images/edison_institutional_logo.png
 
 flutter_launcher_icons:
   android: "launcher_icon"

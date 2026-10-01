@@ -28,6 +28,18 @@ void main() {
     expect(find.text('Email'), findsOneWidget);
     expect(find.text('Password'), findsOneWidget);
     expect(find.text('Entrar'), findsOneWidget);
+    expect(find.text('EDISON'), findsOneWidget);
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Image &&
+            widget.image is AssetImage &&
+            (widget.image as AssetImage).assetName ==
+                'assets/images/edison_institutional_logo.png',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('CemppsaApp'), findsNothing);
 
     expect(find.textContaining('Servidor:'), findsNothing);
     expect(find.textContaining('URL o IP'), findsNothing);
