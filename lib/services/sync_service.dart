@@ -15,6 +15,7 @@ import '../repositories/catalogo_repository.dart';
 import '../repositories/planilla_repository.dart';
 import '../utils/network_errors.dart';
 import '../utils/planilla_family.dart';
+import '../utils/cr10x_active_variables.dart';
 
 /// Estado de conexión con el backend
 enum ConnectionStatus {
@@ -126,6 +127,24 @@ class SyncService extends ChangeNotifier {
   }) async {
     _lastWasConnectivityIssue = false;
     _lastRequiresLogin = false;
+    if (catalog != null && planilla.tipo.codigo.startsWith('CR10X_')) {
+      final familyId = planillaFamilyGroupFromTipo(planilla.tipo).id;
+      final schemaResult = await catalog.loadMobileSchema(familyId);
+      final sanitization = sanitizeCr10xReadingsAgainstSchema(
+        planilla.lecturas,
+        schemaResult.schema,
+      );
+      if (sanitization.removedReadings.isNotEmpty) {
+        planilla.lecturas
+          ..clear()
+          ..addAll(sanitization.readings);
+        debugPrint(
+          '[CR10X_SCHEMA_SANITIZE] batch_uuid=${planilla.batchUuid} '
+          'removed=${sanitization.removedReadings.map((reading) => '${reading.instrumentCode}/${reading.parameter}').join(',')} '
+          'preserved=${sanitization.readings.length}',
+        );
+      }
+    }
     final invalidLecturas = planilla.lecturas
         .where((l) => l.valorInvalido == true || l.value == null)
         .toList();

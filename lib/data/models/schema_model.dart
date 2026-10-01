@@ -41,12 +41,14 @@ class SchemaInstrument {
   final String codigo;
   final String nombre;
   final String? ubicacion;
+  final List<String>? activeVariableCodes;
 
   SchemaInstrument({
     required this.id,
     required this.codigo,
     required this.nombre,
     this.ubicacion,
+    this.activeVariableCodes,
   });
 
   factory SchemaInstrument.fromJson(Map<String, dynamic> json) {
@@ -55,6 +57,12 @@ class SchemaInstrument {
       codigo: json['codigo'] ?? '',
       nombre: json['nombre'] ?? '',
       ubicacion: json['ubicacion'],
+      activeVariableCodes: json['active_variable_codes'] == null
+          ? null
+          : (json['active_variable_codes'] as List<dynamic>)
+              .map((code) => code.toString().trim().toUpperCase())
+              .where((code) => code.isNotEmpty)
+              .toList(),
     );
   }
 
@@ -64,6 +72,7 @@ class SchemaInstrument {
       'codigo': codigo,
       'nombre': nombre,
       'ubicacion': ubicacion,
+      'active_variable_codes': activeVariableCodes,
     };
   }
 }

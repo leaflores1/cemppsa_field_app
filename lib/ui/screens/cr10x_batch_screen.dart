@@ -19,6 +19,7 @@ import '../../services/sync_service.dart';
 import 'dart:convert';
 import '../../core/config.dart';
 import '../../utils/decimal_input.dart';
+import '../../utils/cr10x_active_variables.dart';
 import '../../utils/network_errors.dart';
 import '../../utils/planilla_axis.dart';
 import '../../utils/planilla_family.dart';
@@ -43,7 +44,6 @@ String _cr10xReadingKey(String instrumentCode, String? parameter) {
   final normalizedParameter = (parameter ?? '').trim().toUpperCase();
   return '$normalizedCode|$normalizedParameter';
 }
-
 
 @visibleForTesting
 String? cr10xPrimaryParameterFallbackForTesting(TipoPlanilla tipo) {
@@ -512,7 +512,6 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
     );
   }
 
-
   void _resetMobileSchemaState({String? familyId, bool loading = false}) {
     _mobileSchema = null;
     _mobileSchemaSource = MobileSchemaSource.unavailable;
@@ -546,6 +545,52 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
       _loadingMobileSchema = false;
       _loggedSchemaFallbacks.clear();
     });
+    await _sanitizeCurrentPlanillaAgainstSchema();
+  }
+
+  Future<void> _sanitizeCurrentPlanillaAgainstSchema() async {
+    final planilla = _currentPlanilla;
+    final schema = _mobileSchema;
+    if (planilla == null || schema == null) return;
+
+    final result = sanitizeCr10xReadingsAgainstSchema(
+      planilla.lecturas,
+      schema,
+    );
+    if (result.removedReadings.isEmpty) return;
+
+    planilla.lecturas
+      ..clear()
+      ..addAll(result.readings);
+    for (final lectura in result.removedReadings) {
+      final controllerKey = _controllerKeyForDraft(lectura);
+      _controllers.remove(controllerKey)?.dispose();
+      _focusNodes.remove(controllerKey)?.dispose();
+      _confirmedWarningRawByKey.remove(
+        _readingKey(lectura.instrumentCode, lectura.parameter),
+      );
+      _reviewHighlightedKeys.remove(
+        _readingKey(lectura.instrumentCode, lectura.parameter),
+      );
+    }
+
+    debugPrint(
+      '[CR10X_SCHEMA_SANITIZE] batch_uuid=${planilla.batchUuid} '
+      'removed=${result.removedReadings.map((reading) => '${reading.instrumentCode}/${reading.parameter}').join(',')} '
+      'preserved=${result.readings.length}',
+    );
+    await context.read<PlanillaRepository>().save(planilla);
+    if (!mounted) return;
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          '${result.removedReadings.length} lectura legacy no permitida fue '
+          'descartada; se preservaron ${result.readings.length}.',
+        ),
+        backgroundColor: const Color(0xFFB45309),
+      ),
+    );
   }
 
   /// Obtiene el rango desde el catálogo local (sin requests en pantalla)
@@ -822,18 +867,21 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
     final instrumentos = _getInstrumentosForGrid();
     for (final inst in instrumentos) {
       if (_selectedTipo == TipoPlanilla.cr10xAsentimetros) {
-        if (_controllerDiffersFromPersisted(
-          instrumentCode: inst.codigo,
-          parameter: _asentimetroLuParameter(),
-          controllerText: _getController(inst.codigo).text,
-        )) {
+        if (_asentimetroAllowsLu(inst) &&
+            _controllerDiffersFromPersisted(
+              instrumentCode: inst.codigo,
+              parameter: _asentimetroLuParameter(),
+              controllerText: _getController(inst.codigo).text,
+            )) {
           return true;
         }
-        if (_controllerDiffersFromPersisted(
-          instrumentCode: inst.codigo,
-          parameter: _asentimetroTempParameter(),
-          controllerText: _getController(_tempControllerKey(inst.codigo)).text,
-        )) {
+        if (_asentimetroAllowsTemp(inst) &&
+            _controllerDiffersFromPersisted(
+              instrumentCode: inst.codigo,
+              parameter: _asentimetroTempParameter(),
+              controllerText:
+                  _getController(_tempControllerKey(inst.codigo)).text,
+            )) {
           return true;
         }
         continue;
@@ -990,6 +1038,56 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
         }
 
         if (_selectedTipo == TipoPlanilla.cr10xAsentimetros) {
+          final allowsLu = _asentimetroAllowsLu(inst);
+          final allowsTemp = _asentimetroAllowsTemp(inst);
+          if (!allowsLu && !allowsTemp) {
+            return _NoActiveVariablesRow(instrumento: inst);
+          }
+          if (allowsLu && !allowsTemp) {
+            return _InstrumentInputRow(
+              instrumento: inst,
+              controller: _getController(inst.codigo),
+              focusNode: _getFocusNode(inst.codigo),
+              onSubmitted: () => _focusNext(instrumentos, index),
+              onSave: (value) => _saveAsentimetroReadings(inst, value, ''),
+              unitLabel: _asentimetroLuUnit() ?? 'LU',
+              range: _getRangeForInstrument(
+                inst.codigo,
+                _asentimetroLuParameter(),
+              ),
+              isWarningConfirmed: _isWarningConfirmed(
+                inst.codigo,
+                _asentimetroLuParameter(),
+                _getController(inst.codigo).text,
+              ),
+              needsReviewHighlight: _reviewHighlightedKeys.contains(
+                _readingKey(inst.codigo, _asentimetroLuParameter()),
+              ),
+            );
+          }
+          if (!allowsLu && allowsTemp) {
+            final controllerKey = _tempControllerKey(inst.codigo);
+            return _InstrumentInputRow(
+              instrumento: inst,
+              controller: _getController(controllerKey),
+              focusNode: _getFocusNode(controllerKey),
+              onSubmitted: () => _focusNext(instrumentos, index),
+              onSave: (value) => _saveAsentimetroReadings(inst, '', value),
+              unitLabel: _asentimetroTempUnit() ?? '°C',
+              range: _getRangeForInstrument(
+                inst.codigo,
+                _asentimetroTempParameter(),
+              ),
+              isWarningConfirmed: _isWarningConfirmed(
+                inst.codigo,
+                _asentimetroTempParameter(),
+                _getController(controllerKey).text,
+              ),
+              needsReviewHighlight: _reviewHighlightedKeys.contains(
+                _readingKey(inst.codigo, _asentimetroTempParameter()),
+              ),
+            );
+          }
           return _AsentimetroInputRow(
             instrumento: inst,
             luController: _getController(inst.codigo),
@@ -1021,8 +1119,8 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
             ),
             needsReviewLu: _reviewHighlightedKeys
                 .contains(_readingKey(inst.codigo, _asentimetroLuParameter())),
-            needsReviewTemp: _reviewHighlightedKeys
-                .contains(_readingKey(inst.codigo, _asentimetroTempParameter())),
+            needsReviewTemp: _reviewHighlightedKeys.contains(
+                _readingKey(inst.codigo, _asentimetroTempParameter())),
           );
         }
 
@@ -1269,9 +1367,15 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
         continue;
       }
 
-      keys.add(inst.codigo);
       if (_selectedTipo == TipoPlanilla.cr10xAsentimetros) {
-        keys.add(_tempControllerKey(inst.codigo));
+        if (_asentimetroAllowsLu(inst)) {
+          keys.add(inst.codigo);
+        }
+        if (_asentimetroAllowsTemp(inst)) {
+          keys.add(_tempControllerKey(inst.codigo));
+        }
+      } else {
+        keys.add(inst.codigo);
       }
     }
 
@@ -1290,8 +1394,13 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
 
   void _focusNext(List<Instrumento> instrumentos, int currentIndex) {
     if (currentIndex < instrumentos.length - 1) {
-      final nextCode = instrumentos[currentIndex + 1].codigo;
-      _focusNodes[nextCode]?.requestFocus();
+      final nextInstrument = instrumentos[currentIndex + 1];
+      final nextCode = _selectedTipo == TipoPlanilla.cr10xAsentimetros &&
+              !_asentimetroAllowsLu(nextInstrument) &&
+              _asentimetroAllowsTemp(nextInstrument)
+          ? _tempControllerKey(nextInstrument.codigo)
+          : nextInstrument.codigo;
+      _getFocusNode(nextCode).requestFocus();
     }
   }
 
@@ -1437,22 +1546,28 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
     String rawTempValue,
   ) async {
     if (_currentPlanilla == null) return;
-    final hasLu = rawLuValue.trim().isNotEmpty;
-    final hasTemp = rawTempValue.trim().isNotEmpty;
+    final allowsLu = _asentimetroAllowsLu(inst);
+    final allowsTemp = _asentimetroAllowsTemp(inst);
+    final hasLu = allowsLu && rawLuValue.trim().isNotEmpty;
+    final hasTemp = allowsTemp && rawTempValue.trim().isNotEmpty;
     if (!hasLu && !hasTemp) return;
 
-    _upsertReading(
-      instrumento: inst,
-      rawValue: rawLuValue,
-      parameter: _asentimetroLuParameter(),
-      unit: _asentimetroLuUnit(),
-    );
-    _upsertReading(
-      instrumento: inst,
-      rawValue: rawTempValue,
-      parameter: _asentimetroTempParameter(),
-      unit: _asentimetroTempUnit(),
-    );
+    if (allowsLu) {
+      _upsertReading(
+        instrumento: inst,
+        rawValue: rawLuValue,
+        parameter: _asentimetroLuParameter(),
+        unit: _asentimetroLuUnit(),
+      );
+    }
+    if (allowsTemp) {
+      _upsertReading(
+        instrumento: inst,
+        rawValue: rawTempValue,
+        parameter: _asentimetroTempParameter(),
+        unit: _asentimetroTempUnit(),
+      );
+    }
 
     _syncEjeToCurrentPlanilla();
     _currentPlanilla!.estado = PlanillaEstado.borrador;
@@ -1648,18 +1763,22 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
       }
 
       if (_selectedTipo == TipoPlanilla.cr10xAsentimetros) {
-        _upsertReading(
-          instrumento: inst,
-          rawValue: _controllers[inst.codigo]?.text ?? '',
-          parameter: _asentimetroLuParameter(),
-          unit: _asentimetroLuUnit(),
-        );
-        _upsertReading(
-          instrumento: inst,
-          rawValue: _controllers[_tempControllerKey(inst.codigo)]?.text ?? '',
-          parameter: _asentimetroTempParameter(),
-          unit: _asentimetroTempUnit(),
-        );
+        if (_asentimetroAllowsLu(inst)) {
+          _upsertReading(
+            instrumento: inst,
+            rawValue: _controllers[inst.codigo]?.text ?? '',
+            parameter: _asentimetroLuParameter(),
+            unit: _asentimetroLuUnit(),
+          );
+        }
+        if (_asentimetroAllowsTemp(inst)) {
+          _upsertReading(
+            instrumento: inst,
+            rawValue: _controllers[_tempControllerKey(inst.codigo)]?.text ?? '',
+            parameter: _asentimetroTempParameter(),
+            unit: _asentimetroTempUnit(),
+          );
+        }
         continue;
       }
 
@@ -1776,6 +1895,22 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
 
   String _asentimetroTempParameter() {
     return _schemaVariableCode('TEMPERATURA') ?? 'TEMPERATURA';
+  }
+
+  bool _asentimetroAllowsLu(Instrumento instrumento) {
+    return cr10xInstrumentAllowsVariable(
+      _mobileSchema,
+      instrumento.codigo,
+      _asentimetroLuParameter(),
+    );
+  }
+
+  bool _asentimetroAllowsTemp(Instrumento instrumento) {
+    return cr10xInstrumentAllowsVariable(
+      _mobileSchema,
+      instrumento.codigo,
+      _asentimetroTempParameter(),
+    );
   }
 
   String? _asentimetroLuUnit() {
@@ -2504,6 +2639,45 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
 // =============================================================================
 // Widgets auxiliares
 // =============================================================================
+
+class _NoActiveVariablesRow extends StatelessWidget {
+  final Instrumento instrumento;
+
+  const _NoActiveVariablesRow({required this.instrumento});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E293B),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFF475569)),
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 70,
+            child: Text(
+              instrumento.codigo,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          const Expanded(
+            child: Text(
+              'Sin variables de captura habilitadas',
+              style: TextStyle(color: Color(0xFFCBD5E1), fontSize: 12),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 class _FamilyCard extends StatelessWidget {
   final String title;
