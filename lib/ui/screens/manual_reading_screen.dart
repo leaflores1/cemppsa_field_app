@@ -17,6 +17,7 @@ import '../../core/config.dart';
 import '../../services/sync_service.dart';
 import '../../utils/decimal_input.dart';
 import '../../utils/network_errors.dart';
+import '../../utils/user_facing_error.dart';
 import '../../utils/planilla_family.dart';
 import '../../utils/time_input.dart';
 import '../widgets/catalog_freshness_banner.dart';
@@ -654,7 +655,7 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Error al enviar (${errorMsg.length > 50 ? '...' : errorMsg})',
+            userFacingSyncError(errorMsg),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),
@@ -736,7 +737,7 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
             itemBuilder: (ctx, index) {
               final err = errors[index];
               final code = err['instrument_code'] ?? 'N/A';
-              final msg = err['message'] ?? 'Error desconocido';
+              final msg = userFacingValidationError(err);
               return ListTile(
                 contentPadding: EdgeInsets.zero,
                 title: Text(code,
@@ -765,7 +766,10 @@ class _ManualReadingScreenState extends State<ManualReadingScreen> {
         title: const Text('Detalle del Error',
             style: TextStyle(color: Colors.white)),
         content: SingleChildScrollView(
-          child: Text(msg, style: TextStyle(color: Colors.grey[300])),
+          child: Text(
+            userFacingSyncError(msg),
+            style: TextStyle(color: Colors.grey[300]),
+          ),
         ),
         actions: [
           TextButton(

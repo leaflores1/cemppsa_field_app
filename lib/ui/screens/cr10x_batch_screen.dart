@@ -23,6 +23,7 @@ import '../../utils/cr10x_active_variables.dart';
 import '../../utils/network_errors.dart';
 import '../../utils/planilla_axis.dart';
 import '../../utils/planilla_family.dart';
+import '../../utils/user_facing_error.dart';
 import '../widgets/catalog_freshness_banner.dart';
 import '../widgets/out_of_range_review_sheet.dart';
 
@@ -2391,7 +2392,7 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
             itemBuilder: (ctx, index) {
               final err = errors[index];
               final code = err['instrument_code'] ?? 'N/A';
-              final msg = err['message'] ?? 'Error desconocido';
+              final msg = userFacingValidationError(err);
               return ListTile(
                 contentPadding: EdgeInsets.zero,
                 title: Text(code,
@@ -2420,7 +2421,10 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
         title: const Text('Detalle del Error',
             style: TextStyle(color: Colors.white)),
         content: SingleChildScrollView(
-          child: Text(msg, style: TextStyle(color: Colors.grey[300])),
+          child: Text(
+            userFacingSyncError(msg),
+            style: TextStyle(color: Colors.grey[300]),
+          ),
         ),
         actions: [
           TextButton(

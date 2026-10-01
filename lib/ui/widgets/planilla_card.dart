@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import '../../data/models/planilla.dart';
 import '../../repositories/catalogo_repository.dart';
 import '../../utils/planilla_axis.dart';
+import '../../utils/user_facing_error.dart';
 import 'estado_chip.dart';
 
 class PlanillaCard extends StatelessWidget {
@@ -150,7 +151,7 @@ class PlanillaCard extends StatelessWidget {
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          planilla.errorMessage!,
+                          userFacingSyncError(planilla.errorMessage),
                           style: const TextStyle(
                             fontSize: 11,
                             color: Color(0xFFEF4444),

@@ -12,6 +12,7 @@ import '../../repositories/catalogo_repository.dart';
 import '../../repositories/planilla_repository.dart';
 import '../../utils/decimal_input.dart';
 import '../../utils/planilla_axis.dart';
+import '../../utils/user_facing_error.dart';
 import '../widgets/estado_chip.dart';
 
 class PlanillaDetailScreen extends StatefulWidget {
@@ -214,7 +215,7 @@ class _PlanillaDetailScreenState extends State<PlanillaDetailScreen> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      _planilla.errorMessage!,
+                      userFacingSyncError(_planilla.errorMessage),
                       style: const TextStyle(
                         fontSize: 12,
                         color: Color(0xFFEF4444),

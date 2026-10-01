@@ -16,6 +16,7 @@ import '../repositories/planilla_repository.dart';
 import '../utils/network_errors.dart';
 import '../utils/planilla_family.dart';
 import '../utils/cr10x_active_variables.dart';
+import '../utils/user_facing_error.dart';
 
 /// Estado de conexión con el backend
 enum ConnectionStatus {
@@ -226,7 +227,7 @@ class SyncService extends ChangeNotifier {
       _lastError = errorMessage;
       _lastWasConnectivityIssue = isConnectivityFailure(
         statusCode: response.statusCode,
-        message: errorMessage,
+        message: response.error ?? responseBody,
       );
       if (!_lastWasConnectivityIssue) {
         planilla.errorMessage = errorMessage;
@@ -243,7 +244,7 @@ class SyncService extends ChangeNotifier {
     _lastRequiresLogin = _isSessionExpiredFailure(response);
     _lastWasConnectivityIssue = isConnectivityFailure(
       statusCode: response.statusCode,
-      message: errorMessage,
+      message: response.error ?? responseBody,
     );
     if (!_lastWasConnectivityIssue && !_lastRequiresLogin) {
       planilla.errorMessage = errorMessage;
@@ -437,11 +438,15 @@ class SyncService extends ChangeNotifier {
     final error = response.error;
     final extraPart = (extra != null && extra.isNotEmpty) ? ' $extra' : '';
     if (error != null && error.isNotEmpty) {
-      return 'batch_uuid=${planilla.batchUuid} statusCode=$statusCode '
-          'error=$error$extraPart body=$responseBody';
+      return userFacingSyncError(
+        'batch_uuid=${planilla.batchUuid} statusCode=$statusCode '
+        'error=$error$extraPart body=$responseBody',
+      );
     }
-    return 'batch_uuid=${planilla.batchUuid} statusCode=$statusCode'
-        '$extraPart body=$responseBody';
+    return userFacingSyncError(
+      'batch_uuid=${planilla.batchUuid} statusCode=$statusCode'
+      '$extraPart body=$responseBody',
+    );
   }
 
   String? _buildFriendlyPlanillaError(ApiResponse response) {
@@ -701,7 +706,7 @@ class SyncService extends ChangeNotifier {
       _lastRequiresLogin = _isSessionExpiredFailure(response);
       _lastWasConnectivityIssue = isConnectivityFailure(
         statusCode: response.statusCode,
-        message: errorMsg,
+        message: response.error ?? responseBody,
       );
       if (!_lastWasConnectivityIssue && !_lastRequiresLogin) {
         planilla.errorMessage = errorMsg;

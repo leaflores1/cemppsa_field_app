@@ -55,6 +55,22 @@ void main() {
       expect(find.text('17 jun 2026 · 09:32'), findsOneWidget);
       expect(find.textContaining('Enviada +'), findsNothing);
     });
+
+    testWidgets('oculta JSON tecnico en errores persistidos', (tester) async {
+      final planilla = _buildPlanilla(
+        measuredAt: [DateTime(2026, 9, 30, 11, 26)],
+        estado: PlanillaEstado.error,
+        errorMessage: 'batch_uuid=abc statusCode=422 body={"detail":{"errors":'
+            '[{"instrument_code":"AE171","message":"Parametro no permitido"}]}}',
+      );
+
+      await tester.pumpWidget(_wrap(planilla));
+
+      expect(find.textContaining('AE171'), findsOneWidget);
+      expect(find.textContaining('ya no está habilitada'), findsOneWidget);
+      expect(find.textContaining('body='), findsNothing);
+      expect(find.textContaining('{"detail"'), findsNothing);
+    });
   });
 }
 
@@ -79,6 +95,8 @@ Planilla _buildPlanilla({
   required List<DateTime> measuredAt,
   DateTime? createdAt,
   DateTime? lastSyncAttempt,
+  PlanillaEstado estado = PlanillaEstado.enviada,
+  String? errorMessage,
 }) {
   return Planilla(
     batchUuid: '12345678-1234-1234-1234-1234567890ab',
@@ -86,7 +104,8 @@ Planilla _buildPlanilla({
     deviceId: 'device-1',
     technicianId: 'tech-1',
     createdAt: createdAt ?? DateTime(2026, 6, 10, 7),
-    estado: PlanillaEstado.enviada,
+    estado: estado,
+    errorMessage: errorMessage,
     lastSyncAttempt: lastSyncAttempt,
     lecturas: [
       for (var i = 0; i < measuredAt.length; i++)
