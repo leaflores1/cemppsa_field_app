@@ -128,6 +128,13 @@ class SyncService extends ChangeNotifier {
   }) async {
     _lastWasConnectivityIssue = false;
     _lastRequiresLogin = false;
+    if (planilla.lecturas.isEmpty) {
+      const error = 'La planilla no tiene lecturas para enviar. '
+          'No se envió nada al servidor.';
+      _lastError = error;
+      planilla.errorMessage = error;
+      return false;
+    }
     if (catalog != null && planilla.tipo.codigo.startsWith('CR10X_')) {
       final familyId = planillaFamilyGroupFromTipo(planilla.tipo).id;
       final schemaResult = await catalog.loadMobileSchema(familyId);
@@ -136,14 +143,17 @@ class SyncService extends ChangeNotifier {
         schemaResult.schema,
       );
       if (sanitization.removedReadings.isNotEmpty) {
-        planilla.lecturas
-          ..clear()
-          ..addAll(sanitization.readings);
+        // Nunca descartar lecturas en silencio durante el envío: se bloquea
+        // la planilla y el técnico decide desde la pantalla CR10X.
+        final error = cr10xBlockedReadingsMessage(sanitization.removedReadings);
         debugPrint(
-          '[CR10X_SCHEMA_SANITIZE] batch_uuid=${planilla.batchUuid} '
-          'removed=${sanitization.removedReadings.map((reading) => '${reading.instrumentCode}/${reading.parameter}').join(',')} '
-          'preserved=${sanitization.readings.length}',
+          '[CR10X_SCHEMA_BLOCK] batch_uuid=${planilla.batchUuid} '
+          'blocked=${sanitization.removedReadings.map((reading) => '${reading.instrumentCode}/${reading.parameter}').join(',')} '
+          'allowed=${sanitization.readings.length}',
         );
+        _lastError = error;
+        planilla.errorMessage = error;
+        return false;
       }
     }
     final invalidLecturas = planilla.lecturas

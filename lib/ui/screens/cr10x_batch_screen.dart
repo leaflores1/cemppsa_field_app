@@ -560,9 +560,39 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
     );
     if (result.removedReadings.isEmpty) return;
 
+    // No se descartan lecturas automáticamente: se avisa y el técnico decide.
+    debugPrint(
+      '[CR10X_SCHEMA_BLOCK] batch_uuid=${planilla.batchUuid} '
+      'blocked=${result.removedReadings.map((reading) => '${reading.instrumentCode}/${reading.parameter}').join(',')} '
+      'allowed=${result.readings.length}',
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        duration: const Duration(seconds: 12),
+        content: Text(
+          '${result.removedReadings.length} lectura(s) de variables no '
+          'habilitadas por el servidor. La planilla no se va a poder enviar '
+          'hasta revisarlas.',
+        ),
+        backgroundColor: const Color(0xFFB45309),
+        action: SnackBarAction(
+          label: 'Descartar',
+          textColor: Colors.white,
+          onPressed: () => _discardBlockedReadings(result),
+        ),
+      ),
+    );
+  }
+
+  /// Descarta lecturas no habilitadas solo por decisión explícita del técnico.
+  Future<void> _discardBlockedReadings(Cr10xSanitizationResult result) async {
+    final planilla = _currentPlanilla;
+    if (planilla == null || !mounted) return;
+    final removedIds =
+        result.removedReadings.map((lectura) => lectura.clientRowId).toSet();
     planilla.lecturas
-      ..clear()
-      ..addAll(result.readings);
+        .removeWhere((lectura) => removedIds.contains(lectura.clientRowId));
     for (final lectura in result.removedReadings) {
       final controllerKey = _controllerKeyForDraft(lectura);
       _controllers.remove(controllerKey)?.dispose();
@@ -576,9 +606,9 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
     }
 
     debugPrint(
-      '[CR10X_SCHEMA_SANITIZE] batch_uuid=${planilla.batchUuid} '
+      '[CR10X_SCHEMA_DISCARD_BY_USER] batch_uuid=${planilla.batchUuid} '
       'removed=${result.removedReadings.map((reading) => '${reading.instrumentCode}/${reading.parameter}').join(',')} '
-      'preserved=${result.readings.length}',
+      'preserved=${planilla.lecturas.length}',
     );
     await context.read<PlanillaRepository>().save(planilla);
     if (!mounted) return;
@@ -586,8 +616,8 @@ class _CR10XBatchScreenState extends State<CR10XBatchScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          '${result.removedReadings.length} lectura legacy no permitida fue '
-          'descartada; se preservaron ${result.readings.length}.',
+          'Se descartaron ${result.removedReadings.length} lectura(s) no '
+          'habilitadas; se conservaron ${planilla.lecturas.length}.',
         ),
         backgroundColor: const Color(0xFFB45309),
       ),

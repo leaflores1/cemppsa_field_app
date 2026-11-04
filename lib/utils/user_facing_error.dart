@@ -63,6 +63,7 @@ String userFacingSyncError(String? rawMessage) {
 
   const safePrefixes = [
     'la planilla contiene',
+    'la planilla no tiene',
     'planilla manual sin',
     'el usuario no',
     'el dispositivo no',

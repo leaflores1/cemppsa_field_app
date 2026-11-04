@@ -1,6 +1,22 @@
 import '../data/models/lectura.dart';
 import '../data/models/schema_model.dart';
 
+/// Códigos con los que `cr10x_channel_map` nombra el canal de lectura cruda
+/// principal del datalogger. El schema móvil nombra esa misma lectura con la
+/// variable por defecto de la familia (p. ej. `PERIODO`, `LECTURA_LU`).
+const Set<String> cr10xRawChannelAliases = {'LECTURA', 'LECTURA_CR10X'};
+
+/// Devuelve las variables de captura habilitadas para [instrumentCode].
+///
+/// - `null`: sin restricción (no hay configuración por canal, o la
+///   configuración usa códigos que el schema de la familia no reconoce).
+/// - conjunto vacío: el backend informó todos los canales inactivos.
+/// - conjunto no vacío: solo esas variables están habilitadas.
+///
+/// Un desajuste de nombres entre `active_variable_codes` y las variables del
+/// schema nunca debe interpretarse como "ninguna variable habilitada": eso
+/// descartaba lecturas válidas de piezómetros, celdas, termómetros,
+/// uniaxiales y triaxiales.
 Set<String>? cr10xActiveVariableCodesForInstrument(
   MobileSchema? schema,
   String instrumentCode,
@@ -23,10 +39,34 @@ Set<String>? cr10xActiveVariableCodesForInstrument(
       .map((variable) => variable.code.trim().toUpperCase())
       .where((code) => code.isNotEmpty)
       .toSet();
-  return configuredCodes
-      .map((code) => code.trim().toUpperCase())
-      .where(familyCodes.contains)
-      .toSet();
+  final defaultCode = _schemaDefaultVariableCode(schema);
+
+  final active = <String>{};
+  for (final rawCode in configuredCodes) {
+    final code = rawCode.trim().toUpperCase();
+    if (code.isEmpty) continue;
+    if (familyCodes.contains(code)) {
+      active.add(code);
+    } else if (cr10xRawChannelAliases.contains(code) && defaultCode != null) {
+      active.add(defaultCode);
+    } else {
+      // Vocabulario desconocido: no restringir antes que perder lecturas.
+      return null;
+    }
+  }
+  return active;
+}
+
+String? _schemaDefaultVariableCode(MobileSchema schema) {
+  for (final variable in schema.variables) {
+    final code = variable.code.trim().toUpperCase();
+    if (variable.isDefault && code.isNotEmpty) return code;
+  }
+  for (final variable in schema.variables) {
+    final code = variable.code.trim().toUpperCase();
+    if (code.isNotEmpty) return code;
+  }
+  return null;
 }
 
 bool cr10xInstrumentAllowsVariable(
@@ -38,6 +78,23 @@ bool cr10xInstrumentAllowsVariable(
       cr10xActiveVariableCodesForInstrument(schema, instrumentCode);
   return activeCodes == null ||
       activeCodes.contains(variableCode.trim().toUpperCase());
+}
+
+/// Mensaje visible para una planilla con lecturas de variables no habilitadas.
+/// Empieza con "La planilla contiene" para que `userFacingSyncError` lo
+/// muestre tal cual en lugar del mensaje genérico.
+String cr10xBlockedReadingsMessage(List<Lectura> blocked) {
+  final labels = blocked
+      .map((reading) =>
+          '${reading.instrumentCode} ${reading.parameter?.toUpperCase() ?? '-'}')
+      .toSet()
+      .toList()
+    ..sort();
+  final shown = labels.take(3).join(', ');
+  final extra = labels.length > 3 ? ' y ${labels.length - 3} más' : '';
+  return 'La planilla contiene ${blocked.length} lectura(s) de variables no '
+      'habilitadas ($shown$extra). Abrila en CR10X para revisarlas; '
+      'no se envió ni se borró nada.';
 }
 
 class Cr10xSanitizationResult {
