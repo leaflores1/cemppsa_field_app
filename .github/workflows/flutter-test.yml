@@ -1,0 +1,31 @@
+name: Flutter tests
+
+# Tramo 1 (cemppsa-sistema docs/AI/tasks/TRAMO-1-tests-verdes-y-ci.md).
+# Sin reintentos automaticos ni continue-on-error.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: flutter-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  app-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.35.7"
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
