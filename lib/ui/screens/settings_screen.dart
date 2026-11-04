@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/app_version.dart';
 import '../../core/config.dart';
 import '../../repositories/planilla_repository.dart';
 import '../../repositories/catalogo_repository.dart';
@@ -355,7 +356,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const Divider(color: Color(0xFF334155)),
               _InfoTile(
                 label: 'Version',
-                value: AppConfig.version,
+                value: AppVersionInfo.displayLabel,
                 onLongPress: _showDiagnosticsUnlock,
               ),
             ],

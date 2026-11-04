@@ -106,7 +106,7 @@ class ApiConfig {
 /// Configuración de la aplicación
 class AppConfig {
   static const String appName = 'EDISON';
-  static const String version = '2.0.0';
+  // La versión NO se define acá: ver `core/app_version.dart` (pubspec.yaml).
   static const String settingsDeviceIdKey = 'device_id';
 
   /// ID del dispositivo (generado automáticamente)

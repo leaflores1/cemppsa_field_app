@@ -6,6 +6,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/app_version.dart';
 import '../../core/config.dart';
 import '../../data/models/planilla.dart';
 import '../../repositories/catalogo_repository.dart';
@@ -396,15 +397,15 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildFooter() {
-    return const Padding(
-      padding: EdgeInsets.all(16),
+    return Padding(
+      padding: const EdgeInsets.all(16),
       child: Column(
         children: [
-          Divider(color: Color(0xFF334155)),
-          SizedBox(height: 8),
+          const Divider(color: Color(0xFF334155)),
+          const SizedBox(height: 8),
           Text(
-            'App Móvil v1.0.0',
-            style: TextStyle(fontSize: 11, color: Colors.grey),
+            'App Móvil ${AppVersionInfo.displayLabel}',
+            style: const TextStyle(fontSize: 11, color: Colors.grey),
           ),
         ],
       ),

@@ -12,6 +12,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'dart:async';
 
 // Core
+import 'core/app_version.dart';
 import 'core/config.dart';
 
 // Repositorios
@@ -58,6 +59,8 @@ void main() async {
     systemNavigationBarColor: Color(0xFF0F172A),
     systemNavigationBarIconBrightness: Brightness.light,
   ));
+
+  await AppVersionInfo.load();
 
   // Inicializar Hive
   await Hive.initFlutter();
