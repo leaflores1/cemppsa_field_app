@@ -438,11 +438,15 @@ class Instrumento {
   /// ¿Es del CR10X?
   bool get esCR10X => !esManual && familia == FamiliaInstrumento.piezometro;
 
-  /// Parámetro recomendado para ingesta (variable backend)
+  /// Parámetro recomendado para ingesta (variable backend).
+  /// Alineado al contrato móvil del backend (mobile_input_contract_v1.json,
+  /// DEC-0002): las familias de cuerda vibrante capturan PERIODO en us. Los
+  /// valores viejos (LECTURA_CR10X/Hz, LECTURA/Hz, TEMPERATURA/°C, PERIODO_X)
+  /// son los que la ingesta rechaza y los que motivaron la reparación P1.
   String? get ingestaParameter {
     switch (familia) {
       case FamiliaInstrumento.piezometro:
-        return 'LECTURA_CR10X';
+        return 'PERIODO';
       case FamiliaInstrumento.casagrande:
         return 'PROFUNDIDAD_M';
       case FamiliaInstrumento.freatimetro:
@@ -452,15 +456,10 @@ class Instrumento {
       case FamiliaInstrumento.asentimetro:
         return 'LECTURA_LU';
       case FamiliaInstrumento.celdaPresion:
-        return 'LECTURA';
       case FamiliaInstrumento.triaxial:
-        final axis = _inferAxisFromCode();
-        if (axis == 'T') return 'TEMPERATURA';
-        return axis != null ? 'PERIODO_$axis' : 'PERIODO_X';
       case FamiliaInstrumento.uniaxial:
-        return 'PERIODO';
       case FamiliaInstrumento.termometro:
-        return 'TEMPERATURA';
+        return 'PERIODO';
       case FamiliaInstrumento.clinometro:
         return 'LECTURA_MV';
       case FamiliaInstrumento.barometro:
@@ -483,9 +482,9 @@ class Instrumento {
     switch (familia) {
       case FamiliaInstrumento.piezometro:
       case FamiliaInstrumento.celdaPresion:
-        return 'Hz';
       case FamiliaInstrumento.termometro:
-        return '\u00B0C';
+      case FamiliaInstrumento.triaxial:
+        return 'us';
       case FamiliaInstrumento.asentimetro:
         return 'LU';
       case FamiliaInstrumento.clinometro:
@@ -509,16 +508,6 @@ class Instrumento {
     }
   }
 
-  String? _inferAxisFromCode() {
-    final normalized =
-        codigo.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
-
-    // Check for Temperature (T) or Axis (X, Y, Z) at end only if preceded by number?
-    // Usually J01X, J01Y, J01Z, J01T
-    final match = RegExp(r'([XYZT])$').firstMatch(normalized);
-    return match?.group(1);
-  }
-
   String get _preferredAforadorInputParameter {
     final hasAlturaRange = rangeForVariable('ALTURA_MM')?.hasRange == true;
 
@@ -531,9 +520,15 @@ class Instrumento {
     return 'ALTURA_MM';
   }
 
+  /// Misma regla que el backend (contrato móvil, DEC-0002): código ALIV o
+  /// nombre que contiene "aliviadero", salvo drenes.
   bool get _usaTiempoSegundosEnIngreso {
     final normalized = CodigoHelper.canonicalize(codigo);
-    return normalized == 'ALIV';
+    if (normalized.startsWith('DC') || normalized.startsWith('DREN')) {
+      return false;
+    }
+    return normalized == 'ALIV' ||
+        (nombre ?? '').toLowerCase().contains('aliviadero');
   }
 
   @override

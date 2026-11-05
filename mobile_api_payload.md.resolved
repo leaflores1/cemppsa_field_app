@@ -1,3 +1,5 @@
+> **OBSOLETO (2026-11-05):** este documento no refleja el contrato vigente. La fuente unica de "que captura la app" es `cemppsa-sistema/backend/app/config/mobile_input_contract_v1.json` (DEC-0002). Copia de referencia en `test/fixtures/mobile_input_contract_v1.json`.
+
 # Referencia de Payload para App Móvil (POST)
 
 Este documento detalla estrictamente los campos requeridos para el endpoint de envío de datos. El incumplimiento de estos tipos de datos resultará en `422 Unprocessable Entity` o `400 Bad Request`.

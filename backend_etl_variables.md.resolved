@@ -1,3 +1,5 @@
+> **OBSOLETO (2026-11-05):** este documento no refleja el contrato vigente. La fuente unica de "que captura la app" es `cemppsa-sistema/backend/app/config/mobile_input_contract_v1.json` (DEC-0002). Copia de referencia en `test/fixtures/mobile_input_contract_v1.json`.
+
 # Variables Iniciales para ETL (Bronze -> Silver)
 
 Este documento detalla las variables "crudas" (Raw) que deben ingresar a la tabla `medicion_bronze` para que el servicio ETL ([etl_bronze_silver.py](file:///c:/Users/leani/cemppsa-sistema/backend/app/services/etl_bronze_silver.py)) pueda procesarlas y calcular los valores finales en `medicion_silver`.

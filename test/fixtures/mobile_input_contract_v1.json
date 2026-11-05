@@ -1,0 +1,40 @@
+{
+  "contract_version": "mobile-input-v1",
+  "domain_version": "mobile-semantic-domain-v1",
+  "families": {
+    "PIEZOMETRO": {"captures": [{"rule_id": "MOBILE_CANONICAL_PIEZOMETRO_PERIODO_V1", "variable": "PERIODO", "unit": "us", "label": "Periodo", "channel_aliases": ["LECTURA", "LECTURA_CR10X", "PERIODO"]}]},
+    "CELDA_PRESION": {"captures": [{"rule_id": "MOBILE_CANONICAL_CELDA_PERIODO_V1", "variable": "PERIODO", "unit": "us", "label": "Periodo", "channel_aliases": ["LECTURA", "LECTURA_CR10X", "PERIODO"]}]},
+    "TERMOMETRO": {"captures": [{"rule_id": "MOBILE_CANONICAL_TERMOMETRO_PERIODO_V1", "variable": "PERIODO", "unit": "us", "label": "Periodo", "channel_aliases": ["LECTURA", "LECTURA_CR10X", "TEMPERATURA", "PERIODO"]}]},
+    "TRIAXIAL": {"captures": [{"rule_id": "MOBILE_CANONICAL_TRIAXIAL_PERIODO_V1", "variable": "PERIODO", "unit": "us", "label": "Periodo", "channel_aliases": ["LECTURA", "LECTURA_CR10X", "PERIODO"]}]},
+    "UNIAXIAL": {"captures": [{"rule_id": "MOBILE_CANONICAL_UNIAXIAL_PERIODO_V1", "variable": "PERIODO", "unit": "us", "label": "Periodo", "channel_aliases": ["LECTURA", "LECTURA_CR10X", "PRESION_JACK", "PERIODO"]}]},
+    "CLINOMETRO": {"captures": [{"rule_id": "MOBILE_CANONICAL_CLINOMETRO_MV_V1", "variable": "LECTURA_MV", "unit": "mV", "label": "Lectura Mv", "channel_aliases": ["LECTURA", "LECTURA_MV"]}]},
+    "ASENTIMETRO": {
+      "captures": [
+        {"rule_id": "MOBILE_CANONICAL_ASENTIMETRO_LU_V1", "variable": "LECTURA_LU", "unit": "LU", "label": "Lectura Lu", "channel_aliases": ["LECTURA", "LECTURA_CR10X", "LECTURA_LU"]},
+        {"rule_id": "MOBILE_CANONICAL_ASENTIMETRO_TEMPERATURA_V1", "variable": "TEMPERATURA", "unit": "C", "label": "Temperatura", "required": false, "channel_aliases": ["TEMPERATURA"]}
+      ]
+    }
+  },
+  "publication_families": {
+    "_comment": "Familias que la app captura pero cuya ingesta NO es fail-closed (decision DEC-0002). Solo definen schema movil y defaults de catalogo; la validacion sigue en FAMILY_ALLOWED_VARIABLES / mapas tabulares.",
+    "CASAGRANDE": {"captures": [{"variable": "PROFUNDIDAD_M", "unit": "m", "label": "Profundidad M"}]},
+    "FREATIMETRO": {"captures": [{"variable": "PROFUNDIDAD_M", "unit": "m", "label": "Profundidad M"}]},
+    "AFORADOR": {
+      "captures": [
+        {"variable": "ALTURA_MM", "unit": "mm", "label": "Altura Mm"},
+        {"variable": "TIEMPO_S", "unit": "s", "label": "Tiempo", "required": false}
+      ],
+      "aliviadero": {"variable": "TIEMPO_S", "codes": ["ALIV"], "name_contains": ["aliviadero"]}
+    },
+    "DRENES": {
+      "captures": [
+        {"variable": "DRENES_MIN", "unit": "min", "label": "Minutos"},
+        {"variable": "DRENES_SEG", "unit": "s", "label": "Segundos"}
+      ]
+    },
+    "BAROMETRO": {"captures": [{"variable": "PRESION_MBAR", "unit": "mbar", "label": "Presion Mbar", "channel_aliases": ["PRESION_MBAR"]}]},
+    "LIMNIMETRO": {"captures": [{"variable": "NIVEL_EMBALSE", "unit": "msnm", "label": "Nivel Embalse", "channel_aliases": ["NIVEL_EMBALSE"]}]},
+    "EMBALSE": {"captures": [{"variable": "NIVEL_EMBALSE", "unit": "msnm", "label": "Nivel Embalse", "channel_aliases": ["NIVEL_EMBALSE"]}]}
+  },
+  "legacy_rules": []
+}
