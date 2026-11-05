@@ -190,7 +190,6 @@ class SyncService extends ChangeNotifier {
       return _sendManualPlanilla(planilla);
     }
 
-    _normalizeAforadoresPayload(planilla, requestBody);
     debugPrint(
       'SyncService.sendPlanilla: batch_uuid=${planilla.batchUuid} '
       'planilla_nombre=${planilla.tipo.codigo} readings_count=${planilla.totalLecturas}',
@@ -507,70 +506,6 @@ class SyncService extends ChangeNotifier {
         ApiClient.sessionExpiredMessage;
   }
 
-  static const Map<String, String> _aforadorAliases = {
-    'AFCIZQ': 'CAV-IZQ',
-    'CAVIZQ': 'CAV-IZQ',
-    'AFCDER': 'CAV-DER',
-    'CAVDER': 'CAV-DER',
-  };
-
-  void _normalizeAforadoresPayload(
-    Planilla planilla,
-    Map<String, dynamic> body,
-  ) {
-    if (planilla.tipo != TipoPlanilla.aforadores) {
-      return;
-    }
-    final readings = body['readings'];
-    if (readings is! List) {
-      return;
-    }
-    for (final entry in readings) {
-      if (entry is! Map) {
-        continue;
-      }
-      final instrumentCode = entry['instrument_code'];
-      if (instrumentCode is String) {
-        entry['instrument_code'] = _normalizeAforadorInstrumentCode(
-          instrumentCode,
-        );
-      }
-      final parameter = entry['parameter'];
-      if (parameter is String) {
-        final normalized = parameter.trim().toLowerCase();
-        if (normalized == 'altura' ||
-            normalized == 'nivel' ||
-            normalized == 'nivel_msnm' ||
-            normalized == 'nivel-msnm') {
-          entry['parameter'] = 'ALTURA_MM';
-        } else if (normalized == 'caudal' || normalized == 'q') {
-          entry['parameter'] = 'CAUDAL_LS';
-        } else if (normalized == 'tiempo' ||
-            normalized == 'seg' ||
-            normalized == 'segundos' ||
-            normalized == 'tiempo_s') {
-          entry['parameter'] = 'TIEMPO_S';
-        }
-      }
-      final parameterValue = entry['parameter'];
-      if (parameterValue is String) {
-        switch (parameterValue.trim().toUpperCase()) {
-          case 'ALTURA_MM':
-            entry['unit'] = 'mm';
-            break;
-          case 'CAUDAL_LS':
-            entry['unit'] = 'l/s';
-            break;
-          case 'TIEMPO_S':
-            entry['unit'] = 's';
-            break;
-          default:
-            break;
-        }
-      }
-    }
-  }
-
   String? _applyCatalogOverrides({
     required Map<String, dynamic> requestBody,
     required CatalogRepository catalog,
@@ -623,15 +558,6 @@ class SyncService extends ChangeNotifier {
     return null;
   }
 
-  String _normalizeAforadorInstrumentCode(String code) {
-    final trimmed = code.trim().toUpperCase();
-    final normalizedKey = trimmed.replaceAll(RegExp(r'[^A-Z0-9]'), '');
-    final alias = _aforadorAliases[normalizedKey];
-    if (alias != null) {
-      return alias;
-    }
-    return trimmed.replaceAll(RegExp(r'[_\s]'), '');
-  }
   // ===========================================================================
   // MANUAL IMPORT LOGIC (Alignment)
   // ===========================================================================
