@@ -12,6 +12,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:open_filex/open_filex.dart';
 import '../core/config.dart';
+import 'version_compare.dart';
 
 // ==============================================================================
 // Modelo de versión remota
@@ -41,7 +42,7 @@ class AppVersion {
   factory AppVersion.fromJson(Map<String, dynamic> json) {
     return AppVersion(
       version: json['version'] ?? '0.0.0',
-      buildNumber: json['build_number'] ?? 0,
+      buildNumber: parseBuildNumber(json['build_number']),
       apkUrl: json['apk_url'] ?? '',
       changelog: json['changelog'] ?? '',
       forceUpdate: json['force_update'] ?? false,
@@ -57,19 +58,6 @@ class AppVersion {
 // ==============================================================================
 
 class UpdateService {
-  /// Compara dos versiones semánticas.
-  /// Retorna negativo si a < b, 0 si a == b, positivo si a > b
-  static int _compareVersions(String a, String b) {
-    final partsA = a.split('.').map(int.tryParse).toList();
-    final partsB = b.split('.').map(int.tryParse).toList();
-    for (int i = 0; i < 3; i++) {
-      final va = i < partsA.length ? (partsA[i] ?? 0) : 0;
-      final vb = i < partsB.length ? (partsB[i] ?? 0) : 0;
-      if (va != vb) return va - vb;
-    }
-    return 0;
-  }
-
   /// Consulta el servidor por la versión disponible
   static Future<AppVersion?> checkForUpdate() async {
     try {
@@ -89,21 +77,30 @@ class UpdateService {
     return null;
   }
 
-  /// Retorna true si hay una actualización disponible
+  /// Retorna true si hay una actualización disponible: versión remota mayor,
+  /// o misma versión con build remoto mayor (ver [isRemoteNewer]).
   static Future<bool> isUpdateAvailable(AppVersion remote) async {
     final info = await PackageInfo.fromPlatform();
-    final localVersion = info.version; // ej: "1.0.0"
-    debugPrint(
-        'UpdateService: Local=$localVersion Remote=${remote.version}');
-    return _compareVersions(remote.version, localVersion) > 0;
+    debugPrint('UpdateService: Local=${info.version}+${info.buildNumber} '
+        'Remote=${remote.version}+${remote.buildNumber}');
+    return isRemoteNewer(
+      remoteVersion: remote.version,
+      remoteBuild: remote.buildNumber,
+      localVersion: info.version,
+      localBuild: info.buildNumber,
+    );
   }
 
-  /// Retorna true si la actualización es obligatoria
+  /// Retorna true si la actualización es obligatoria: `force_update`, o la
+  /// app instalada está por debajo de `min_version` (ver [isBelowMinimum]).
   static Future<bool> isForceRequired(AppVersion remote) async {
     if (remote.forceUpdate) return true;
     final info = await PackageInfo.fromPlatform();
-    final localVersion = info.version;
-    return _compareVersions(remote.minVersion, localVersion) > 0;
+    return isBelowMinimum(
+      minVersion: remote.minVersion,
+      localVersion: info.version,
+      localBuild: info.buildNumber,
+    );
   }
 
   /// Descarga el APK, verifica SHA256 si disponible, y lo abre para instalar
@@ -120,8 +117,7 @@ class UpdateService {
       final response = await client.send(request);
 
       if (response.statusCode != 200) {
-        throw Exception(
-            'Error descargando APK: HTTP ${response.statusCode}');
+        throw Exception('Error descargando APK: HTTP ${response.statusCode}');
       }
 
       final contentLength = response.contentLength ?? 0;
@@ -139,8 +135,7 @@ class UpdateService {
       }
       await sink.close();
 
-      debugPrint(
-          'UpdateService: APK descargado (${file.lengthSync()} bytes)');
+      debugPrint('UpdateService: APK descargado (${file.lengthSync()} bytes)');
 
       // Verificar SHA256 si el servidor lo proporcionó
       if (remote.sha256 != null && remote.sha256!.isNotEmpty) {
