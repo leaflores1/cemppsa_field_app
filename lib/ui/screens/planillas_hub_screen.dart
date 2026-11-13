@@ -8,8 +8,8 @@ import 'package:provider/provider.dart';
 
 import '../../data/models/planilla.dart';
 import '../../repositories/planilla_repository.dart';
-import '../../utils/planilla_family.dart';
 import '../widgets/planilla_card.dart';
+import 'planillas_enviadas_view.dart';
 
 class PlanillasHubScreen extends StatefulWidget {
   const PlanillasHubScreen({super.key});
@@ -130,8 +130,8 @@ class _PlanillasHubScreenState extends State<PlanillasHubScreen>
                 emptyTitle: 'Sin enviadas',
                 emptySubtitle: 'Las planillas sincronizadas aparecerán aquí',
                 onTap: (p) => _openDetail(p, editable: false),
-                onDelete: (p) => _confirmDelete(p),
-                groupByFamily: true,
+                contentBuilder: (enviadas) =>
+                    EnviadasPorFamiliaView(planillas: enviadas),
               ),
             ],
           );
@@ -186,52 +186,11 @@ class _PlanillasHubScreenState extends State<PlanillasHubScreen>
     );
   }
 
-  void _openDetail(Planilla planilla, {required bool editable}) {
-    Navigator.pushNamed(
-      context,
-      '/planilla-detail',
-      arguments: {'planilla': planilla, 'editable': editable},
-    );
-  }
+  void _openDetail(Planilla planilla, {required bool editable}) =>
+      abrirDetallePlanilla(context, planilla, editable: editable);
 
-  void _confirmDelete(Planilla planilla) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E293B),
-        title: const Text('¿Eliminar planilla?',
-            style: TextStyle(color: Colors.white)),
-        content: Text(
-          '${planilla.tipo.displayName}\n${planilla.totalLecturas} lecturas',
-          style: TextStyle(color: Colors.grey[400]),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancelar'),
-          ),
-          TextButton(
-            onPressed: () async {
-              final messenger = ScaffoldMessenger.of(context);
-              await context
-                  .read<PlanillaRepository>()
-                  .delete(planilla.batchUuid);
-              if (!mounted || !ctx.mounted) return;
-              Navigator.pop(ctx);
-              messenger.showSnackBar(
-                const SnackBar(
-                  content: Text('Planilla eliminada'),
-                  backgroundColor: Color(0xFFEF4444),
-                ),
-              );
-            },
-            child: const Text('Eliminar',
-                style: TextStyle(color: Color(0xFFEF4444))),
-          ),
-        ],
-      ),
-    );
-  }
+  void _confirmDelete(Planilla planilla) =>
+      confirmarEliminarPlanilla(context, planilla);
 
   void _retrySend(Planilla planilla) {
     final text = planilla.estado == PlanillaEstado.rechazada
@@ -257,7 +216,7 @@ class _PlanillasList extends StatelessWidget {
   final void Function(Planilla) onTap;
   final void Function(Planilla)? onDelete;
   final void Function(Planilla)? onRetry;
-  final bool groupByFamily;
+  final Widget Function(List<Planilla> planillas)? contentBuilder;
 
   const _PlanillasList({
     required this.planillas,
@@ -267,7 +226,7 @@ class _PlanillasList extends StatelessWidget {
     required this.onTap,
     this.onDelete,
     this.onRetry,
-    this.groupByFamily = false,
+    this.contentBuilder,
   });
 
   @override
@@ -276,8 +235,8 @@ class _PlanillasList extends StatelessWidget {
       return _buildEmptyState();
     }
 
-    if (groupByFamily) {
-      return _buildGroupedList();
+    if (contentBuilder != null) {
+      return contentBuilder!(planillas);
     }
 
     return ListView.builder(
@@ -299,94 +258,6 @@ class _PlanillasList extends StatelessWidget {
           ),
         );
       },
-    );
-  }
-
-  Widget _buildGroupedList() {
-    final buckets = _buildFamilyBuckets();
-
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        for (var i = 0; i < buckets.length; i++) ...[
-          _buildFamilyHeader(buckets[i], isFirst: i == 0),
-          for (final planilla in buckets[i].planillas)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: PlanillaCard(
-                planilla: planilla,
-                onTap: () => onTap(planilla),
-                onDelete: onDelete != null ? () => onDelete!(planilla) : null,
-                onRetry: onRetry != null &&
-                        (planilla.estado == PlanillaEstado.error ||
-                            planilla.estado == PlanillaEstado.rechazada)
-                    ? () => onRetry!(planilla)
-                    : null,
-              ),
-            ),
-        ],
-      ],
-    );
-  }
-
-  List<_PlanillaFamilyBucket> _buildFamilyBuckets() {
-    final bucketsById = <String, _PlanillaFamilyBucket>{};
-    for (final planilla in planillas) {
-      final group = planillaFamilyGroupFromTipo(planilla.tipo);
-      bucketsById
-          .putIfAbsent(group.id, () => _PlanillaFamilyBucket(group))
-          .planillas
-          .add(planilla);
-    }
-
-    final buckets = bucketsById.values.toList();
-    buckets.sort((a, b) {
-      final byOrder = a.group.order.compareTo(b.group.order);
-      if (byOrder != 0) return byOrder;
-      return a.group.label.compareTo(b.group.label);
-    });
-    return buckets;
-  }
-
-  Widget _buildFamilyHeader(
-    _PlanillaFamilyBucket bucket, {
-    required bool isFirst,
-  }) {
-    return Padding(
-      padding: EdgeInsets.only(
-        top: isFirst ? 0 : 8,
-        bottom: 10,
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              bucket.group.label,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-              ),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-            decoration: BoxDecoration(
-              color: const Color(0xFF334155),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Text(
-              bucket.planillas.length.toString(),
-              style: const TextStyle(
-                color: Color(0xFFCBD5E1),
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -421,11 +292,4 @@ class _PlanillasList extends StatelessWidget {
       ),
     );
   }
-}
-
-class _PlanillaFamilyBucket {
-  final PlanillaFamilyGroup group;
-  final List<Planilla> planillas = [];
-
-  _PlanillaFamilyBucket(this.group);
 }
